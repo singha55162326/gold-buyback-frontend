@@ -35,6 +35,9 @@ export const NAV: NavGroup[] = [
     labelLo: 'ພາບລວມ',
     items: [
       { href: '/dashboard', labelLo: 'Dashboard', section: '§3.7', roles: ALL, status: 'live' },
+      // Everyone gets the manual: it is written per role and hides the
+      // chapters that are not yours.
+      { href: '/help', labelLo: 'ຄູ່ມືການໃຊ້ງານ', section: '', roles: ALL, status: 'live' },
     ],
   },
   {

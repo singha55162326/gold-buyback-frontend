@@ -111,7 +111,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <div className="truncate text-sm font-semibold text-white">
                 {current?.labelLo ?? 'ລະບົບບໍລິຫານຈັດການຮ້ານຄຳພູວົງ'}
               </div>
-              {current && (
+              {/* The manual has no TOR section; a bare "TOR" would read as a bug. */}
+              {current?.section && (
                 <div className="text-xs text-white/50">TOR {current.section}</div>
               )}
             </div>
