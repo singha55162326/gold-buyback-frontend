@@ -4,7 +4,7 @@ import { useId } from 'react';
 
 /**
  * Opt-in override for the shop's own artwork. Set NEXT_PUBLIC_LOGO_SRC (e.g.
- * `/brand/logo.png`, with the file in apps/web/public/brand/) and every place
+ * `/brand/logo.png`, with the file in frontend/public/brand/) and every place
  * the mark appears uses it instead. Left unset, the vector below is used and
  * the app makes no request for an asset that is not there.
  */

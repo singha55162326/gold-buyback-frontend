@@ -156,7 +156,7 @@ export default function NotificationSettingsPage() {
           </table>
         </div>
         <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-          ຕັ້ງຄ່າຢູ່ໄຟລ໌ <span className="font-mono">apps/api/.env</span> ແລ້ວ restart API.
+          ຕັ້ງຄ່າຢູ່ໄຟລ໌ <span className="font-mono">.env</span> ແລ້ວ restart API.
           ຄ່າ API key ບໍ່ຖືກສະແດງຢູ່ໜ້ານີ້.
         </p>
       </div>
