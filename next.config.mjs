@@ -1,4 +1,8 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { PHASE_PRODUCTION_BUILD } from 'next/constants.js';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * `NEXT_PUBLIC_*` values are compiled INTO the browser bundle, not read at
@@ -48,6 +52,21 @@ function assertApiUrl() {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+
+  // @kpv/domain ships ESM TypeScript output; Next compiles it with the app.
+  transpilePackages: ['@kpv/domain'],
+
+  // The frontend is deployed on its own box, without the rest of the repo.
+  // `standalone` makes Next trace every import and copy the reachable files
+  // — including the @kpv/domain workspace — into .next/standalone, so the
+  // server needs no npm install and no monorepo.
+  output: 'standalone',
+
+  // Tracing must start at the REPO root, not at frontend/. @kpv/domain lives
+  // in backend/shared, one level outside this package; with the default root
+  // Next stops at frontend/ and silently ships a bundle that cannot resolve
+  // the pricing engine.
+  outputFileTracingRoot: path.join(here, '..'),
 };
 
 export default (phase) => {
