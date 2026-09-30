@@ -1,9 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { buildPriceBoard, TIER_META, type PriceBoard as DomainBoard } from '@kpv/domain';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDate, formatDateTime } from '@/lib/format';
 
@@ -36,10 +35,8 @@ interface HistoryRow {
 /**
  * TOR §3.1 — ຈັດການ Products (ຕັ້ງລາຄາ & ສູດຄິດໄລ່).
  *
- * The preview is computed locally by @kpv/domain — the same package the API
- * uses to persist the snapshot. That is deliberate: the owner sees the exact
- * numbers that will be stored, with no round trip and no chance of the
- * preview and the saved board disagreeing.
+ * The A/B/C/D board is computed by the API when the price is saved; this page
+ * shows the stored board returned by /pricing/current.
  */
 export default function ProductsPage() {
   const queryClient = useQueryClient();
@@ -74,40 +71,10 @@ export default function ProductsPage() {
     },
   });
 
-  /** Live A/B/C/D board, recomputed on every keystroke. */
-  const preview: DomainBoard | null = useMemo(() => {
-    const raw = input.replace(/,/g, '').trim();
-    if (!raw || !/^\d+(\.\d+)?$/.test(raw) || Number(raw) <= 0) return null;
-    try {
-      return buildPriceBoard(raw);
-    } catch {
-      return null;
-    }
-  }, [input]);
+  const raw = input.replace(/,/g, '').trim();
+  const isValidInput = /^\d+(\.\d+)?$/.test(raw) && Number(raw) > 0;
 
-  const rows = preview
-    ? preview.lines.map((line) => {
-        const meta = TIER_META[line.tier as keyof typeof TIER_META];
-        return {
-          tierCode: line.tier,
-          labelLo: meta?.labelLo ?? line.tier,
-          displayWeightG: meta?.displayWeightG.toFixed() ?? '',
-          exchangeWeightG: meta?.exchangeWeightG.toFixed() ?? '',
-          sellPrice: line.sellPrice.toFixed(),
-          buybackPrice: line.buybackPrice.toFixed(),
-          steps: line.steps
-            ? {
-                a: line.steps.a.toFixed(),
-                b: line.steps.b.toFixed(),
-                c: line.steps.c.toFixed(),
-                d: line.steps.d.toFixed(),
-              }
-            : null,
-        };
-      })
-    : (current?.lines ?? []);
-
-  const isPreview = preview !== null;
+  const rows = current?.lines ?? [];
 
   return (
     <div className="space-y-6">
@@ -137,8 +104,8 @@ export default function ProductsPage() {
 
           <button
             className="btn-primary"
-            disabled={!isPreview || save.isPending}
-            onClick={() => save.mutate(input.replace(/,/g, '').trim())}
+            disabled={!isValidInput || save.isPending}
+            onClick={() => save.mutate(raw)}
           >
             {save.isPending ? 'ກຳລັງບັນທຶກ...' : 'Set Pricing'}
           </button>
@@ -153,21 +120,13 @@ export default function ProductsPage() {
             {error}
           </div>
         )}
-
-        {isPreview && (
-          <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            ນີ້ແມ່ນ <strong>ຕົວຢ່າງ</strong> — ຍັງບໍ່ໄດ້ບັນທຶກ. ກົດ &quot;Set Pricing&quot; ເພື່ອບັນທຶກ.
-          </div>
-        )}
       </div>
 
       {/* Price board */}
       <div className="card">
         <div className="card-header">
-          <h2 className="card-title">
-            {isPreview ? 'ຕາຕະລາງລາຄາ (ຕົວຢ່າງ)' : 'ຕາຕະລາງລາຄາປັດຈຸບັນ'}
-          </h2>
-          {current && !isPreview && (
+          <h2 className="card-title">ຕາຕະລາງລາຄາປັດຈຸບັນ</h2>
+          {current && (
             <span className="text-xs text-slate-500">
               ອັບເດດລ່າສຸດ {formatDate(current.effectiveAt)}
             </span>
@@ -197,7 +156,7 @@ export default function ProductsPage() {
               {rows.length === 0 && (
                 <tr>
                   <td colSpan={showSteps ? 9 : 5} className="py-8 text-center text-slate-500">
-                    ຍັງບໍ່ມີການຕັ້ງລາຄາ — ປ້ອນລາຄາຂາຍ 1 ບາດ ດ້ານເທິງເພື່ອເບິ່ງຕົວຢ່າງ
+                    ຍັງບໍ່ມີການຕັ້ງລາຄາ — ປ້ອນລາຄາຂາຍ 1 ບາດ ດ້ານເທິງ ແລ້ວກົດ Set Pricing
                   </td>
                 </tr>
               )}
