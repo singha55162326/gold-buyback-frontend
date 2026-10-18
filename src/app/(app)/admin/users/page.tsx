@@ -6,6 +6,7 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
 import type { Role } from '@/lib/nav';
 
 interface User {
@@ -100,62 +101,60 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">User Setting</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            ຈັດການຜູ້ໃຊ້ງານ ແລະ ສິດການເຂົ້າເຖິງຕາມ Role (TOR §2, §3.7)
-          </p>
-        </div>
-        <button className="btn-primary" onClick={() => setShowAdd((v) => !v)}>
-          ເພີ່ມຜູ້ໃຊ້
-        </button>
-      </div>
+      <PageHead
+        title="User Setting"
+        subtitle="ຈັດການຜູ້ໃຊ້ງານ ແລະ ສິດການເຂົ້າເຖິງຕາມ Role (TOR §2, §3.7)"
+        actions={
+          <button className="btn-primary" onClick={() => setShowAdd((v) => !v)}>
+            ເພີ່ມຜູ້ໃຊ້
+          </button>
+        }
+      />
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div id="users-error" role="alert" className="notice status-danger">
           {error}
         </div>
       )}
 
       {showAdd && (
-        <div className="card p-5">
+        <div data-fade className="card p-5">
           <h2 className="card-title mb-4">ເພີ່ມຜູ້ໃຊ້ໃໝ່</h2>
-          <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <div>
               <label className="label" htmlFor="username">ຊື່ຜູ້ໃຊ້</label>
-              <input id="username" className="input" value={username}
+              <input id="username" aria-describedby={error ? 'users-error' : undefined} className="input" value={username}
                 onChange={(e) => setUsername(e.target.value)} autoComplete="off" />
             </div>
             <div>
               <label className="label" htmlFor="fullName">ຊື່ ແລະ ນາມສະກຸນ</label>
-              <input id="fullName" className="input" value={fullName}
+              <input id="fullName" aria-describedby={error ? 'users-error' : undefined} className="input" value={fullName}
                 onChange={(e) => setFullName(e.target.value)} />
             </div>
             <div>
               <label className="label" htmlFor="role">Role</label>
-              <select id="role" className="input" value={role}
+              <select id="role" aria-describedby={error ? 'users-error' : undefined} className="input" value={role}
                 onChange={(e) => setRole(e.target.value as Role)}>
                 {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
               </select>
             </div>
             <div>
               <label className="label" htmlFor="newPassword">ລະຫັດຜ່ານ (8+ ໂຕ)</label>
-              <input id="newPassword" type="password" className="input" value={newPassword}
+              <input id="newPassword" aria-describedby={error ? 'users-error' : undefined} type="password" className="input" value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)} autoComplete="new-password" />
             </div>
             <div>
               <label className="label" htmlFor="phone">ເບີໂທ</label>
-              <input id="phone" className="input num" value={phone}
+              <input id="phone" aria-describedby={error ? 'users-error' : undefined} className="input num" value={phone}
                 onChange={(e) => setPhone(e.target.value)} />
             </div>
             <div>
               <label className="label" htmlFor="whatsappNumber">ເບີ WhatsApp</label>
-              <input id="whatsappNumber" className="input num" placeholder="ຫວ່າງ = ໃຊ້ເບີໂທ"
+              <input id="whatsappNumber" aria-describedby={error ? 'users-error' : undefined} className="input num" placeholder="ຫວ່າງ = ໃຊ້ເບີໂທ"
                 value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} />
             </div>
           </div>
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             <button className="btn-primary"
               disabled={!username || !fullName || newPassword.length < 8 || create.isPending}
               onClick={() => create.mutate()}>
@@ -166,12 +165,12 @@ export default function UsersPage() {
         </div>
       )}
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ລາຍຊື່ຜູ້ໃຊ້ງານ</h2>
-          <span className="text-xs text-slate-500">{users.length} ຄົນ</span>
+          <span className="num text-xs text-muted">{users.length} ຄົນ</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍຊື່ຜູ້ໃຊ້ງານ">
           <table className="table">
             <thead>
               <tr>
@@ -192,7 +191,8 @@ export default function UsersPage() {
                   <td className="font-medium">{user.fullName}</td>
                   <td>
                     <select
-                      className="input w-44 py-1 text-xs"
+                      aria-label={`ສິດຜູ້ໃຊ້ — ${user.username}`}
+                      className="input w-44"
                       value={user.role}
                       onChange={(e) =>
                         update.mutate({ id: user.id, patch: { role: e.target.value as Role } })
@@ -205,9 +205,10 @@ export default function UsersPage() {
                   <td>
                     {/* TOR §10 — opt-in. Off by default: staff are never
                         messaged without being added deliberately. */}
-                    <label className="flex items-center gap-2 text-xs text-slate-600">
+                    <label className="flex min-h-[42px] cursor-pointer items-center gap-2 text-xs text-fg">
                       <input
                         type="checkbox"
+                        className="h-5 w-5 accent-[var(--gold)]"
                         checked={user.notifyWhatsApp}
                         onChange={(e) =>
                           update.mutate({
@@ -220,35 +221,36 @@ export default function UsersPage() {
                     </label>
                   </td>
                   <td>
-                    <span className={user.isActive ? 'badge bg-emerald-100 text-emerald-800' : 'badge bg-slate-100 text-slate-600'}>
+                    <span className={user.isActive ? 'status-success' : 'badge recessed text-muted'}>
                       {user.isActive ? 'ໃຊ້ງານຢູ່' : 'ປິດການນຳໃຊ້'}
                     </span>
                   </td>
-                  <td className="text-slate-500">{formatDateTime(user.lastLoginAt)}</td>
+                  <td className="num text-muted">{formatDateTime(user.lastLoginAt)}</td>
                   <td className="text-right">
                     {resetting === user.id ? (
                       <div className="flex items-center justify-end gap-2">
-                        <input type="password" className="input w-36 py-1 text-xs"
+                        <input type="password" className="input w-40"
+                          aria-label={`ລະຫັດຜ່ານໃໝ່ — ${user.username}`}
                           placeholder="ລະຫັດຜ່ານໃໝ່" value={password}
                           onChange={(e) => setPassword(e.target.value)} autoFocus />
-                        <button className="text-sm text-gold-700 hover:underline"
+                        <button className="btn-primary"
                           onClick={() => reset.mutate(user.id)}
                           disabled={password.length < 8 || reset.isPending}>
                           ບັນທຶກ
                         </button>
-                        <button className="text-sm text-slate-500 hover:underline"
+                        <button className="btn-secondary"
                           onClick={() => setResetting(null)}>
                           ຍົກເລີກ
                         </button>
                       </div>
                     ) : (
-                      <div className="flex justify-end gap-3">
-                        <button className="text-sm text-gold-700 hover:underline"
+                      <div className="flex justify-end gap-2">
+                        <button className="btn-ghost"
                           onClick={() => { setResetting(user.id); setPassword(''); }}>
                           ປ່ຽນລະຫັດຜ່ານ
                         </button>
                         <button
-                          className={user.isActive ? 'text-sm text-red-600 hover:underline' : 'text-sm text-emerald-700 hover:underline'}
+                          className={user.isActive ? 'btn-danger' : 'btn-ghost text-success'}
                           onClick={() =>
                             update.mutate({ id: user.id, patch: { isActive: !user.isActive } })
                           }
@@ -264,7 +266,7 @@ export default function UsersPage() {
           </table>
         </div>
         <Pagination {...pager} />
-        <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+        <p className="border-t border-line px-5 py-3 text-xs text-muted">
           ການປ່ຽນລະຫັດຜ່ານຈະຍົກເລີກ session ທັງໝົດຂອງຜູ້ໃຊ້ນັ້ນທັນທີ.
           Admin ຄົນສຸດທ້າຍບໍ່ສາມາດຖືກປິດການນຳໃຊ້ໄດ້.
           ຕິກ WhatsApp ເພື່ອໃຫ້ຜູ້ໃຊ້ນັ້ນໄດ້ຮັບການແຈ້ງເຕືອນທາງ WhatsApp ນຳ.

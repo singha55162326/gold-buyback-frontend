@@ -6,6 +6,7 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
 
 interface Status {
   enabled: boolean;
@@ -31,10 +32,10 @@ interface LogRow {
 }
 
 const STATUS_BADGE: Record<LogRow['whatsappStatus'], { lo: string; cls: string }> = {
-  PENDING: { lo: 'ລໍຖ້າສົ່ງ', cls: 'bg-amber-100 text-amber-800' },
-  SENT: { lo: 'ສົ່ງແລ້ວ', cls: 'bg-emerald-100 text-emerald-800' },
-  FAILED: { lo: 'ລົ້ມເຫຼວ', cls: 'bg-red-100 text-red-800' },
-  SKIPPED: { lo: 'ຂ້າມ', cls: 'bg-slate-100 text-slate-600' },
+  PENDING: { lo: 'ລໍຖ້າສົ່ງ', cls: 'status-warning' },
+  SENT: { lo: 'ສົ່ງແລ້ວ', cls: 'status-success' },
+  FAILED: { lo: 'ລົ້ມເຫຼວ', cls: 'status-danger' },
+  SKIPPED: { lo: 'ຂ້າມ', cls: 'badge recessed text-muted' },
 };
 
 /**
@@ -95,56 +96,52 @@ export default function NotificationSettingsPage() {
   });
 
   const health = !status
-    ? { lo: 'ກຳລັງກວດສອບ...', cls: 'bg-slate-100 text-slate-600' }
+    ? { lo: 'ກຳລັງກວດສອບ...', cls: 'badge recessed text-muted' }
     : !status.enabled
-      ? { lo: 'ປິດການນຳໃຊ້', cls: 'bg-slate-100 text-slate-600' }
+      ? { lo: 'ປິດການນຳໃຊ້', cls: 'badge recessed text-muted' }
       : !status.configured
-        ? { lo: 'ຍັງບໍ່ໄດ້ຕັ້ງຄ່າ', cls: 'bg-amber-100 text-amber-800' }
+        ? { lo: 'ຍັງບໍ່ໄດ້ຕັ້ງຄ່າ', cls: 'status-warning' }
         : !status.reachable
-          ? { lo: 'ຕິດຕໍ່ Gateway ບໍ່ໄດ້', cls: 'bg-red-100 text-red-800' }
+          ? { lo: 'ຕິດຕໍ່ Gateway ບໍ່ໄດ້', cls: 'status-danger' }
           : status.live
-            ? { lo: 'ພ້ອມສົ່ງ', cls: 'bg-emerald-100 text-emerald-800' }
+            ? { lo: 'ພ້ອມສົ່ງ', cls: 'status-success' }
             // Reachable but not linked: sends WILL fail, so never show green.
-            : { lo: 'ຕ້ອງສະແກນ QR', cls: 'bg-amber-100 text-amber-800' };
+            : { lo: 'ຕ້ອງສະແກນ QR', cls: 'status-warning' };
 
   const pager = usePagination(log);
 
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold text-slate-900">ການແຈ້ງເຕືອນ WhatsApp</h1>
-          <span className="badge bg-slate-100 text-slate-600">TOR §10</span>
-        </div>
-        <p className="mt-1 text-sm text-slate-500">
-          ຊ່ອງທາງແຈ້ງເຕືອນທີສອງ ນອກເໜືອຈາກກະດິ່ງໃນລະບົບ — ຜ່ານ OpenWA gateway
-        </p>
-      </div>
+      <PageHead
+        title="ການແຈ້ງເຕືອນ WhatsApp"
+        subtitle="ຊ່ອງທາງແຈ້ງເຕືອນທີສອງ ນອກເໜືອຈາກກະດິ່ງໃນລະບົບ — ຜ່ານ OpenWA gateway"
+        actions={<span className="badge recessed text-gold">TOR §10</span>}
+      />
 
-      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <div data-fade className="notice status-warning">
         OpenWA ແມ່ນ gateway ທີ່ບໍ່ເປັນທາງການ ແລະ ບໍ່ມີສ່ວນກ່ຽວຂ້ອງກັບ Meta.
         ໃຊ້ສະເພາະການແຈ້ງເຕືອນພາຍໃນໃຫ້ພະນັກງານທີ່ສະໝັກຮັບເທົ່ານັ້ນ —
         ບໍ່ຄວນໃຊ້ສົ່ງຫາລູກຄ້າ ຫຼື ສົ່ງຈຳນວນຫຼາຍ ເພາະບັນຊີອາດຖືກລະງັບ.
       </div>
 
       {message && (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+        <div role="status" className="notice status-success">
           {message}
         </div>
       )}
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div id="wa-error" role="alert" className="notice status-danger">
           {error}
         </div>
       )}
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ສະຖານະ Gateway</h2>
-          <span className={`badge ${health.cls}`}>{health.lo}</span>
+          <span className={health.cls}>{health.lo}</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ສະຖານະ Gateway">
           <table className="table">
             <tbody>
               <Row labelLo="ເປີດການນຳໃຊ້ (WHATSAPP_ENABLED)"
@@ -155,18 +152,18 @@ export default function NotificationSettingsPage() {
             </tbody>
           </table>
         </div>
-        <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+        <p className="border-t border-line px-5 py-3 text-xs text-muted">
           ຕັ້ງຄ່າຢູ່ໄຟລ໌ <span className="font-mono">.env</span> ແລ້ວ restart API.
           ຄ່າ API key ບໍ່ຖືກສະແດງຢູ່ໜ້ານີ້.
         </p>
       </div>
 
-      <div className="card p-5">
+      <div data-fade className="card p-5">
         <h2 className="card-title mb-4">ທົດສອບການສົ່ງ</h2>
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-56 flex-1">
             <label className="label" htmlFor="testTo">ເບີ WhatsApp</label>
-            <input id="testTo" className="input num" inputMode="tel" placeholder="2012345678"
+            <input id="testTo" className="input num" aria-describedby={error ? 'wa-error' : undefined} inputMode="tel" placeholder="2012345678"
               value={testTo} onChange={(e) => setTestTo(e.target.value)} />
           </div>
           <button className="btn-primary"
@@ -179,17 +176,17 @@ export default function NotificationSettingsPage() {
             {drain.isPending ? 'ກຳລັງສົ່ງຄິວ...' : 'ສົ່ງຄິວທີ່ຄ້າງ'}
           </button>
         </div>
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-muted">
           ຮັບເບີແບບ 8 ຕົວ (2012345678), ມີ 0 ນຳໜ້າ, ຫຼື ແບບເຕັມ (+856...) — ລະບົບຈະແປງໃຫ້ເອງ.
         </p>
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ປະຫວັດການສົ່ງ</h2>
-          <span className="text-xs text-slate-500">{log.length} ລາຍການ</span>
+          <span className="num text-xs text-muted">{log.length} ລາຍການ</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດການສົ່ງ">
           <table className="table">
             <thead>
               <tr>
@@ -204,7 +201,7 @@ export default function NotificationSettingsPage() {
             </thead>
             <tbody>
               {log.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີການສົ່ງ</td></tr>
+                <tr><td colSpan={7} className="py-8 text-center text-muted">ຍັງບໍ່ມີການສົ່ງ</td></tr>
               )}
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
@@ -212,13 +209,13 @@ export default function NotificationSettingsPage() {
                   <td className="font-medium">{row.title}</td>
                   <td className="num">{row.whatsappTo ?? '—'}</td>
                   <td>
-                    <span className={`badge ${STATUS_BADGE[row.whatsappStatus].cls}`}>
+                    <span className={STATUS_BADGE[row.whatsappStatus].cls}>
                       {STATUS_BADGE[row.whatsappStatus].lo}
                     </span>
                   </td>
                   <td className="num text-right">{row.whatsappAttempts}</td>
                   <td>{formatDateTime(row.whatsappSentAt)}</td>
-                  <td className="max-w-xs truncate text-xs text-red-600" title={row.whatsappError ?? ''}>
+                  <td className="max-w-xs truncate text-xs text-danger" title={row.whatsappError ?? ''}>
                     {row.whatsappError ?? '—'}
                   </td>
                 </tr>
@@ -235,8 +232,8 @@ export default function NotificationSettingsPage() {
 function Row({ labelLo, value }: { labelLo: string; value: string }) {
   return (
     <tr>
-      <td className="w-72 font-medium text-slate-700">{labelLo}</td>
-      <td className="font-mono text-xs text-slate-600">{value}</td>
+      <td className="w-72 font-medium text-fg">{labelLo}</td>
+      <td className="font-mono text-xs text-muted">{value}</td>
     </tr>
   );
 }
