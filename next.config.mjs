@@ -53,6 +53,10 @@ function assertApiUrl() {
 const nextConfig = {
   reactStrictMode: true,
 
+  // e2e builds into its own directory (NEXT_DIST_DIR=.next-e2e, see playwright.config.ts) so a
+  // test build never races a running `next dev`/`next start` that is using `.next`.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
+
   // @kpv/domain ships ESM TypeScript output; Next compiles it with the app.
   transpilePackages: ['@kpv/domain'],
 

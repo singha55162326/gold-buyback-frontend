@@ -7,7 +7,10 @@
     "dev": "next dev -p 3000",
     "build": "next build",
     "start": "next start -p 3000",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:e2e:quick": "playwright test --grep desktop",
+    "lint:style": "node scripts/lint-style.mjs"
   },
   "dependencies": {
     "@kpv/domain": "file:./shared",
@@ -25,6 +28,8 @@
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "^1.64.1",
     "@types/node": "^22.13.1",
     "@types/react": "^19.0.8",
     "@types/react-dom": "^19.0.3",
