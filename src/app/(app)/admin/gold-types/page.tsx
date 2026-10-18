@@ -5,6 +5,7 @@ import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
+import { PageHead } from '@/components/page-head';
 
 interface GoldType {
   id: string;
@@ -24,12 +25,10 @@ export default function GoldTypesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ປະເພດຄຳ & ລາຍການຄຳ</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ຂໍ້ມູນຫຼັກທີ່ໃຊ້ໃນ Buyback, ປ່ຽນເປັນເງິນ, ສິນເຊື່ອ ແລະ ສາງຄຳ (TOR §3.5)
-        </p>
-      </div>
+      <PageHead
+        title="ປະເພດຄຳ & ລາຍການຄຳ"
+        subtitle="ຂໍ້ມູນຫຼັກທີ່ໃຊ້ໃນ Buyback, ປ່ຽນເປັນເງິນ, ສິນເຊື່ອ ແລະ ສາງຄຳ (TOR §3.5)"
+      />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <GoldTypePanel />
@@ -72,37 +71,37 @@ function GoldTypePanel() {
   });
 
   return (
-    <div className="card">
+    <div data-fade className="card">
       <div className="card-header">
         <h2 className="card-title">ປະເພດຄຳ</h2>
       </div>
 
-      <div className="space-y-3 border-b border-slate-200 p-5">
+      <div className="space-y-3 border-b border-line p-5">
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="gt-code">Code</label>
-            <input id="gt-code" className="input" placeholder="GOOD" value={code}
+            <input id="gt-code" className="input" aria-describedby={error ? 'gt-error' : undefined} placeholder="GOOD" value={code}
               onChange={(e) => setCode(e.target.value)} />
           </div>
           <div>
             <label className="label" htmlFor="gt-name">ຊື່ປະເພດຄຳ</label>
-            <input id="gt-name" className="input" placeholder="ຄຳດີ" value={nameLo}
+            <input id="gt-name" className="input" aria-describedby={error ? 'gt-error' : undefined} placeholder="ຄຳດີ" value={nameLo}
               onChange={(e) => setNameLo(e.target.value)} />
           </div>
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" checked={isStockType}
+        <label className="flex min-h-[42px] items-center gap-2 text-sm text-fg">
+          <input type="checkbox" className="h-4 w-4 accent-[var(--gold)]" checked={isStockType}
             onChange={(e) => setIsStockType(e.target.checked)} />
           ໃຊ້ເປັນໝວດຂອງ Stock (OLD)
         </label>
-        {error && <div className="text-sm text-red-700">{error}</div>}
+        {error && <div id="gt-error" role="alert" className="notice status-danger">{error}</div>}
         <button className="btn-primary" disabled={!code || !nameLo || create.isPending}
           onClick={() => create.mutate()}>
           {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ເພີ່ມປະເພດຄຳ'}
         </button>
       </div>
 
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະເພດຄຳ">
         <table className="table">
           <thead>
             <tr>
@@ -114,7 +113,7 @@ function GoldTypePanel() {
           <tbody>
             {pager.pageItems.map((row) => (
               <tr key={row.id}>
-                <td className="font-mono text-xs text-slate-500">{row.code}</td>
+                <td className="font-mono text-xs text-muted">{row.code}</td>
                 <td className="font-medium">{row.nameLo}</td>
                 <td>{row.isStockType ? 'ແມ່ນ' : '—'}</td>
               </tr>
@@ -158,32 +157,32 @@ function GoldItemPanel() {
   });
 
   return (
-    <div className="card">
+    <div data-fade className="card">
       <div className="card-header">
         <h2 className="card-title">ລາຍການຄຳ</h2>
       </div>
 
-      <div className="space-y-3 border-b border-slate-200 p-5">
+      <div className="space-y-3 border-b border-line p-5">
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="gi-code">Code</label>
-            <input id="gi-code" className="input" placeholder="BRACELET" value={code}
+            <input id="gi-code" className="input" aria-describedby={error ? 'gi-error' : undefined} placeholder="BRACELET" value={code}
               onChange={(e) => setCode(e.target.value)} />
           </div>
           <div>
             <label className="label" htmlFor="gi-name">ຊື່ລາຍການຄຳ</label>
-            <input id="gi-name" className="input" placeholder="ສາຍແຂນ" value={nameLo}
+            <input id="gi-name" className="input" aria-describedby={error ? 'gi-error' : undefined} placeholder="ສາຍແຂນ" value={nameLo}
               onChange={(e) => setNameLo(e.target.value)} />
           </div>
         </div>
-        {error && <div className="text-sm text-red-700">{error}</div>}
+        {error && <div id="gi-error" role="alert" className="notice status-danger">{error}</div>}
         <button className="btn-primary" disabled={!code || !nameLo || create.isPending}
           onClick={() => create.mutate()}>
           {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ເພີ່ມລາຍການຄຳ'}
         </button>
       </div>
 
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການຄຳ">
         <table className="table">
           <thead>
             <tr>
@@ -194,7 +193,7 @@ function GoldItemPanel() {
           <tbody>
             {itemPager.pageItems.map((row) => (
               <tr key={row.id}>
-                <td className="font-mono text-xs text-slate-500">{row.code}</td>
+                <td className="font-mono text-xs text-muted">{row.code}</td>
                 <td className="font-medium">{row.nameLo}</td>
               </tr>
             ))}

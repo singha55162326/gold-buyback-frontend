@@ -5,6 +5,7 @@ import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
+import { PageHead } from '@/components/page-head';
 import { formatLak, formatDateTime } from '@/lib/format';
 import { AuditView } from '@/components/audit-view';
 
@@ -53,22 +54,19 @@ export default function SoftGoldFeePage() {
 
   const pager = usePagination(history);
 
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ຈັດການ ຄ່າອ່ອນ</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ຄ່າຫັກຕໍ່ຫົວໜ່ວຍສຳລັບຄຳທີ່ນ້ຳໜັກຫຼຸດຈາກເກນ standard (TOR §3.4)
-        </p>
-      </div>
+      <PageHead
+        title="ຈັດການ ຄ່າອ່ອນ"
+        subtitle="ຄ່າຫັກຕໍ່ຫົວໜ່ວຍສຳລັບຄຳທີ່ນ້ຳໜັກຫຼຸດຈາກເກນ standard (TOR §3.4)"
+      />
 
-      <div className="card p-5">
+      <div data-fade className="card p-5">
         <div className="mb-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+          <div className="label">
             ຄ່າຄຳອ່ອນປັດຈຸບັນ
           </div>
-          <div className="num mt-1 text-2xl font-bold text-gold-700">
+          <div className="num mt-1 text-2xl font-bold text-gold">
             {current ? `${formatLak(current.value)} LAK` : '—'}
           </div>
         </div>
@@ -84,6 +82,7 @@ export default function SoftGoldFeePage() {
               inputMode="decimal"
               placeholder="400,000"
               value={value}
+              aria-describedby={error ? 'soft-error' : undefined}
               onChange={(e) => setValue(e.target.value)}
             />
           </div>
@@ -97,18 +96,18 @@ export default function SoftGoldFeePage() {
         </div>
 
         {error && (
-          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div id="soft-error" role="alert" className="notice status-danger mt-3">
             {error}
           </div>
         )}
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ປະຫວັດ</h2>
-          <span className="text-xs text-slate-500">30 ແຖວລ່າສຸດ</span>
+          <span className="text-xs text-muted">30 ແຖວລ່າສຸດ</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ">
           <table className="table">
             <thead>
               <tr>
@@ -120,7 +119,7 @@ export default function SoftGoldFeePage() {
             <tbody>
               {history.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="py-6 text-center text-slate-500">
+                  <td colSpan={3} className="py-6 text-center text-muted">
                     ຍັງບໍ່ມີປະຫວັດ
                   </td>
                 </tr>

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
+import { PageHead } from '@/components/page-head';
 import { formatLak, formatWeight } from '@/lib/format';
 import { AuditView } from '@/components/audit-view';
 
@@ -58,24 +59,22 @@ export default function DeductionsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ລາຄາລົບອອກ & ຫັກອອກ (%)</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ຄ່າຫັກທີ່ໃຊ້ຄິດໄລ່ລາຄາຊື້ຄືນຮູບປະພັນ (TOR §3.2)
-        </p>
-      </div>
+      <PageHead
+        title="ລາຄາລົບອອກ & ຫັກອອກ (%)"
+        subtitle="ຄ່າຫັກທີ່ໃຊ້ຄິດໄລ່ລາຄາຊື້ຄືນຮູບປະພັນ (TOR §3.2)"
+      />
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div id="deduction-error" role="alert" className="notice status-danger">
           {error}
         </div>
       )}
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ຄ່າຫັກປັດຈຸບັນ</h2>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ຄ່າຫັກປັດຈຸບັນ">
           <table className="table">
             <thead>
               <tr>
@@ -90,15 +89,15 @@ export default function DeductionsPage() {
               {rows.map((row) => (
                 <tr key={row.id}>
                   <td className="font-medium">{row.tier.labelLo}</td>
-                  <td className="num text-right text-slate-500">
+                  <td className="num text-right text-muted">
                     {formatWeight(row.tier.displayWeightG)}
                   </td>
                   <td>
                     <span
                       className={
                         row.kind === 'PERCENT'
-                          ? 'badge bg-blue-100 text-blue-800'
-                          : 'badge bg-purple-100 text-purple-800'
+                          ? 'badge recessed text-gold'
+                          : 'badge recessed text-fg'
                       }
                     >
                       {row.kind === 'PERCENT' ? 'ຫັກອອກ (%)' : 'ລາຄາລົບອອກ (ກີບ)'}
@@ -107,6 +106,8 @@ export default function DeductionsPage() {
                   <td className="num text-right">
                     {editing === row.id ? (
                       <input
+                        aria-label={`${row.tier.labelLo} — ຄ່າ`}
+                        aria-describedby={error ? 'deduction-error' : undefined}
                         className="input num w-32 text-right"
                         value={value}
                         onChange={(e) => setValue(e.target.value)}
@@ -122,14 +123,14 @@ export default function DeductionsPage() {
                     {editing === row.id ? (
                       <div className="flex justify-end gap-2">
                         <button
-                          className="text-sm text-gold-700 hover:underline"
+                          className="btn-primary"
                           onClick={() => save.mutate(row)}
                           disabled={save.isPending}
                         >
                           ບັນທຶກ
                         </button>
                         <button
-                          className="text-sm text-slate-500 hover:underline"
+                          className="btn-secondary"
                           onClick={() => setEditing(null)}
                         >
                           ຍົກເລີກ
@@ -137,7 +138,7 @@ export default function DeductionsPage() {
                       </div>
                     ) : (
                       <button
-                        className="text-sm text-gold-700 hover:underline"
+                        className="btn-ghost"
                         onClick={() => {
                           setEditing(row.id);
                           setValue(row.value);
@@ -156,7 +157,7 @@ export default function DeductionsPage() {
 
       <AuditView entity="BuybackDeductionRule" />
 
-      <p className="text-sm text-slate-500">
+      <p data-fade className="text-sm text-muted">
         ຕາຕະລາງນີ້ເປັນແບບ append-only — ການແກ້ໄຂຈະສ້າງແຖວໃໝ່ ແລະ ຮັກສາປະຫວັດເກົ່າໄວ້
         ເພື່ອໃຫ້ລາຄາທີ່ຄິດໄລ່ໃນອະດີດຍັງກວດສອບຄືນໄດ້.
       </p>

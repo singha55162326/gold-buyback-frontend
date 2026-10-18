@@ -5,6 +5,7 @@ import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
+import { PageHead } from '@/components/page-head';
 import { formatWeight } from '@/lib/format';
 
 interface Cabinet {
@@ -62,26 +63,23 @@ export default function CabinetsPage() {
 
   const pager = usePagination(cabinets);
 
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ຈັດການ ຕູ້ເຄື່ອງ</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ຕູ້ວາງສະແດງຄຳ — ກົດ View ເພື່ອເບິ່ງລາຍການຄຳ ແລະ ນ້ຳໜັກ (TOR §3.7)
-        </p>
-      </div>
+      <PageHead
+        title="ຈັດການ ຕູ້ເຄື່ອງ"
+        subtitle="ຕູ້ວາງສະແດງຄຳ — ກົດ View ເພື່ອເບິ່ງລາຍການຄຳ ແລະ ນ້ຳໜັກ (TOR §3.7)"
+      />
 
-      <div className="card p-5">
+      <div data-fade className="card p-5">
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
             <label className="label" htmlFor="cab-code">Code</label>
-            <input id="cab-code" className="input" placeholder="CAB-03" value={code}
+            <input id="cab-code" className="input" aria-describedby={error ? 'cab-error' : undefined} placeholder="CAB-03" value={code}
               onChange={(e) => setCode(e.target.value)} />
           </div>
           <div>
             <label className="label" htmlFor="cab-name">ຊື່ຕູ້ເຄື່ອງ</label>
-            <input id="cab-name" className="input" placeholder="ຕູ້ເຄື່ອງ 03" value={nameLo}
+            <input id="cab-name" className="input" aria-describedby={error ? 'cab-error' : undefined} placeholder="ຕູ້ເຄື່ອງ 03" value={nameLo}
               onChange={(e) => setNameLo(e.target.value)} />
           </div>
           <div className="flex items-end">
@@ -91,14 +89,14 @@ export default function CabinetsPage() {
             </button>
           </div>
         </div>
-        {error && <div className="mt-3 text-sm text-red-700">{error}</div>}
+        {error && <div id="cab-error" role="alert" className="notice status-danger mt-3">{error}</div>}
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ລາຍການຕູ້ເຄື່ອງ</h2>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການຕູ້ເຄື່ອງ">
           <table className="table">
             <thead>
               <tr>
@@ -110,10 +108,10 @@ export default function CabinetsPage() {
             <tbody>
               {pager.pageItems.map((cab) => (
                 <tr key={cab.id}>
-                  <td className="font-mono text-xs text-slate-500">{cab.code}</td>
+                  <td className="font-mono text-xs text-muted">{cab.code}</td>
                   <td className="font-medium">{cab.nameLo}</td>
                   <td className="text-right">
-                    <button className="text-sm text-gold-700 hover:underline"
+                    <button className="btn-ghost" aria-expanded={viewing === cab.id}
                       onClick={() => setViewing(viewing === cab.id ? null : cab.id)}>
                       {viewing === cab.id ? 'ປິດ' : 'View'}
                     </button>
@@ -127,14 +125,14 @@ export default function CabinetsPage() {
       </div>
 
       {viewing && contents && (
-        <div className="card">
+        <div data-fade className="card">
           <div className="card-header">
             <h2 className="card-title">ລາຍການຄຳໃນ {contents.cabinet.nameLo}</h2>
-            <span className="num text-sm text-slate-600">
+            <span className="num text-sm text-fg">
               ລວມ {formatWeight(contents.totalWeightG)} g
             </span>
           </div>
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0} role="region" aria-label={`ລາຍການຄຳໃນ ${contents.cabinet.nameLo}`}>
             <table className="table">
               <thead>
                 <tr>
@@ -146,7 +144,7 @@ export default function CabinetsPage() {
               <tbody>
                 {contents.lines.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="py-6 text-center text-slate-500">
+                    <td colSpan={3} className="py-6 text-center text-muted">
                       ຍັງບໍ່ມີຄຳໃນຕູ້ນີ້
                     </td>
                   </tr>
