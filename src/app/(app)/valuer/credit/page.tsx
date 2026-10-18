@@ -6,6 +6,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dec } from '@kpv/domain';
 import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
+import { statusClass } from '@/lib/status';
 
 interface GoldItem { id: string; nameLo: string }
 interface Cabinet { id: string; nameLo: string }
@@ -21,12 +23,12 @@ interface Credit {
   goldItem: { nameLo: string };
 }
 
-const STATUS: Record<Credit['status'], { lo: string; cls: string }> = {
-  PENDING: { lo: 'ລໍຖ້າອະນຸມັດ', cls: 'bg-amber-100 text-amber-800' },
-  APPROVED: { lo: 'ອະນຸມັດແລ້ວ — ຕິດໜີ້', cls: 'bg-blue-100 text-blue-800' },
-  REJECTED: { lo: 'ປະຕິເສດ', cls: 'bg-red-100 text-red-800' },
-  COMPLETED: { lo: 'ຊຳຣະຄົບ', cls: 'bg-emerald-100 text-emerald-800' },
-  CANCELLED: { lo: 'ຍົກເລີກ', cls: 'bg-slate-100 text-slate-600' },
+const STATUS: Record<Credit['status'], { lo: string }> = {
+  PENDING: { lo: 'ລໍຖ້າອະນຸມັດ' },
+  APPROVED: { lo: 'ອະນຸມັດແລ້ວ — ຕິດໜີ້' },
+  REJECTED: { lo: 'ປະຕິເສດ' },
+  COMPLETED: { lo: 'ຊຳຣະຄົບ' },
+  CANCELLED: { lo: 'ຍົກເລີກ' },
 };
 
 /**
@@ -143,28 +145,26 @@ export default function CreditPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ລາຍການສິນເຊື່ອ</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ຂາຍຄຳແບບວາງດາວ — ຍອດຕິດໜີ້ບັນທຶກເປັນ AR (Cash) ຫຼັງ payment ອະນຸມັດ (TOR §5.3)
-        </p>
-      </div>
+      <PageHead
+        title="ລາຍການສິນເຊື່ອ"
+        subtitle="ຂາຍຄຳແບບວາງດາວ — ຍອດຕິດໜີ້ບັນທຶກເປັນ AR (Cash) ຫຼັງ payment ອະນຸມັດ (TOR §5.3)"
+      />
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div id="credit-error" role="alert" className="notice status-danger">{error}</div>
       )}
 
-      <div className="card p-5">
+      <div data-fade className="card p-5">
         <h2 className="card-title mb-4">ຟອມສິນເຊື່ອ</h2>
-        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="label" htmlFor="phone">ເບີໂທ (8 ໂຕ)</label>
-            <input id="phone" className="input num" inputMode="numeric" maxLength={8}
+            <input id="phone" className="input input-lg num" inputMode="numeric" maxLength={8}
               value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))} />
           </div>
           <div>
             <label className="label" htmlFor="goldItem">ລາຍການຄຳ</label>
-            <select id="goldItem" className="input" value={goldItemId}
+            <select id="goldItem" className="input input-lg" value={goldItemId}
               onChange={(e) => setGoldItemId(e.target.value)}>
               <option value="">— ເລືອກລາຍການຄຳ —</option>
               {goldItems.map((i) => <option key={i.id} value={i.id}>{i.nameLo}</option>)}
@@ -172,27 +172,27 @@ export default function CreditPage() {
           </div>
           <div>
             <label className="label" htmlFor="weightG">ນ້ຳໜັກ (g)</label>
-            <input id="weightG" className="input num" inputMode="decimal" value={weightG}
+            <input id="weightG" className="input input-lg num" inputMode="decimal" value={weightG}
               onChange={(e) => setWeightG(e.target.value)} />
           </div>
           <div>
             <label className="label" htmlFor="qty">ຈຳນວນ</label>
-            <input id="qty" className="input num" type="number" min={1} value={quantity}
+            <input id="qty" className="input input-lg num" type="number" min={1} value={quantity}
               onChange={(e) => setQuantity(Number(e.target.value) || 1)} />
           </div>
           <div>
             <label className="label" htmlFor="sellPrice">ລາຄາຂາຍ (LAK)</label>
-            <input id="sellPrice" className="input num" inputMode="decimal" value={sellPrice}
+            <input id="sellPrice" className="input input-lg num" inputMode="decimal" value={sellPrice}
               onChange={(e) => setSellPrice(e.target.value)} />
           </div>
           <div>
             <label className="label" htmlFor="downPayment">ເງິນວາງດາວ (LAK)</label>
-            <input id="downPayment" className="input num" inputMode="decimal" value={downPayment}
+            <input id="downPayment" className="input input-lg num" inputMode="decimal" value={downPayment}
               onChange={(e) => setDownPayment(e.target.value)} />
           </div>
           <div>
             <label className="label" htmlFor="cabinet">ຕູ້ເຄື່ອງ</label>
-            <select id="cabinet" className="input" value={cabinetId}
+            <select id="cabinet" className="input input-lg" value={cabinetId}
               onChange={(e) => setCabinetId(e.target.value)}>
               <option value="">— ເລືອກຕູ້ເຄື່ອງ —</option>
               {cabinets.map((c) => <option key={c.id} value={c.id}>{c.nameLo}</option>)}
@@ -200,21 +200,21 @@ export default function CreditPage() {
           </div>
         </div>
 
-        <div className="mt-5 rounded-md bg-slate-50 p-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+        <div className="recessed mt-5 rounded-xl p-4 sm:p-5">
+          <div className="section-label">
             ຍອດເງິນສິນເຊື່ອຕິດໜີ້ = ລາຄາຂາຍ − ເງິນວາງດາວ
           </div>
-          <div className="num mt-0.5 text-xl font-bold text-gold-700">
+          <div className="num mt-1 text-[26px] font-semibold text-fg-strong">
             {outstanding === null ? '—' : `${formatLak(outstanding)} LAK`}
           </div>
         </div>
 
-        <div className="mt-5 border-t border-slate-200 pt-5">
+        <div className="mt-5 border-t border-line pt-5">
           <h3 className="label">Receive — ເງິນວາງດາວ</h3>
-          <div className="grid gap-4 md:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className="label" htmlFor="method">Cash / Bank</label>
-              <select id="method" className="input" value={method}
+              <select id="method" className="input input-lg" value={method}
                 onChange={(e) => setMethod(e.target.value as 'CASH' | 'BANK')}>
                 <option value="CASH">Cash</option>
                 <option value="BANK">Bank</option>
@@ -223,7 +223,7 @@ export default function CreditPage() {
             {method === 'BANK' && (
               <div>
                 <label className="label" htmlFor="bank">ທະນາຄານ</label>
-                <select id="bank" className="input" value={bankAccountId}
+                <select id="bank" className="input input-lg" value={bankAccountId}
                   onChange={(e) => setBankAccountId(e.target.value)}>
                   <option value="">— ເລືອກ —</option>
                   {banks.map((b) => <option key={b.id} value={b.id}>{b.nameLo}</option>)}
@@ -232,7 +232,7 @@ export default function CreditPage() {
             )}
             <div>
               <label className="label" htmlFor="cur">Currency (Price Rate Sell)</label>
-              <select id="cur" className="input" value={currency}
+              <select id="cur" className="input input-lg" value={currency}
                 onChange={(e) => setCurrency(e.target.value as 'LAK' | 'THB' | 'USD')}>
                 <option value="LAK">LAK</option>
                 <option value="THB">THB</option>
@@ -241,18 +241,19 @@ export default function CreditPage() {
             </div>
             <div>
               <label className="label" htmlFor="amt">ຈຳນວນເງິນ</label>
-              <input id="amt" className="input num" inputMode="decimal"
+              <input id="amt" className="input input-lg num" inputMode="decimal"
                 placeholder={downPayment || '0'} value={amount}
                 onChange={(e) => setAmount(e.target.value)} />
             </div>
           </div>
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-muted">
             ຮັບເງິນ (LAK) ຕ້ອງ ≥ ເງິນວາງດາວ · ເງິນທອນຈາກ THB ບໍ່ເກີນ 1,000 THB, ຈາກ USD ບໍ່ເກີນ 100 USD
           </p>
         </div>
 
         <div className="mt-4">
-          <button className="btn-primary" disabled={!canSave || create.isPending}
+          <button className="btn-primary min-h-[54px] w-full sm:w-auto sm:min-w-[240px]"
+            aria-describedby={error ? 'credit-error' : undefined} disabled={!canSave || create.isPending}
             onClick={() => create.mutate()}>
             {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ສ້າງລາຍການສິນເຊື່ອ'}
           </button>
@@ -260,14 +261,14 @@ export default function CreditPage() {
       </div>
 
       {instalment && (
-        <div className="card p-5">
+        <div data-fade className="card p-5">
           <h2 className="card-title mb-4">
             ຮັບຄ່າງວດ — {instalment.code} (ຕິດໜີ້ {formatLak(instalment.outstanding)} LAK)
           </h2>
-          <div className="flex flex-wrap items-end gap-4">
+          <div className="grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className="label" htmlFor="imethod">Cash / Bank</label>
-              <select id="imethod" className="input" value={method}
+              <select id="imethod" className="input input-lg" value={method}
                 onChange={(e) => setMethod(e.target.value as 'CASH' | 'BANK')}>
                 <option value="CASH">Cash</option>
                 <option value="BANK">Bank</option>
@@ -276,7 +277,7 @@ export default function CreditPage() {
             {method === 'BANK' && (
               <div>
                 <label className="label" htmlFor="ibank">ທະນາຄານ</label>
-                <select id="ibank" className="input" value={bankAccountId}
+                <select id="ibank" className="input input-lg" value={bankAccountId}
                   onChange={(e) => setBankAccountId(e.target.value)}>
                   <option value="">— ເລືອກ —</option>
                   {banks.map((b) => <option key={b.id} value={b.id}>{b.nameLo}</option>)}
@@ -285,7 +286,7 @@ export default function CreditPage() {
             )}
             <div>
               <label className="label" htmlFor="icur">Currency</label>
-              <select id="icur" className="input" value={currency}
+              <select id="icur" className="input input-lg" value={currency}
                 onChange={(e) => setCurrency(e.target.value as 'LAK' | 'THB' | 'USD')}>
                 <option value="LAK">LAK</option>
                 <option value="THB">THB</option>
@@ -294,25 +295,27 @@ export default function CreditPage() {
             </div>
             <div>
               <label className="label" htmlFor="iamt">ຈຳນວນເງິນ</label>
-              <input id="iamt" className="input num" inputMode="decimal"
+              <input id="iamt" className="input input-lg num" inputMode="decimal"
                 placeholder={instalment.outstanding} value={amount}
                 onChange={(e) => setAmount(e.target.value)} />
             </div>
-            <button className="btn-primary" disabled={!amount.trim() || receive.isPending}
-              onClick={() => receive.mutate(instalment)}>
-              {receive.isPending ? 'ກຳລັງບັນທຶກ...' : 'ຮັບເງິນ'}
-            </button>
-            <button className="btn-secondary" onClick={() => setInstalment(null)}>ຍົກເລີກ</button>
+            <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-4">
+              <button className="btn-primary min-h-[54px]" disabled={!amount.trim() || receive.isPending}
+                onClick={() => receive.mutate(instalment)}>
+                {receive.isPending ? 'ກຳລັງບັນທຶກ...' : 'ຮັບເງິນ'}
+              </button>
+              <button className="btn-secondary" onClick={() => setInstalment(null)}>ຍົກເລີກ</button>
+            </div>
           </div>
         </div>
       )}
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">History ສິນເຊື່ອ</h2>
-          <span className="text-xs text-slate-500">{credits.length} ລາຍການ</span>
+          <span className="num text-xs text-muted">{credits.length} ລາຍການ</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="History ສິນເຊື່ອ">
           <table className="table">
             <thead>
               <tr>
@@ -332,7 +335,7 @@ export default function CreditPage() {
             </thead>
             <tbody>
               {credits.length === 0 && (
-                <tr><td colSpan={12} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີລາຍການ</td></tr>
+                <tr><td colSpan={12} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
               )}
               {credits.map((row) => (
                 <tr key={row.id}>
@@ -342,21 +345,21 @@ export default function CreditPage() {
                   <td>{row.goldItem.nameLo}</td>
                   <td className="num text-right">{formatWeight(row.weightG)}</td>
                   <td className="num text-right">{row.quantity}</td>
-                  <td className="num text-right">{formatLak(row.sellPrice)}</td>
+                  <td className="num sell-price text-right">{formatLak(row.sellPrice)}</td>
                   <td className="num text-right">{formatLak(row.downPayment)}</td>
                   <td className="num text-right font-medium">{formatLak(row.outstanding)}</td>
                   <td>
-                    <span className={`badge ${STATUS[row.status].cls}`}>{STATUS[row.status].lo}</span>
+                    <span className={statusClass(row.status)}>{STATUS[row.status].lo}</span>
                   </td>
-                  <td className="text-slate-500">{row.updatedBy}</td>
+                  <td className="text-muted">{row.updatedBy}</td>
                   <td className="text-right">
                     {row.status === 'APPROVED' && Number(row.outstanding) > 0 && canReceive ? (
-                      <button className="text-sm text-gold-700 hover:underline"
+                      <button className="btn-primary"
                         onClick={() => { setInstalment(row); setAmount(''); }}>
                         ຮັບຄ່າງວດ
                       </button>
                     ) : (
-                      <span className="text-xs text-slate-400">—</span>
+                      <span className="text-xs text-muted">—</span>
                     )}
                   </td>
                 </tr>

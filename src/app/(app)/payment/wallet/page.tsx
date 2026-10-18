@@ -6,6 +6,9 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
+import { statusClass } from '@/lib/status';
+import { StatCard } from '@/components/stat-card';
 
 interface Balance { currency: 'LAK' | 'THB' | 'USD'; inflow: string; outflow: string; balance: string }
 interface Request {
@@ -14,12 +17,12 @@ interface Request {
   lines: Array<{ id: string; currency: string; amount: string }>;
 }
 
-const STATUS: Record<string, { lo: string; cls: string }> = {
-  PENDING: { lo: 'ລໍຖ້າອະນຸມັດ', cls: 'bg-amber-100 text-amber-800' },
-  APPROVED: { lo: 'ອະນຸມັດແລ້ວ — ກົດຢືນຢັນ', cls: 'bg-blue-100 text-blue-800' },
-  REJECTED: { lo: 'ປະຕິເສດ', cls: 'bg-red-100 text-red-800' },
-  COMPLETED: { lo: 'ສຳເລັດ', cls: 'bg-emerald-100 text-emerald-800' },
-  CANCELLED: { lo: 'ຍົກເລີກ', cls: 'bg-slate-100 text-slate-600' },
+const STATUS: Record<string, { lo: string }> = {
+  PENDING: { lo: 'ລໍຖ້າອະນຸມັດ' },
+  APPROVED: { lo: 'ອະນຸມັດແລ້ວ — ກົດຢືນຢັນ' },
+  REJECTED: { lo: 'ປະຕິເສດ' },
+  COMPLETED: { lo: 'ສຳເລັດ' },
+  CANCELLED: { lo: 'ຍົກເລີກ' },
 };
 
 /**
@@ -94,73 +97,68 @@ export default function WalletPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ກະເປົ໋າເງິນສົດ (To Day)</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ເບີກເງິນ (+) / ມອບເງິນ (−) — ເງິນເຄື່ອນໄຫວຕອນກົດ Completed ເທົ່ານັ້ນ (TOR §4.1)
-        </p>
-      </div>
+      <PageHead
+        title="ກະເປົ໋າເງິນສົດ (To Day)"
+        subtitle="ເບີກເງິນ (+) / ມອບເງິນ (−) — ເງິນເຄື່ອນໄຫວຕອນກົດ Completed ເທົ່ານັ້ນ (TOR §4.1)"
+      />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="stat-grid">
         {balances.map((b) => (
-          <div key={b.currency} className="card p-4">
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              ຍອດຄົງເຫຼືອ {b.currency}
-            </div>
-            <div className="num mt-1 text-xl font-bold text-slate-900">{formatMoney(b.balance)}</div>
-          </div>
+          <StatCard key={b.currency} label={`ຍອດຄົງເຫຼືອ ${b.currency}`} value={formatMoney(b.balance)} />
         ))}
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div id="wallet-error" role="alert" className="notice status-danger">{error}</div>
       )}
 
-      <div className="card p-5">
-        <div className="mb-4 flex gap-2">
-          <button className={direction === 'WITHDRAW' ? 'btn-primary' : 'btn-secondary'}
+      <div data-fade className="card p-5">
+        <div className="mb-4 flex flex-wrap gap-2">
+          <button type="button" aria-pressed={direction === 'WITHDRAW'}
+            className={direction === 'WITHDRAW' ? 'btn-primary' : 'btn-secondary'}
             onClick={() => setDirection('WITHDRAW')}>
             ເບີກເງິນ (+)
           </button>
-          <button className={direction === 'HANDOVER' ? 'btn-primary' : 'btn-secondary'}
+          <button type="button" aria-pressed={direction === 'HANDOVER'}
+            className={direction === 'HANDOVER' ? 'btn-primary' : 'btn-secondary'}
             onClick={() => setDirection('HANDOVER')}>
             ມອບເງິນ (−)
           </button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="label" htmlFor="lak">Amount (LAK)</label>
-            <input id="lak" className="input num" inputMode="decimal" value={lak}
+            <input id="lak" className="input input-lg num" inputMode="decimal" aria-describedby={error ? 'wallet-error' : undefined} value={lak}
               onChange={(e) => setLak(e.target.value)} />
           </div>
           <div>
             <label className="label" htmlFor="thb">Amount (THB)</label>
-            <input id="thb" className="input num" inputMode="decimal" value={thb}
+            <input id="thb" className="input input-lg num" inputMode="decimal" value={thb}
               onChange={(e) => setThb(e.target.value)} />
           </div>
           <div>
             <label className="label" htmlFor="usd">Amount (USD)</label>
-            <input id="usd" className="input num" inputMode="decimal" value={usd}
+            <input id="usd" className="input input-lg num" inputMode="decimal" value={usd}
               onChange={(e) => setUsd(e.target.value)} />
           </div>
           <div>
             <label className="label" htmlFor="note">Note</label>
-            <input id="note" className="input" value={note} onChange={(e) => setNote(e.target.value)} />
+            <input id="note" className="input input-lg" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
         </div>
 
         <div className="mt-4">
-          <button className="btn-primary" disabled={!canSave || create.isPending}
+          <button className="btn-primary min-h-[54px] w-full sm:w-auto sm:min-w-[240px]" disabled={!canSave || create.isPending}
             onClick={() => create.mutate()}>
             {create.isPending ? 'ກຳລັງສົ່ງ...' : `ສົ່ງຄຳຮ້ອງ${direction === 'WITHDRAW' ? 'ເບີກເງິນ' : 'ມອບເງິນ'}`}
           </button>
         </div>
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">History ເບີກ / ມອບເງິນ</h2></div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="History ເບີກ / ມອບເງິນ">
           <table className="table">
             <thead>
               <tr>
@@ -176,7 +174,7 @@ export default function WalletPage() {
             </thead>
             <tbody>
               {requests.length === 0 && (
-                <tr><td colSpan={8} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີລາຍການ</td></tr>
+                <tr><td colSpan={8} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
               )}
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
@@ -185,20 +183,20 @@ export default function WalletPage() {
                   <td className="num text-right">{amountFor(row.lines, 'LAK')}</td>
                   <td className="num text-right">{amountFor(row.lines, 'THB')}</td>
                   <td className="num text-right">{amountFor(row.lines, 'USD')}</td>
-                  <td className="text-slate-500">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.note ?? '—'}</td>
                   <td>
-                    <span className={`badge ${STATUS[row.status]?.cls ?? 'bg-slate-100 text-slate-600'}`}>
+                    <span className={statusClass(row.status)}>
                       {STATUS[row.status]?.lo ?? row.status}
                     </span>
                   </td>
                   <td className="text-right">
                     {row.status === 'APPROVED' ? (
-                      <button className="text-sm text-gold-700 hover:underline"
+                      <button className="btn-primary"
                         onClick={() => complete.mutate(row.id)} disabled={complete.isPending}>
                         ຢືນຢັນ Completed
                       </button>
                     ) : (
-                      <span className="text-xs text-slate-400">—</span>
+                      <span className="text-xs text-muted">—</span>
                     )}
                   </td>
                 </tr>
@@ -211,3 +209,4 @@ export default function WalletPage() {
     </div>
   );
 }
+

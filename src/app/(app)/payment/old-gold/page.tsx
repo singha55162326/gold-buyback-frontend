@@ -5,6 +5,8 @@ import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
+import { statusClass } from '@/lib/status';
 
 interface GoldType { id: string; nameLo: string }
 interface SummaryRow {
@@ -20,12 +22,12 @@ interface Handover {
   shift: { user: { fullName: string } };
 }
 
-const STATUS: Record<string, { lo: string; cls: string }> = {
-  PENDING: { lo: 'ລໍຖ້າ Warehouse ຮັບ', cls: 'bg-amber-100 text-amber-800' },
-  APPROVED: { lo: 'ຮັບແລ້ວ', cls: 'bg-emerald-100 text-emerald-800' },
-  REJECTED: { lo: 'ປະຕິເສດ', cls: 'bg-red-100 text-red-800' },
-  COMPLETED: { lo: 'ສຳເລັດ', cls: 'bg-emerald-100 text-emerald-800' },
-  CANCELLED: { lo: 'ຍົກເລີກ', cls: 'bg-slate-100 text-slate-600' },
+const STATUS: Record<string, { lo: string }> = {
+  PENDING: { lo: 'ລໍຖ້າ Warehouse ຮັບ' },
+  APPROVED: { lo: 'ຮັບແລ້ວ' },
+  REJECTED: { lo: 'ປະຕິເສດ' },
+  COMPLETED: { lo: 'ສຳເລັດ' },
+  CANCELLED: { lo: 'ຍົກເລີກ' },
 };
 
 /** TOR §4.2 — ຄຳເກົ່າທັງໝົດ & ສະຫຼຸບປະເພດຄຳ. */
@@ -69,23 +71,19 @@ export default function OldGoldPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">ຄຳເກົ່າທັງໝົດ & ສະຫຼຸບປະເພດຄຳ</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            ຄຳເກົ່າທີ່ຮັບເຂົ້າໃນມື້ ແລະ ການມອບຄຳລະຫວ່າງມື້ໃຫ້ສາງ (TOR §4.2)
-          </p>
-        </div>
-        <button className="btn-secondary" onClick={() => window.print()}>ພິມຕາຕະລາງ</button>
-      </div>
+      <PageHead
+        title="ຄຳເກົ່າທັງໝົດ & ສະຫຼຸບປະເພດຄຳ"
+        subtitle="ຄຳເກົ່າທີ່ຮັບເຂົ້າໃນມື້ ແລະ ການມອບຄຳລະຫວ່າງມື້ໃຫ້ສາງ (TOR §4.2)"
+        actions={<button className="btn-secondary" onClick={() => window.print()}>ພິມຕາຕະລາງ</button>}
+      />
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div id="oldgold-error" role="alert" className="notice status-danger">{error}</div>
       )}
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ສະຫຼຸບປະເພດຄຳ</h2></div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ສະຫຼຸບປະເພດຄຳ">
           <table className="table">
             <thead>
               <tr>
@@ -100,7 +98,7 @@ export default function OldGoldPage() {
             </thead>
             <tbody>
               {summary.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີຂໍ້ມູນໃນມື້ນີ້</td></tr>
+                <tr><td colSpan={7} className="py-8 text-center text-muted">ຍັງບໍ່ມີຂໍ້ມູນໃນມື້ນີ້</td></tr>
               )}
               {summary.map((row) => (
                 <tr key={row.goldTypeId}>
@@ -120,19 +118,19 @@ export default function OldGoldPage() {
             </tbody>
           </table>
         </div>
-        <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+        <p className="border-t border-line px-5 py-3 text-xs text-muted">
           ຄຳດີ/ຫຍຸບ/ແທ່ງ: ສະເລ່ຍ(g) = ລວມເງິນທີ່ຕ້ອງຈ່າຍ / (ລວມນ້ຳໜັກຄຳເກົ່າ − ລວມນ້ຳໜັກຄຳໃໝ່) ·
           ຄຳຕົ້ມ: ສະເລ່ຍ(g) = ລວມເງິນທີ່ຕ້ອງຈ່າຍ / ລວມນ້ຳໜັກຄຳເກົ່າ.
           ສະແດງ &quot;—&quot; ເມື່ອຕົວຫານເປັນ 0 ຫຼື ຕິດລົບ.
         </p>
       </div>
 
-      <div className="card p-5">
+      <div data-fade className="card p-5">
         <h2 className="card-title mb-4">ມອບຄຳລະຫວ່າງມື້</h2>
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="label" htmlFor="goldType">ປະເພດຄຳ</label>
-            <select id="goldType" className="input" value={goldTypeId}
+            <select id="goldType" className="input input-lg" aria-describedby={error ? 'oldgold-error' : undefined} value={goldTypeId}
               onChange={(e) => setGoldTypeId(e.target.value)}>
               <option value="">— ເລືອກປະເພດຄຳ —</option>
               {goldTypes.map((t) => <option key={t.id} value={t.id}>{t.nameLo}</option>)}
@@ -140,30 +138,30 @@ export default function OldGoldPage() {
           </div>
           <div>
             <label className="label" htmlFor="weightG">weight_g</label>
-            <input id="weightG" className="input num" inputMode="decimal" value={weightG}
+            <input id="weightG" className="input input-lg num" inputMode="decimal" value={weightG}
               onChange={(e) => setWeightG(e.target.value)} />
           </div>
-          <div className="md:col-span-2">
+          <div className="sm:col-span-2">
             <label className="label" htmlFor="note">Note</label>
-            <input id="note" className="input" value={note} onChange={(e) => setNote(e.target.value)} />
+            <input id="note" className="input input-lg" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
         </div>
         <div className="mt-4">
-          <button className="btn-primary"
+          <button className="btn-primary min-h-[54px] w-full sm:w-auto sm:min-w-[240px]"
             disabled={!goldTypeId || Number(weightG) <= 0 || create.isPending}
             onClick={() => create.mutate()}>
             {create.isPending ? 'ກຳລັງສົ່ງ...' : 'ມອບຄຳລະຫວ່າງມື້'}
           </button>
         </div>
-        <p className="mt-2 text-xs text-slate-500">ສົ່ງໃຫ້ Warehouse ກົດ Approve</p>
+        <p className="mt-2 text-xs text-muted">ສົ່ງໃຫ້ Warehouse ກົດ Approve</p>
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">History ມອບຄຳ</h2>
-          <span className="text-xs text-slate-500">{handovers.length} ລາຍການ</span>
+          <span className="num text-xs text-muted">{handovers.length} ລາຍການ</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="History ມອບຄຳ">
           <table className="table">
             <thead>
               <tr>
@@ -178,7 +176,7 @@ export default function OldGoldPage() {
             </thead>
             <tbody>
               {handovers.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີລາຍການ</td></tr>
+                <tr><td colSpan={7} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
               )}
               {handovers.map((row) => (
                 <tr key={row.id}>
@@ -187,9 +185,9 @@ export default function OldGoldPage() {
                   <td>{row.goldType.nameLo}</td>
                   <td className="num text-right">{formatWeight(row.weightG)}</td>
                   <td>{row.shift.user.fullName}</td>
-                  <td className="text-slate-500">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.note ?? '—'}</td>
                   <td>
-                    <span className={`badge ${STATUS[row.status]?.cls ?? 'bg-slate-100 text-slate-600'}`}>
+                    <span className={statusClass(row.status)}>
                       {STATUS[row.status]?.lo ?? row.status}
                     </span>
                   </td>

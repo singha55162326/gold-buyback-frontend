@@ -5,6 +5,8 @@ import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
+import { statusClass } from '@/lib/status';
 
 interface GoldType { id: string; nameLo: string }
 interface GoldItem { id: string; nameLo: string }
@@ -167,27 +169,25 @@ export default function ExchangePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ລາຍການປ່ຽນເປັນເງິນ</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Gold Exchange & Trade-in — ນ້ຳໜັກຕ້ອງສົມດຸນພໍດີຈຶ່ງບັນທຶກໄດ້ (TOR §5.2)
-        </p>
-      </div>
+      <PageHead
+        title="ລາຍການປ່ຽນເປັນເງິນ"
+        subtitle="Gold Exchange & Trade-in — ນ້ຳໜັກຕ້ອງສົມດຸນພໍດີຈຶ່ງບັນທຶກໄດ້ (TOR §5.2)"
+      />
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div id="exchange-error" role="alert" className="notice status-danger">{error}</div>
       )}
 
-      <div className="card p-5">
-        <div className="grid gap-4 md:grid-cols-3">
+      <div data-fade className="card p-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <label className="label" htmlFor="phone">ເບີໂທ (8 ໂຕ)</label>
-            <input id="phone" className="input num" inputMode="numeric" maxLength={8}
+            <input id="phone" className="input input-lg num" inputMode="numeric" maxLength={8}
               value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))} />
           </div>
           <div>
             <label className="label" htmlFor="txnType">ທຸລະກຳ</label>
-            <select id="txnType" className="input" value={txnType}
+            <select id="txnType" className="input input-lg" value={txnType}
               onChange={(e) => setTxnType(e.target.value as typeof txnType)}>
               <option value="EXCHANGE_TO_CASH">ປ່ຽນເປັນເງິນ</option>
               <option value="FREE_EXCHANGE">ປ່ຽນຟຣີ</option>
@@ -195,7 +195,7 @@ export default function ExchangePage() {
           </div>
           <div>
             <label className="label" htmlFor="shape">ຮູບປະພັນ</label>
-            <select id="shape" className="input" value={shapeCondition}
+            <select id="shape" className="input input-lg" value={shapeCondition}
               onChange={(e) => setShapeCondition(e.target.value as 'GOOD' | 'DAMAGED')}>
               <option value="GOOD">ດີ</option>
               <option value="DAMAGED">ເສຍ</option>
@@ -205,59 +205,59 @@ export default function ExchangePage() {
       </div>
 
       {/* ---- ລາຍການຄຳເກົ່າ ---- */}
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ລາຍການຄຳເກົ່າ</h2>
-          <button className="btn-secondary py-1 text-xs"
+          <button className="btn-secondary"
             onClick={() => setOldLines((p) => [...p, emptyOld()])}>
             + Add
           </button>
         </div>
-        <div className="space-y-2 p-5">
+        <div className="space-y-3 p-5">
           {oldLines.map((line, i) => (
-            <div key={i} className="grid gap-2 lg:grid-cols-[1.2fr_1.2fr_1fr_0.8fr_1fr_auto]">
-              <select className="input" value={line.goldTypeId}
+            <div key={i} className="grid gap-2 rounded-xl border border-line p-3 sm:grid-cols-2 lg:grid-cols-[1.2fr_1.2fr_1fr_0.8fr_1fr_auto]">
+              <select aria-label={`ລາຍການຄຳເກົ່າ — ປະເພດຄຳ ${i + 1}`} className="input" value={line.goldTypeId}
                 onChange={(e) => setOld(i, { goldTypeId: e.target.value })}>
                 <option value="">ປະເພດຄຳ</option>
                 {goldTypes.map((t) => <option key={t.id} value={t.id}>{t.nameLo}</option>)}
               </select>
-              <select className="input" value={line.goldItemId}
+              <select aria-label={`ລາຍການຄຳເກົ່າ — ລາຍການຄຳ ${i + 1}`} className="input" value={line.goldItemId}
                 onChange={(e) => setOld(i, { goldItemId: e.target.value })}>
                 <option value="">ລາຍການຄຳ</option>
                 {goldItems.map((it) => <option key={it.id} value={it.id}>{it.nameLo}</option>)}
               </select>
-              <input className="input num" inputMode="decimal" placeholder="ນ້ຳໜັກ (g)"
+              <input aria-label={`ລາຍການຄຳເກົ່າ — ນ້ຳໜັກ (g) ${i + 1}`} className="input num" inputMode="decimal" placeholder="ນ້ຳໜັກ (g)"
                 value={line.weightG} onChange={(e) => setOld(i, { weightG: e.target.value })} />
-              <input className="input num" type="number" min={1} value={line.quantity}
+              <input aria-label={`ລາຍການຄຳເກົ່າ — ຈຳນວນ ${i + 1}`} className="input num" type="number" min={1} value={line.quantity}
                 onChange={(e) => setOld(i, { quantity: Number(e.target.value) || 1 })} />
-              <input className="input num" inputMode="decimal" placeholder="ເກນ standard (g)"
+              <input aria-label={`ລາຍການຄຳເກົ່າ — ເກນ standard (g) ${i + 1}`} className="input num" inputMode="decimal" placeholder="ເກນ standard (g)"
                 value={line.standardWeightG}
                 onChange={(e) => setOld(i, { standardWeightG: e.target.value })} />
-              <button className="btn-secondary px-3 text-xs" disabled={oldLines.length === 1}
+              <button className="btn-danger px-3" disabled={oldLines.length === 1}
                 onClick={() => setOldLines((p) => p.filter((_, idx) => idx !== i))}>
                 ລຶບ
               </button>
             </div>
           ))}
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted">
             ຄ່າອ່ອນຄິດຈາກນ້ຳໜັກທີ່ຫຼຸດຈາກເກນ standard — ຄຳທີ່ຄົບເກນບໍ່ເສຍຄ່າອ່ອນ
           </p>
         </div>
       </div>
 
       {/* ---- ລາຍການຄຳໃໝ່ ---- */}
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ລາຍການຄຳໃໝ່</h2>
-          <button className="btn-secondary py-1 text-xs"
+          <button className="btn-secondary"
             onClick={() => setNewLines((p) => [...p, emptyNew()])}>
             + Add
           </button>
         </div>
-        <div className="space-y-2 p-5">
+        <div className="space-y-3 p-5">
           {newLines.map((line, i) => (
-            <div key={i} className="grid gap-2 lg:grid-cols-[2fr_1fr_0.8fr_1fr_1.2fr_auto]">
-              <select className="input" value={line.goldSkuId}
+            <div key={i} className="grid gap-2 rounded-xl border border-line p-3 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_0.8fr_1fr_1.2fr_auto]">
+              <select aria-label={`ລາຍການຄຳໃໝ່ — ລາຍການ (SKU) ${i + 1}`} className="input" value={line.goldSkuId}
                 onChange={(e) => {
                   const sku = skus.find((s) => s.id === e.target.value);
                   setNew(i, {
@@ -270,24 +270,24 @@ export default function ExchangePage() {
                 <option value="">ລາຍການ (SKU)</option>
                 {skus.map((s) => <option key={s.id} value={s.id}>{s.fullSkuName}</option>)}
               </select>
-              <input className="input num" inputMode="decimal" placeholder="ນ້ຳໜັກ (g)"
+              <input aria-label={`ລາຍການຄຳໃໝ່ — ນ້ຳໜັກ (g) ${i + 1}`} className="input num" inputMode="decimal" placeholder="ນ້ຳໜັກ (g)"
                 value={line.weightG} onChange={(e) => setNew(i, { weightG: e.target.value })} />
-              <input className="input num" type="number" min={1} value={line.quantity}
+              <input aria-label={`ລາຍການຄຳໃໝ່ — ຈຳນວນ ${i + 1}`} className="input num" type="number" min={1} value={line.quantity}
                 onChange={(e) => setNew(i, { quantity: Number(e.target.value) || 1 })} />
-              <input className="input num" inputMode="decimal" placeholder="ຄ່າລາຍ"
+              <input aria-label={`ລາຍການຄຳໃໝ່ — ຄ່າລາຍ ${i + 1}`} className="input num" inputMode="decimal" placeholder="ຄ່າລາຍ"
                 value={line.patternFee} onChange={(e) => setNew(i, { patternFee: e.target.value })} />
-              <select className="input" value={line.cabinetId}
+              <select aria-label={`ລາຍການຄຳໃໝ່ — ຕູ້ເຄື່ອງ ${i + 1}`} className="input" value={line.cabinetId}
                 onChange={(e) => setNew(i, { cabinetId: e.target.value })}>
                 <option value="">ຕູ້ເຄື່ອງ</option>
                 {cabinets.map((c) => <option key={c.id} value={c.id}>{c.nameLo}</option>)}
               </select>
-              <button className="btn-secondary px-3 text-xs" disabled={newLines.length === 1}
+              <button className="btn-danger px-3" disabled={newLines.length === 1}
                 onClick={() => setNewLines((p) => p.filter((_, idx) => idx !== i))}>
                 ລຶບ
               </button>
             </div>
           ))}
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted">
             ຄ່າຫຍຸບ ແລະ ຄ່າປ່ຽນຄຳແທ່ງ ດຶງຈາກຕາຕະລາງ ຄ່າປ່ຽນ ອັດຕະໂນມັດ
             {txnType === 'FREE_EXCHANGE' && ' — ປ່ຽນຟຣີ: ຄ່າປ່ຽນທັງໝົດ = 0'}
           </p>
@@ -295,25 +295,25 @@ export default function ExchangePage() {
       </div>
 
       {/* ---- ຄຳເກົ່າຄົງເຫຼືອ ---- */}
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ຄຳເກົ່າຄົງເຫຼືອ</h2>
-          <button className="btn-secondary py-1 text-xs"
+          <button className="btn-secondary"
             onClick={() => setRemainingLines((p) => [...p, { weightG: '', quantity: 1 }])}>
             + Add
           </button>
         </div>
-        <div className="space-y-2 p-5">
+        <div className="space-y-3 p-5">
           {remainingLines.length === 0 && (
-            <p className="text-sm text-slate-400">ບໍ່ມີຄຳເກົ່າຄົງເຫຼືອ</p>
+            <p className="text-sm text-muted">ບໍ່ມີຄຳເກົ່າຄົງເຫຼືອ</p>
           )}
           {remainingLines.map((line, i) => (
-            <div key={i} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
-              <input className="input num" inputMode="decimal" placeholder="ນ້ຳໜັກ (g)"
+            <div key={i} className="grid gap-2 rounded-xl border border-line p-3 sm:grid-cols-[1fr_1fr_auto]">
+              <input aria-label={`ຄຳເກົ່າຄົງເຫຼືອ — ນ້ຳໜັກ (g) ${i + 1}`} className="input num" inputMode="decimal" placeholder="ນ້ຳໜັກ (g)"
                 value={line.weightG} onChange={(e) => setRemaining(i, { weightG: e.target.value })} />
-              <input className="input num" type="number" min={1} value={line.quantity}
+              <input aria-label={`ຄຳເກົ່າຄົງເຫຼືອ — ຈຳນວນ ${i + 1}`} className="input num" type="number" min={1} value={line.quantity}
                 onChange={(e) => setRemaining(i, { quantity: Number(e.target.value) || 1 })} />
-              <button className="btn-secondary px-3 text-xs"
+              <button className="btn-danger px-3"
                 onClick={() => setRemainingLines((p) => p.filter((_, idx) => idx !== i))}>
                 ລຶບ
               </button>
@@ -323,19 +323,25 @@ export default function ExchangePage() {
       </div>
 
       {/* ---- ສະຫຼຸບ + the save gate ---- */}
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ສະຫຼຸບ</h2></div>
-        <div className="grid gap-4 p-5 sm:grid-cols-3 lg:grid-cols-6">
-          <Field labelLo="ລາຄາຊື້ຄືນໜ້າຮ້ານ" value={preview ? formatLak(preview.shopBuybackPrice) : '—'} />
-          <Field labelLo="ຄ່າອ່ອນ" value={preview ? formatLak(preview.softGoldFee) : '—'} />
-          <Field labelLo="ຄ່າຫຍຸບ" value={preview ? formatLak(preview.humpFee) : '—'} />
-          <Field labelLo="ຄ່າປ່ຽນຄຳແທ່ງ" value={preview ? formatLak(preview.barConvertFee) : '—'} />
-          <Field labelLo="ຄ່າລາຍ" value={preview ? formatLak(preview.patternFee) : '—'} />
-          <Field labelLo="ລວມເງິນຕ້ອງຈ່າຍ"
-            value={preview ? formatLak(preview.totalPayable) : '—'} strong />
+        <div className="p-5 pb-0">
+          <div className="recessed rounded-xl p-4 sm:p-5">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              <Field labelLo="ລາຄາຊື້ຄືນໜ້າຮ້ານ" value={preview ? formatLak(preview.shopBuybackPrice) : '—'} />
+              <Field labelLo="ຄ່າອ່ອນ" value={preview ? formatLak(preview.softGoldFee) : '—'} />
+              <Field labelLo="ຄ່າຫຍຸບ" value={preview ? formatLak(preview.humpFee) : '—'} />
+              <Field labelLo="ຄ່າປ່ຽນຄຳແທ່ງ" value={preview ? formatLak(preview.barConvertFee) : '—'} />
+              <Field labelLo="ຄ່າລາຍ" value={preview ? formatLak(preview.patternFee) : '—'} />
+            </div>
+            <div className="mt-4 border-t border-line pt-4">
+              <Field labelLo="ລວມເງິນຕ້ອງຈ່າຍ"
+                value={preview ? formatLak(preview.totalPayable) : '—'} strong />
+            </div>
+          </div>
         </div>
 
-        <div className="border-t border-slate-200 p-5">
+        <div className="p-5">
           <div className="grid gap-4 sm:grid-cols-3">
             <Field labelLo="ເກນນ້ຳໜັກຄຳເກົ່າ"
               value={preview ? `${formatWeight(preview.standardOldWeightG)} g` : '—'} />
@@ -347,12 +353,13 @@ export default function ExchangePage() {
 
           {/* ⚠ TOR §5.2 CRITICAL — the gate on saving. */}
           <div
-            className={`mt-4 rounded-md border px-4 py-3 text-sm ${
+            role="status"
+            className={`notice mt-4 ${
               !preview
-                ? 'border-slate-200 bg-slate-50 text-slate-500'
+                ? 'recessed border border-line text-muted'
                 : preview.isBalanced
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                  : 'border-red-200 bg-red-50 text-red-700'
+                  ? 'status-success'
+                  : 'status-danger'
             }`}
           >
             {!preview
@@ -363,7 +370,8 @@ export default function ExchangePage() {
           </div>
 
           <div className="mt-4">
-            <button className="btn-primary" disabled={!canSave || create.isPending}
+            <button className="btn-primary min-h-[54px] w-full sm:w-auto sm:min-w-[240px]"
+              aria-describedby={error ? 'exchange-error' : undefined} disabled={!canSave || create.isPending}
               onClick={() => create.mutate()}>
               {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກລາຍການ'}
             </button>
@@ -371,12 +379,12 @@ export default function ExchangePage() {
         </div>
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">History ປ່ຽນເປັນເງິນ</h2>
-          <span className="text-xs text-slate-500">{rows.length} ລາຍການ</span>
+          <span className="num text-xs text-muted">{rows.length} ລາຍການ</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="History ປ່ຽນເປັນເງິນ">
           <table className="table">
             <thead>
               <tr>
@@ -394,7 +402,7 @@ export default function ExchangePage() {
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={10} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີລາຍການ</td></tr>
+                <tr><td colSpan={10} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
               )}
               {rows.map((row) => {
                 const oldG = row.oldLines.reduce((s, l) => s + Number(l.weightG) * l.quantity, 0);
@@ -409,8 +417,8 @@ export default function ExchangePage() {
                     <td className="num text-right">{formatWeight(String(newG))}</td>
                     <td className="num text-right font-medium">{formatLak(row.totalPayable)}</td>
                     <td className="num text-right">{formatLak(row.outstandingAmount)}</td>
-                    <td className="text-slate-500">{row.status}</td>
-                    <td className="text-slate-500">{row.updatedBy}</td>
+                    <td><span className={statusClass(row.status)}>{row.status}</span></td>
+                    <td className="text-muted">{row.updatedBy}</td>
                   </tr>
                 );
               })}
@@ -425,8 +433,8 @@ export default function ExchangePage() {
 function Field({ labelLo, value, strong }: { labelLo: string; value: string; strong?: boolean }) {
   return (
     <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{labelLo}</div>
-      <div className={`num mt-0.5 ${strong ? 'text-xl font-bold text-gold-700' : 'text-base font-semibold text-slate-800'}`}>
+      <div className="section-label">{labelLo}</div>
+      <div className={`num mt-1 font-semibold text-fg-strong ${strong ? 'text-[26px]' : 'text-[20px]'}`}>
         {value}
       </div>
     </div>
