@@ -7,6 +7,7 @@ import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
 import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { AuditView } from '@/components/audit-view';
+import { PageHead } from '@/components/page-head';
 
 interface Tier {
   labelLo: string;
@@ -94,12 +95,10 @@ export default function ConversionFeesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ຈັດການ ຄ່າປ່ຽນ</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ຄ່າປ່ຽນທີ່ໃຊ້ໃນລາຍການປ່ຽນເປັນເງິນ (TOR §3.4)
-        </p>
-      </div>
+      <PageHead
+        title="ຈັດການ ຄ່າປ່ຽນ"
+        subtitle="ຄ່າປ່ຽນທີ່ໃຊ້ໃນລາຍການປ່ຽນເປັນເງິນ (TOR §3.4)"
+      />
 
       <JewelryPanel
         rows={jewelry}
@@ -126,6 +125,7 @@ export default function ConversionFeesPage() {
         titleLo="ປະຫວັດ ຄ່າປ່ຽນຮູບປະພັນ"
         rows={jewelryHistory.data ?? []}
         columns={['SKU / ຫົວໜ່ວຍ', 'ຄ່າປ່ຽນຮູບປະພັນດີ', 'ຄ່າປ່ຽນເສຍຮູບ']}
+        loading={jewelryHistory.isLoading}
         render={(r) => [
           r.tier?.labelLo ?? r.tierCode,
           formatLak(r.feeGoodShape),
@@ -137,6 +137,8 @@ export default function ConversionFeesPage() {
         titleLo="ປະຫວັດ ຄ່າປ່ຽນຄຳແທ່ງ"
         rows={barHistory.data ?? []}
         columns={['ນ້ຳໜັກ / g', 'ຄຳແທ່ງ-ຮູບປະພັນ', 'ຄຳແທ່ງ-ຄຳແທ່ງ']}
+        numericFirst
+        loading={barHistory.isLoading}
         render={(r) => [
           formatWeight(r.weightG),
           formatLak(r.barToJewelry),
@@ -147,7 +149,7 @@ export default function ConversionFeesPage() {
       <AuditView entity="JewelryConversionFee" titleLo="Audit Log — ຄ່າປ່ຽນຮູບປະພັນ" />
       <AuditView entity="BarConversionFee" titleLo="Audit Log — ຄ່າປ່ຽນຄຳແທ່ງ" />
 
-      <p className="text-sm text-slate-500">
+      <p data-fade className="text-sm text-muted">
         ສອງຕາຕະລາງນີ້ເປັນແບບ append-only — ການແກ້ໄຂ ຫຼື ລຶບ ຈະສ້າງແຖວໃໝ່ ແລະ
         ຮັກສາແຖວເກົ່າໄວ້ ເພື່ອໃຫ້ລາຍການປ່ຽນທີ່ຜ່ານມາຍັງກວດສອບຄືນໄດ້.
       </p>
@@ -216,24 +218,27 @@ function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelPr
   const busy = save.isPending || remove.isPending;
 
   return (
-    <div className="card">
+    <div data-fade className="card">
       <div className="card-header">
         <h2 className="card-title">ຄ່າປ່ຽນຮູບປະພັນ</h2>
         {available.length > 0 && !adding && (
-          <button className="btn-secondary" onClick={() => setAdding(true)}>
-            + ເພີ່ມນ້ຳໜັກ
+          <button className="btn-secondary inline-flex items-center gap-2" onClick={() => setAdding(true)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            ເພີ່ມນ້ຳໜັກ
           </button>
         )}
       </div>
 
       {adding && (
-        <div className="border-b border-slate-100 bg-slate-50 px-5 py-4">
+        <div className="border-b border-line bg-recessed px-5 py-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-44">
               <label className="label" htmlFor="jw-tier">SKU / ຫົວໜ່ວຍ</label>
               <select
                 id="jw-tier"
-                className="input"
+                className="input input-lg"
                 value={newTier}
                 onChange={(e) => setNewTier(e.target.value)}
               >
@@ -249,7 +254,7 @@ function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelPr
               <label className="label" htmlFor="jw-good">ຄ່າປ່ຽນຮູບປະພັນດີ (LAK)</label>
               <input
                 id="jw-good"
-                className="input num"
+                className="input input-lg num"
                 inputMode="decimal"
                 placeholder="269,000"
                 value={good}
@@ -260,7 +265,7 @@ function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelPr
               <label className="label" htmlFor="jw-dmg">ຄ່າປ່ຽນເສຍຮູບ (LAK)</label>
               <input
                 id="jw-dmg"
-                className="input num"
+                className="input input-lg num"
                 inputMode="decimal"
                 placeholder="1,029,000"
                 value={damaged}
@@ -284,7 +289,7 @@ function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelPr
         </div>
       )}
 
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0} role="region" aria-label="ຄ່າປ່ຽນຮູບປະພັນ">
         <table className="table">
           <thead>
             <tr>
@@ -298,7 +303,7 @@ function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelPr
           <tbody>
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={5} className="py-6 text-center text-slate-500">
+                <td colSpan={5} className="py-6 text-center text-muted">
                   ຍັງບໍ່ມີຄ່າປ່ຽນຮູບປະພັນ
                 </td>
               </tr>
@@ -312,6 +317,7 @@ function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelPr
                     <input
                       className="input num w-32 text-right"
                       inputMode="decimal"
+                      aria-label={`${row.tier.labelLo} — ຄ່າປ່ຽນຮູບປະພັນດີ (LAK)`}
                       value={good}
                       onChange={(e) => setGood(e.target.value)}
                       autoFocus
@@ -325,6 +331,7 @@ function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelPr
                     <input
                       className="input num w-32 text-right"
                       inputMode="decimal"
+                      aria-label={`${row.tier.labelLo} — ຄ່າປ່ຽນເສຍຮູບ (LAK)`}
                       value={damaged}
                       onChange={(e) => setDamaged(e.target.value)}
                     />
@@ -334,9 +341,10 @@ function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelPr
                 </td>
                 <td className="text-right">
                   {editing === row.id ? (
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                       <button
-                        className="text-sm text-gold-700 hover:underline"
+                        className="btn-primary"
+                        aria-label={`ບັນທຶກ ${row.tier.labelLo}`}
                         disabled={!good.trim() || !damaged.trim() || busy}
                         onClick={() =>
                           save.mutate({ tierCode: row.tierCode, weightG: row.weightG })
@@ -344,30 +352,37 @@ function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelPr
                       >
                         ບັນທຶກ
                       </button>
-                      <button className="text-sm text-slate-500 hover:underline" onClick={reset}>
+                      <button
+                        className="btn-secondary"
+                        aria-label={`ຍົກເລີກ ${row.tier.labelLo}`}
+                        onClick={reset}
+                      >
                         ຍົກເລີກ
                       </button>
                     </div>
                   ) : confirming === row.id ? (
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                       <button
-                        className="text-sm font-medium text-red-700 hover:underline"
+                        className="btn-danger"
+                        aria-label={`ຢືນຢັນລຶບ ${row.tier.labelLo}`}
                         disabled={busy}
                         onClick={() => remove.mutate(row.tierCode)}
                       >
                         ຢືນຢັນລຶບ
                       </button>
                       <button
-                        className="text-sm text-slate-500 hover:underline"
+                        className="btn-secondary"
+                        aria-label={`ຍົກເລີກ ${row.tier.labelLo}`}
                         onClick={() => setConfirming(null)}
                       >
                         ຍົກເລີກ
                       </button>
                     </div>
                   ) : (
-                    <div className="flex justify-end gap-3">
+                    <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                       <button
-                        className="text-sm text-gold-700 hover:underline"
+                        className="btn-ghost"
+                        aria-label={`ແກ້ໄຂ ${row.tier.labelLo}`}
                         onClick={() => {
                           reset();
                           setEditing(row.id);
@@ -378,7 +393,8 @@ function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelPr
                         ແກ້ໄຂ
                       </button>
                       <button
-                        className="text-sm text-red-600 hover:underline"
+                        className="btn-danger"
+                        aria-label={`ລຶບ ${row.tier.labelLo}`}
                         onClick={() => {
                           reset();
                           setConfirming(row.id);
@@ -397,7 +413,7 @@ function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelPr
       <Pagination {...pager} />
 
       {confirming && (
-        <p className="border-t border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
+        <p role="status" className="notice status-warning m-4">
           ເມື່ອລຶບແລ້ວ ການປ່ຽນຂອງນ້ຳໜັກນີ້ຈະຄິດຄ່າຫຍຸບເປັນ 0 — ບໍ່ແມ່ນຫ້າມການປ່ຽນ.
           ຖ້າຕ້ອງການພຽງແກ້ຕົວເລກ ໃຫ້ກົດ ແກ້ໄຂ ແທນ.
         </p>
@@ -463,24 +479,27 @@ function BarPanel({ rows, loading, onSaved, onError }: BarPanelProps) {
   const busy = save.isPending || remove.isPending;
 
   return (
-    <div className="card">
+    <div data-fade className="card">
       <div className="card-header">
         <h2 className="card-title">ຄ່າປ່ຽນຄຳແທ່ງ</h2>
         {!adding && (
-          <button className="btn-secondary" onClick={() => setAdding(true)}>
-            + ເພີ່ມນ້ຳໜັກ
+          <button className="btn-secondary inline-flex items-center gap-2" onClick={() => setAdding(true)}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            ເພີ່ມນ້ຳໜັກ
           </button>
         )}
       </div>
 
       {adding && (
-        <div className="border-b border-slate-100 bg-slate-50 px-5 py-4">
+        <div className="border-b border-line bg-recessed px-5 py-4">
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-32">
               <label className="label" htmlFor="bar-w">ນ້ຳໜັກ / g</label>
               <input
                 id="bar-w"
-                className="input num"
+                className="input input-lg num"
                 inputMode="decimal"
                 placeholder="15"
                 value={weight}
@@ -491,7 +510,7 @@ function BarPanel({ rows, loading, onSaved, onError }: BarPanelProps) {
               <label className="label" htmlFor="bar-j">ຄຳແທ່ງ-ຮູບປະພັນ (LAK)</label>
               <input
                 id="bar-j"
-                className="input num"
+                className="input input-lg num"
                 inputMode="decimal"
                 placeholder="329,000"
                 value={toJewelry}
@@ -502,7 +521,7 @@ function BarPanel({ rows, loading, onSaved, onError }: BarPanelProps) {
               <label className="label" htmlFor="bar-b">ຄຳແທ່ງ-ຄຳແທ່ງ (LAK)</label>
               <input
                 id="bar-b"
-                className="input num"
+                className="input input-lg num"
                 inputMode="decimal"
                 placeholder="169,000"
                 value={toBar}
@@ -523,14 +542,14 @@ function BarPanel({ rows, loading, onSaved, onError }: BarPanelProps) {
             </button>
           </div>
           {duplicate && (
-            <p className="mt-2 text-sm text-amber-700">
+            <p className="mt-2 text-sm text-warning">
               ນ້ຳໜັກນີ້ມີຢູ່ແລ້ວ — ໃຫ້ກົດ ແກ້ໄຂ ຢູ່ແຖວນັ້ນແທນ.
             </p>
           )}
         </div>
       )}
 
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0} role="region" aria-label="ຄ່າປ່ຽນຄຳແທ່ງ">
         <table className="table">
           <thead>
             <tr>
@@ -543,7 +562,7 @@ function BarPanel({ rows, loading, onSaved, onError }: BarPanelProps) {
           <tbody>
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={4} className="py-6 text-center text-slate-500">
+                <td colSpan={4} className="py-6 text-center text-muted">
                   ຍັງບໍ່ມີຄ່າປ່ຽນຄຳແທ່ງ
                 </td>
               </tr>
@@ -556,6 +575,7 @@ function BarPanel({ rows, loading, onSaved, onError }: BarPanelProps) {
                     <input
                       className="input num w-32 text-right"
                       inputMode="decimal"
+                      aria-label={`${formatWeight(row.weightG)} g — ຄຳແທ່ງ-ຮູບປະພັນ (LAK)`}
                       value={toJewelry}
                       onChange={(e) => setToJewelry(e.target.value)}
                       autoFocus
@@ -569,6 +589,7 @@ function BarPanel({ rows, loading, onSaved, onError }: BarPanelProps) {
                     <input
                       className="input num w-32 text-right"
                       inputMode="decimal"
+                      aria-label={`${formatWeight(row.weightG)} g — ຄຳແທ່ງ-ຄຳແທ່ງ (LAK)`}
                       value={toBar}
                       onChange={(e) => setToBar(e.target.value)}
                     />
@@ -578,38 +599,46 @@ function BarPanel({ rows, loading, onSaved, onError }: BarPanelProps) {
                 </td>
                 <td className="text-right">
                   {editing === row.id ? (
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                       <button
-                        className="text-sm text-gold-700 hover:underline"
+                        className="btn-primary"
+                        aria-label={`ບັນທຶກ ${formatWeight(row.weightG)}`}
                         disabled={!toJewelry.trim() || !toBar.trim() || busy}
                         onClick={() => save.mutate(row.weightG)}
                       >
                         ບັນທຶກ
                       </button>
-                      <button className="text-sm text-slate-500 hover:underline" onClick={reset}>
+                      <button
+                        className="btn-secondary"
+                        aria-label={`ຍົກເລີກ ${formatWeight(row.weightG)}`}
+                        onClick={reset}
+                      >
                         ຍົກເລີກ
                       </button>
                     </div>
                   ) : confirming === row.id ? (
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                       <button
-                        className="text-sm font-medium text-red-700 hover:underline"
+                        className="btn-danger"
+                        aria-label={`ຢືນຢັນລຶບ ${formatWeight(row.weightG)}`}
                         disabled={busy}
                         onClick={() => remove.mutate(row.weightG)}
                       >
                         ຢືນຢັນລຶບ
                       </button>
                       <button
-                        className="text-sm text-slate-500 hover:underline"
+                        className="btn-secondary"
+                        aria-label={`ຍົກເລີກ ${formatWeight(row.weightG)}`}
                         onClick={() => setConfirming(null)}
                       >
                         ຍົກເລີກ
                       </button>
                     </div>
                   ) : (
-                    <div className="flex justify-end gap-3">
+                    <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                       <button
-                        className="text-sm text-gold-700 hover:underline"
+                        className="btn-ghost"
+                        aria-label={`ແກ້ໄຂ ${formatWeight(row.weightG)}`}
                         onClick={() => {
                           reset();
                           setEditing(row.id);
@@ -620,7 +649,8 @@ function BarPanel({ rows, loading, onSaved, onError }: BarPanelProps) {
                         ແກ້ໄຂ
                       </button>
                       <button
-                        className="text-sm text-red-600 hover:underline"
+                        className="btn-danger"
+                        aria-label={`ລຶບ ${formatWeight(row.weightG)}`}
                         onClick={() => {
                           reset();
                           setConfirming(row.id);
@@ -639,7 +669,7 @@ function BarPanel({ rows, loading, onSaved, onError }: BarPanelProps) {
       <Pagination {...pager} />
 
       {confirming && (
-        <p className="border-t border-amber-200 bg-amber-50 px-5 py-3 text-sm text-amber-800">
+        <p role="status" className="notice status-warning m-4">
           ເມື່ອລຶບແລ້ວ ການປ່ຽນຄຳແທ່ງຂອງນ້ຳໜັກນີ້ຈະຄິດຄ່າປ່ຽນເປັນ 0.
         </p>
       )}
@@ -654,6 +684,9 @@ interface HistoryPanelProps<T> {
   rows: T[];
   columns: string[];
   render: (row: T) => (string | number)[];
+  /** First rendered column is numeric (bar side: weight), so right-align it. */
+  numericFirst?: boolean;
+  loading?: boolean;
 }
 
 /**
@@ -665,22 +698,24 @@ function HistoryPanel<T extends { id: string; effectiveAt: string; deletedAt: st
   rows,
   columns,
   render,
+  numericFirst = false,
+  loading = false,
 }: HistoryPanelProps<T>) {
   const pager = usePagination(rows, 10);
 
   return (
-    <div className="card">
+    <div data-fade className="card">
       <div className="card-header">
         <h2 className="card-title">{titleLo}</h2>
-        <span className="text-xs text-slate-500">ທຸກລຸ້ນ ລ່າສຸດກ່ອນ</span>
+        <span className="text-xs text-muted">ທຸກລຸ້ນ ລ່າສຸດກ່ອນ</span>
       </div>
-      <div className="table-wrap">
+      <div className="table-wrap" tabIndex={0} role="region" aria-label={titleLo}>
         <table className="table">
           <thead>
             <tr>
               <th>ວັນທີ ແລະ ເວລາ</th>
               {columns.map((c, i) => (
-                <th key={c} className={i === 0 ? undefined : 'text-right'}>
+                <th key={c} className={i === 0 && !numericFirst ? undefined : 'text-right'}>
                   {c}
                 </th>
               ))}
@@ -689,9 +724,16 @@ function HistoryPanel<T extends { id: string; effectiveAt: string; deletedAt: st
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 && (
+            {loading && rows.length === 0 && (
               <tr>
-                <td colSpan={columns.length + 3} className="py-6 text-center text-slate-500">
+                <td colSpan={columns.length + 3} className="py-6 text-center text-muted">
+                  ກຳລັງໂຫຼດ...
+                </td>
+              </tr>
+            )}
+            {!loading && rows.length === 0 && (
+              <tr>
+                <td colSpan={columns.length + 3} className="py-6 text-center text-muted">
                   ຍັງບໍ່ມີປະຫວັດ
                 </td>
               </tr>
@@ -702,15 +744,15 @@ function HistoryPanel<T extends { id: string; effectiveAt: string; deletedAt: st
                 <tr key={row.id}>
                   <td>{formatDateTime(row.effectiveAt)}</td>
                   {cells.map((v, i) => (
-                    <td key={i} className={i === 0 ? 'font-medium' : 'num text-right'}>
+                    <td key={i} className={i === 0 && !numericFirst ? 'font-medium' : 'num text-right'}>
                       {v}
                     </td>
                   ))}
                   <td>
                     {row.deletedAt ? (
-                      <span className="badge bg-red-100 text-red-800">ລຶບແລ້ວ</span>
+                      <span className="badge status-danger">ລຶບແລ້ວ</span>
                     ) : (
-                      <span className="badge bg-emerald-100 text-emerald-800">ໃຊ້ງານ</span>
+                      <span className="badge status-success">ໃຊ້ງານ</span>
                     )}
                   </td>
                   <td>{row.updatedBy}</td>
