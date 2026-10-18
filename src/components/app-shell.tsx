@@ -5,10 +5,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { api, clearSession, getStoredUser, type SessionUser } from '@/lib/api';
 import { findNavItem } from '@/lib/nav';
+import { useFadeIn } from '@/lib/use-fade-in';
 import { Sidebar } from './sidebar';
 import { ShiftBanner } from './shift-banner';
 import { NotificationBell } from './notification-bell';
 import { LogoMark } from './logo';
+import { ThemeToggle } from './theme-toggle';
 
 const ROLE_LABEL_LO: Record<SessionUser['role'], string> = {
   ADMIN: 'Admin',
@@ -29,6 +31,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [railOpen, setRailOpen] = useState(false);
+
+  useFadeIn(user ? pathname : null);
 
   useEffect(() => {
     const stored = getStoredUser();
@@ -54,7 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return (
-      <div className="flex h-screen items-center justify-center text-sm text-white/70">
+      <div className="flex h-screen items-center justify-center text-sm text-muted">
         ກຳລັງໂຫຼດ...
       </div>
     );
@@ -69,12 +73,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const current = findNavItem(pathname);
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Rail: fixed drawer on small screens, static column from lg up. */}
+    <div className="shell-grid min-h-screen p-4 lg:grid lg:grid-cols-[272px_minmax(0,1fr)] lg:items-start lg:gap-4">
+      {/* Sidebar: off-canvas drawer below lg, sticky full-height column from lg up.
+          The wrapper only positions; the glass (and data-fade) live on the nav. */}
       <div
-        className={`fixed inset-y-0 left-0 z-40 transition-transform duration-200 lg:static lg:translate-x-0 ${
-          railOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
+        data-surface="dark"
+        className={`no-print fixed bottom-4 left-4 top-4 z-40 w-[min(288px,calc(100vw-32px))]
+                    transition-[transform,visibility] duration-200
+                    lg:sticky lg:top-4 lg:z-10 lg:h-[calc(100vh-32px)] lg:w-auto lg:translate-x-0
+                    lg:visible ${
+                      railOpen ? 'visible translate-x-0' : 'invisible -translate-x-[calc(100%+16px)]'
+                    }`}
       >
         <Sidebar role={user.role} />
       </div>
@@ -83,61 +92,65 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <button
           type="button"
           aria-label="ປິດເມນູ"
-          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          className="fixed inset-0 z-30 bg-[var(--scrim)] backdrop-blur-[4px] lg:hidden"
           onClick={() => setRailOpen(false)}
         />
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="topbar flex items-center justify-between gap-3 px-4 py-2.5 lg:px-6">
-          <div className="flex min-w-0 items-center gap-3">
+      <div className="min-w-0">
+        <header
+          data-surface="dark"
+          data-fade
+          className="shell-header no-print sticky top-4 z-20 flex items-center justify-between gap-3"
+        >
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
               type="button"
               aria-label="ເປີດເມນູ"
-              className="btn-on-dark px-2 py-1.5 lg:hidden"
+              className="chrome-btn lg:hidden"
               onClick={() => setRailOpen(true)}
             >
-              <svg viewBox="0 0 20 20" className="h-5 w-5" aria-hidden="true">
+              <svg viewBox="0 0 20 20" className="h-[18px] w-[18px]" aria-hidden="true">
                 <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="1.75"
                   strokeLinecap="round" />
               </svg>
             </button>
 
-            {/* Below `lg` the rail is hidden, so the mark anchors the brand. */}
-            <LogoMark className="h-7 w-7 shrink-0 text-gold-400 lg:hidden" />
+            {/* Below `lg` the sidebar is hidden, so the mark anchors the brand. */}
+            <LogoMark className="hidden h-7 w-7 shrink-0 sm:block lg:hidden" />
 
-            {/* The page you are on, so the title is not only in the rail. */}
+            {/* The page you are on, so the title is not only in the sidebar. */}
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-white">
+              <div className="truncate text-[15px] font-semibold text-fg-strong">
                 {current?.labelLo ?? 'ລະບົບບໍລິຫານຈັດການຮ້ານຄຳພູວົງ'}
               </div>
               {/* The manual has no TOR section; a bare "TOR" would read as a bug. */}
               {current?.section && (
-                <div className="text-xs text-white/50">TOR {current.section}</div>
+                <div className="text-[11px] text-gold">TOR {current.section}</div>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <ThemeToggle />
             <NotificationBell />
 
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
                 <button
-                  className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/10
-                             px-2 py-1.5 text-left transition-colors hover:bg-white/20
-                             focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+                  className="recessed flex h-[42px] items-center gap-2.5 rounded-[12px] pl-[5px] pr-[5px]
+                             text-left transition-colors hover:border-[var(--border-hover)] sm:pr-3"
                   aria-label="ເມນູຜູ້ໃຊ້"
                 >
-                  <span className="flex h-7 w-7 items-center justify-center rounded-md bg-gold-400/90
-                                   text-xs font-bold text-brand-900">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px]
+                                   bg-[image:var(--gold-fill)] text-xs font-bold text-[var(--on-gold)]">
                     {initials(user.fullName)}
                   </span>
                   <span className="hidden min-w-0 sm:block">
-                    <span className="block truncate text-xs font-medium text-white">
+                    <span className="block max-w-[160px] truncate text-xs font-medium leading-snug text-fg-strong">
                       {user.fullName}
                     </span>
-                    <span className="block truncate text-[11px] text-white/55">
+                    <span className="block max-w-[160px] truncate text-[11px] leading-snug text-muted">
                       {ROLE_LABEL_LO[user.role]}
                     </span>
                   </span>
@@ -148,21 +161,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <DropdownMenu.Content
                   align="end"
                   sideOffset={8}
-                  className="z-50 w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg"
+                  className="menu-panel z-50 w-60 p-1.5"
                 >
                   <div className="px-2.5 py-2">
-                    <div className="truncate text-sm font-medium text-slate-900">
+                    <div className="truncate text-sm font-medium text-fg-strong">
                       {user.fullName}
                     </div>
-                    <div className="truncate text-xs text-slate-500">
+                    <div className="truncate text-xs text-muted">
                       {user.username} · {ROLE_LABEL_LO[user.role]}
                     </div>
                   </div>
-                  <DropdownMenu.Separator className="my-1 h-px bg-slate-200" />
+                  <DropdownMenu.Separator className="divider my-1" />
                   <DropdownMenu.Item
                     onSelect={() => void logout()}
-                    className="cursor-pointer rounded-lg px-2.5 py-2 text-sm text-red-600 outline-none
-                               data-[highlighted]:bg-red-50"
+                    className="flex min-h-[42px] cursor-pointer items-center rounded-[12px] px-2.5 text-sm
+                               text-danger outline-none data-[highlighted]:bg-[var(--danger-bg)] data-[highlighted]:outline data-[highlighted]:outline-2 data-[highlighted]:-outline-offset-2 data-[highlighted]:outline-[var(--gold)]"
                   >
                     ອອກຈາກລະບົບ
                   </DropdownMenu.Item>
@@ -172,12 +185,11 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        {/* The light working surface. The gradient frames it on the top and
-            left; the shift banner rides at its top edge so it never scrolls
-            out of view mid-transaction. */}
-        <div className="canvas flex min-h-0 flex-1 flex-col overflow-hidden">
+        {/* Content sits straight on the page background. The shift banner rides
+            at its top so it is seen before any transaction starts. */}
+        <div className="mt-6">
           <ShiftBanner role={user.role} />
-          <main className="flex-1 overflow-y-auto p-4 lg:p-6">{children}</main>
+          <main>{children}</main>
         </div>
       </div>
     </div>
