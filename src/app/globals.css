@@ -93,10 +93,10 @@
     --fg-strong: #2e1208;
     --muted: rgba(59, 26, 12, 0.72);
     --placeholder: rgba(59, 26, 12, 0.5);
-    /* Text gold: #a87424 is only 3.8:1 on light glass, so labels and links use
-       the "mid" #8a5a12 (5.5:1). #a87424 stays for icons and borders.
-       Text gold is #7f5110: #8a5a12 measured 4.49:1 on gold-tint badges over the
-       cream page (contrast guard), #7f5110 holds >= 5:1 there. */
+    /* Text gold: #a87424 is only 3.8:1 on light glass, so text gold is the
+       darker #7f5110 (>= 5:1 on gold-tint badges over the cream page; the
+       earlier #8a5a12 measured 4.49:1 there, per the contrast guard).
+       #a87424 stays for icons and borders only. */
     --gold: #7f5110;
     --gold-icon: #a87424;
     --gold-light: #7a4a0e;
@@ -141,6 +141,17 @@
     /* Lao script relies on stacked diacritics; give them room everywhere. */
     -webkit-text-size-adjust: 100%;
     background-color: var(--page-base);
+    /* Sticky header = top 16px + ~66px; keep focused/anchored targets clear of it. */
+    scroll-padding-top: 96px;
+  }
+
+  button,
+  a,
+  [role='button'],
+  input,
+  select,
+  label {
+    touch-action: manipulation;
   }
 
   body {
@@ -150,6 +161,7 @@
     color: var(--fg);
     @apply font-sans antialiased;
     min-height: 100vh;
+    min-height: 100dvh;
     /* Stacking context so the Backdrop and texture (negative z) paint above
        the body background instead of under it. */
     isolation: isolate;

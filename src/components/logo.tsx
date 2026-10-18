@@ -25,6 +25,8 @@ export function LogoMark({ className = 'h-9 w-9' }: { className?: string }) {
       <img
         src={ASSET_SRC}
         alt="ຮ້ານຄຳພູວົງ"
+        width={96}
+        height={96}
         className={`${className} object-contain`}
         style={{ filter: 'drop-shadow(0 6px 16px rgba(0,0,0,0.4))' }}
       />

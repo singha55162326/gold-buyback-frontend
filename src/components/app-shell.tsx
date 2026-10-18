@@ -58,7 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return (
-      <div className="flex h-screen items-center justify-center text-sm text-muted">
+      <div className="flex h-dvh items-center justify-center text-sm text-muted">
         ກຳລັງໂຫຼດ...
       </div>
     );
@@ -73,14 +73,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const current = findNavItem(pathname);
 
   return (
-    <div className="shell-grid min-h-screen p-4 lg:grid lg:grid-cols-[272px_minmax(0,1fr)] lg:items-start lg:gap-4">
+    <div className="shell-grid min-h-dvh p-4 lg:grid lg:grid-cols-[272px_minmax(0,1fr)] lg:items-start lg:gap-4">
       {/* Sidebar: off-canvas drawer below lg, sticky full-height column from lg up.
           The wrapper only positions; the glass (and data-fade) live on the nav. */}
       <div
         data-surface="dark"
         className={`no-print fixed bottom-4 left-4 top-4 z-40 w-[min(288px,calc(100vw-32px))]
                     transition-[transform,visibility] duration-200
-                    lg:sticky lg:top-4 lg:z-10 lg:h-[calc(100vh-32px)] lg:w-auto lg:translate-x-0
+                    lg:sticky lg:top-4 lg:z-10 lg:h-[calc(100dvh-32px)] lg:w-auto lg:translate-x-0
                     lg:visible ${
                       railOpen ? 'visible translate-x-0' : 'invisible -translate-x-[calc(100%+16px)]'
                     }`}

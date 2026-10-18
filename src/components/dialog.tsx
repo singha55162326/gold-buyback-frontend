@@ -4,7 +4,9 @@ import { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'a[href]:not([tabindex="-1"]), button:not([disabled]):not([tabindex="-1"]), input:not([disabled]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"]):not([disabled])';
+
+const isVisible = (el: HTMLElement) => el.offsetParent !== null || el.getClientRects().length > 0;
 
 /**
  * Modal dialog, hand-rolled (Radix Dialog is not a dependency).
@@ -50,10 +52,11 @@ export function Dialog({
 
     // Focus the first control in the body (not the close button) when there is one.
     const inBody = Array.from(panel?.querySelectorAll<HTMLElement>(`[data-dialog-body] :is(${FOCUSABLE})`) ?? []).filter(
-      (el) => el.offsetParent !== null,
+      isVisible,
     );
     const alreadyInside = panel?.contains(document.activeElement) && document.activeElement !== panel;
-    const first = inBody[0] ?? panel?.querySelector<HTMLElement>(FOCUSABLE);
+    const first =
+      inBody[0] ?? Array.from(panel?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).find(isVisible);
     if (!alreadyInside) (first ?? panel)?.focus();
 
     const prevOverflow = document.body.style.overflow;
@@ -66,9 +69,7 @@ export function Dialog({
         return;
       }
       if (e.key !== 'Tab' || !panel) return;
-      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
-        (el) => el.offsetParent !== null,
-      );
+      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(isVisible);
       if (items.length === 0) {
         e.preventDefault();
         panel.focus();

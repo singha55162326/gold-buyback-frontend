@@ -13,7 +13,7 @@ import { useFadeIn } from '@/lib/use-fade-in';
 export default function NotFound() {
   useFadeIn();
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
+    <div className="flex min-h-dvh items-center justify-center p-4">
       <div data-fade className="glass glass-lg w-full max-w-sm p-7 text-center">
         <div className="num font-serif text-5xl font-bold text-gold-gradient">404</div>
 
