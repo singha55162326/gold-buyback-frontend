@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatMoney, formatDate } from '@/lib/format';
 import { PageHead } from './page-head';
+import { StatCard } from './stat-card';
 
 interface Total { currency: 'LAK' | 'THB' | 'USD'; opening: string; increases: string; decreases: string; net: string }
 interface PartnerRow {
@@ -181,16 +182,12 @@ export function ApArCashModule({
 
       <div className="stat-grid">
         {totals.map((t) => (
-          <div key={t.currency} data-fade className="card relative overflow-hidden p-5">
-            <span className="stat-glow" aria-hidden="true" />
-            <div className="section-label relative">
-              ຍອດລວມ {side} (Cash) — {t.currency}
-            </div>
-            <div className="num relative mt-2 whitespace-nowrap text-[22px] font-semibold leading-snug text-fg-strong xl:text-[26px]">{formatMoney(t.net)}</div>
-            <div className="relative mt-0.5 text-xs text-muted">
-              ຍົກມາ {formatMoney(t.opening)} · (+) {formatMoney(t.increases)} · (−) {formatMoney(t.decreases)}
-            </div>
-          </div>
+          <StatCard
+            key={t.currency}
+            label={`ຍອດລວມ ${side} (Cash) — ${t.currency}`}
+            value={formatMoney(t.net)}
+            sub={`ຍົກມາ ${formatMoney(t.opening)} · (+) ${formatMoney(t.increases)} · (−) ${formatMoney(t.decreases)}`}
+          />
         ))}
       </div>
 
