@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Pagination, usePagination } from '@/components/pagination';
+import { PageHead } from '@/components/page-head';
 import { api } from '@/lib/api';
 import { formatMoney, formatDate } from '@/lib/format';
 
@@ -38,17 +39,15 @@ export default function ApArCashPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">AP-AR (Cash)</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ໜີ້ຕ້ອງສົ່ງ / ໜີ້ຕ້ອງຮັບ ເປັນເງິນສົດ ແຍກຕາມສະກຸນເງິນ (TOR §9)
-        </p>
-      </div>
+      <PageHead
+        title="AP-AR (Cash)"
+        subtitle="ໜີ້ຕ້ອງສົ່ງ / ໜີ້ຕ້ອງຮັບ ເປັນເງິນສົດ ແຍກຕາມສະກຸນເງິນ (TOR §9)"
+      />
 
       {(['AP', 'AR'] as const).map((side) => (
-        <div key={side} className="card">
+        <div key={side} data-fade className="card">
           <div className="card-header"><h2 className="card-title">{SIDE_LABEL[side]}</h2></div>
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0} role="region" aria-label={SIDE_LABEL[side]}>
             <table className="table">
               <thead>
                 <tr>
@@ -64,8 +63,8 @@ export default function ApArCashPage() {
                   <tr key={row.currency}>
                     <td className="font-medium">{row.currency}</td>
                     <td className="num text-right">{formatMoney(row.opening)}</td>
-                    <td className="num text-right text-emerald-700">{formatMoney(row.increases)}</td>
-                    <td className="num text-right text-red-600">{formatMoney(row.decreases)}</td>
+                    <td className="num text-right text-success">{formatMoney(row.increases)}</td>
+                    <td className="num text-right text-danger">{formatMoney(row.decreases)}</td>
                     <td className="num text-right font-semibold">{formatMoney(row.net)}</td>
                   </tr>
                 ))}
@@ -75,11 +74,11 @@ export default function ApArCashPage() {
         </div>
       ))}
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ປະຫວັດ AP-AR (Cash)</h2>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ AP-AR (Cash)">
           <table className="table">
             <thead>
               <tr>
@@ -95,18 +94,18 @@ export default function ApArCashPage() {
             </thead>
             <tbody>
               {history.length === 0 && (
-                <tr><td colSpan={8} className="py-6 text-center text-slate-400">ຍັງບໍ່ມີລາຍການ</td></tr>
+                <tr><td colSpan={8} className="py-6 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
               )}
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDate(row.businessDate)}</td>
-                  <td><span className={row.side === 'AP' ? 'badge bg-red-100 text-red-800' : 'badge bg-emerald-100 text-emerald-800'}>{row.side}</span></td>
-                  <td className="text-slate-500">{row.refType}</td>
+                  <td><span className={row.side === 'AP' ? 'status-danger' : 'status-success'}>{row.side}</span></td>
+                  <td className="text-muted">{row.refType}</td>
                   <td>{row.currency}</td>
                   <td className="num text-right">{formatMoney(row.amountIn)}</td>
                   <td className="num text-right">{formatMoney(row.amountOut)}</td>
                   <td className="num text-right font-medium">{formatMoney(row.balance)}</td>
-                  <td className="text-slate-500">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.note ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
