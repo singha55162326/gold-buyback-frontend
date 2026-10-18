@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatMoney, formatDate } from '@/lib/format';
+import { PageHead } from './page-head';
 
 interface Total { currency: 'LAK' | 'THB' | 'USD'; opening: string; increases: string; decreases: string; net: string }
 interface PartnerRow {
@@ -113,22 +114,23 @@ export function ApArCashModule({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">{titleLo}</h1>
-          <p className="mt-1 text-sm text-slate-500">{descriptionLo}</p>
-        </div>
-        <button className="btn-primary" onClick={() => { setShowAdd((v) => !v); setSettling(null); }}>
-          + Add {side} Cash
-        </button>
-      </div>
+      <PageHead
+        title={titleLo}
+        subtitle={descriptionLo}
+        actions={
+          <button className="btn-primary" aria-expanded={showAdd}
+            onClick={() => { setShowAdd((v) => !v); setSettling(null); }}>
+            + Add {side} Cash
+          </button>
+        }
+      />
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div id="apar-error" role="alert" className="notice status-danger">{error}</div>
       )}
 
       {showAdd && (
-        <div className="card p-5">
+        <div data-fade className="card p-5">
           <h2 className="card-title mb-4">ເພີ່ມລາຍການ {side} (Cash)</h2>
           <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
             <div>
@@ -158,7 +160,7 @@ export function ApArCashModule({
             </div>
             <div>
               <label className="label" htmlFor="amt">ຈຳນວນເງິນ</label>
-              <input id="amt" className="input num" inputMode="decimal" value={amount}
+              <input id="amt" className="input num" inputMode="decimal" aria-describedby={error ? 'apar-error' : undefined} value={amount}
                 onChange={(e) => setAmount(e.target.value)} />
             </div>
             <div>
@@ -177,23 +179,24 @@ export function ApArCashModule({
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="stat-grid">
         {totals.map((t) => (
-          <div key={t.currency} className="card p-4">
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+          <div key={t.currency} data-fade className="card relative overflow-hidden p-5">
+            <span className="stat-glow" aria-hidden="true" />
+            <div className="section-label relative">
               ຍອດລວມ {side} (Cash) — {t.currency}
             </div>
-            <div className="num mt-1 text-xl font-bold text-slate-900">{formatMoney(t.net)}</div>
-            <div className="mt-0.5 text-xs text-slate-400">
+            <div className="num relative mt-2 whitespace-nowrap text-[22px] font-semibold leading-snug text-fg-strong xl:text-[26px]">{formatMoney(t.net)}</div>
+            <div className="relative mt-0.5 text-xs text-muted">
               ຍົກມາ {formatMoney(t.opening)} · (+) {formatMoney(t.increases)} · (−) {formatMoney(t.decreases)}
             </div>
           </div>
         ))}
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ແຍກຕາມ Supplier</h2></div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ແຍກຕາມ Supplier">
           <table className="table">
             <thead>
               <tr>
@@ -208,45 +211,45 @@ export function ApArCashModule({
             </thead>
             <tbody>
               {partnerRows.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີຍອດຄ້າງ</td></tr>
+                <tr><td colSpan={7} className="py-8 text-center text-muted">ຍັງບໍ່ມີຍອດຄ້າງ</td></tr>
               )}
               {partnerRows.map((row) => (
                 <tr key={`${row.partnerId}-${row.currency}`}>
                   <td className="font-medium">{row.partnerNameLo}</td>
                   <td>{row.currency}</td>
                   <td className="num text-right">{formatMoney(row.broughtForward)}</td>
-                  <td className="num text-right text-emerald-700">{formatMoney(row.increases)}</td>
-                  <td className="num text-right text-red-600">{formatMoney(row.decreases)}</td>
+                  <td className="num text-right text-success">{formatMoney(row.increases)}</td>
+                  <td className="num text-right text-danger">{formatMoney(row.decreases)}</td>
                   <td className="num text-right font-semibold">{formatMoney(row.current)}</td>
                   <td className="text-right">
                     {settling?.partnerId === row.partnerId && settling.currency === row.currency ? (
                       <div className="flex items-center justify-end gap-2">
-                        <select className="input w-24 py-1 text-xs" value={method}
+                        <select className="input w-24" aria-label="Payment" value={method}
                           onChange={(e) => setMethod(e.target.value as 'CASH' | 'BANK')}>
                           <option value="CASH">Cash</option>
                           <option value="BANK">Bank</option>
                         </select>
                         {method === 'BANK' && (
-                          <select className="input w-28 py-1 text-xs" value={bankAccountId}
+                          <select className="input w-32" aria-label="ທະນາຄານ" value={bankAccountId}
                             onChange={(e) => setBankAccountId(e.target.value)}>
                             <option value="">ທະນາຄານ</option>
                             {banks.map((b) => <option key={b.id} value={b.id}>{b.nameLo}</option>)}
                           </select>
                         )}
-                        <input className="input num w-28 py-1 text-right text-xs" inputMode="decimal"
+                        <input className="input num w-32 text-right" inputMode="decimal" aria-label="ຈຳນວນເງິນ" aria-describedby={error ? 'apar-error' : undefined}
                           placeholder={row.current} value={amount}
                           onChange={(e) => setAmount(e.target.value)} autoFocus />
-                        <button className="text-sm text-gold-700 hover:underline"
+                        <button className="btn-ghost"
                           onClick={() => settle.mutate(row)} disabled={settle.isPending || !amount.trim()}>
                           ຢືນຢັນ
                         </button>
-                        <button className="text-sm text-slate-500 hover:underline"
+                        <button className="btn-ghost !text-muted"
                           onClick={() => setSettling(null)}>
                           ຍົກເລີກ
                         </button>
                       </div>
                     ) : (
-                      <button className="text-sm text-gold-700 hover:underline"
+                      <button className="btn-ghost"
                         onClick={() => { setSettling(row); setAmount(''); setShowAdd(false); }}>
                         Payment
                       </button>
@@ -259,9 +262,9 @@ export function ApArCashModule({
         </div>
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">History {side} (Cash)</h2></div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label={`History ${side} (Cash)`}>
           <table className="table">
             <thead>
               <tr>
@@ -278,19 +281,19 @@ export function ApArCashModule({
             </thead>
             <tbody>
               {history.length === 0 && (
-                <tr><td colSpan={9} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີລາຍການ</td></tr>
+                <tr><td colSpan={9} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
               )}
               {history.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDate(row.businessDate)}</td>
                   <td>{row.partner?.nameLo ?? '—'}</td>
                   <td>{row.category?.nameLo ?? '—'}</td>
-                  <td className="text-slate-500">{row.refType}</td>
+                  <td className="text-muted">{row.refType}</td>
                   <td>{row.currency}</td>
-                  <td className="num text-right text-emerald-700">{formatMoney(row.amountIn)}</td>
-                  <td className="num text-right text-red-600">{formatMoney(row.amountOut)}</td>
+                  <td className="num text-right text-success">{formatMoney(row.amountIn)}</td>
+                  <td className="num text-right text-danger">{formatMoney(row.amountOut)}</td>
                   <td className="num text-right font-medium">{formatMoney(row.balance)}</td>
-                  <td className="text-slate-500">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.note ?? '—'}</td>
                 </tr>
               ))}
             </tbody>

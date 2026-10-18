@@ -105,10 +105,10 @@ export function Pagination({
 
       <div className="flex flex-wrap items-center gap-3">
         {!compact && (
-          <label className="flex items-center gap-2 text-xs text-slate-500">
+          <label className="flex items-center gap-2 text-xs text-muted">
             ຕໍ່ໜ້າ
             <select
-              className="h-8 rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-700"
+              className="input !w-auto"
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
               aria-label="ຈຳນວນແຖວຕໍ່ໜ້າ"
@@ -136,7 +136,7 @@ export function Pagination({
 
             {pageWindow(page, pageCount).map((n, i) =>
               n === '…' ? (
-                <span key={`gap-${i}`} className="px-1 text-slate-400">
+                <span key={`gap-${i}`} className="px-1 text-muted">
                   …
                 </span>
               ) : (

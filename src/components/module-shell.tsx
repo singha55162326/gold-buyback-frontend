@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { PageHead } from './page-head';
 
 export interface ShellField {
   labelLo: string;
@@ -42,16 +43,18 @@ export function ModuleShell({
 }: ModuleShellProps) {
   return (
     <div className="space-y-6">
-      <div>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold text-slate-900">{titleLo}</h1>
-          <span className="badge bg-slate-100 text-slate-600">TOR {section}</span>
-          <span className="badge bg-amber-100 text-amber-800">ໜ້າຈໍຕົວຢ່າງ</span>
-        </div>
-        <p className="mt-1 text-sm text-slate-500">{descriptionLo}</p>
-      </div>
+      <PageHead
+        title={titleLo}
+        subtitle={descriptionLo}
+        actions={
+          <>
+            <span className="badge recessed text-muted">TOR {section}</span>
+            <span className="badge status-warning">ໜ້າຈໍຕົວຢ່າງ</span>
+          </>
+        }
+      />
 
-      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <div className="notice status-warning">
         ໂຄງສ້າງໜ້າຈໍນີ້ຖືກອອກແບບຕາມ TOR ແລ້ວ ແຕ່ຍັງບໍ່ໄດ້ເຊື່ອມກັບຖານຂໍ້ມູນ (Phase 2).
         ກະລຸນາກວດສອບວ່າ ຫົວຂໍ້ຕາຕະລາງ ແລະ ຊ່ອງປ້ອນຂໍ້ມູນ ຄົບຖ້ວນ ຫຼື ບໍ່.
       </div>
@@ -65,7 +68,7 @@ export function ModuleShell({
                 {s.actions.map((action) => (
                   <span
                     key={action}
-                    className="btn-secondary cursor-not-allowed py-1 text-xs opacity-60"
+                    className="btn-secondary cursor-not-allowed opacity-60"
                   >
                     {action}
                   </span>
@@ -80,7 +83,7 @@ export function ModuleShell({
                 {s.fields.map((field) => (
                   <div key={field.labelLo}>
                     <span className="label">{field.labelLo}</span>
-                    <div className="input cursor-not-allowed bg-slate-50 text-slate-400">
+                    <div className="input cursor-not-allowed bg-recessed text-muted">
                       {field.hint ?? '—'}
                     </div>
                   </div>
@@ -100,7 +103,7 @@ export function ModuleShell({
                   </thead>
                   <tbody>
                     <tr>
-                      <td colSpan={s.columns.length} className="py-8 text-center text-slate-400">
+                      <td colSpan={s.columns.length} className="py-8 text-center text-muted">
                         ຍັງບໍ່ມີຂໍ້ມູນ
                       </td>
                     </tr>
@@ -109,17 +112,17 @@ export function ModuleShell({
               </div>
             )}
 
-            {s.note && <p className="mt-4 text-sm text-slate-500">{s.note}</p>}
+            {s.note && <p className="mt-4 text-sm text-muted">{s.note}</p>}
           </div>
         </div>
       ))}
 
       {openQuestions && openQuestions.length > 0 && (
-        <div className="card border-red-200">
-          <div className="card-header border-red-200 bg-red-50">
-            <h2 className="card-title text-red-800">ຄຳຖາມທີ່ຕ້ອງຢືນຢັນກ່ອນພັດທະນາ</h2>
+        <div className="card border-line">
+          <div className="card-header">
+            <h2 className="card-title text-danger">ຄຳຖາມທີ່ຕ້ອງຢືນຢັນກ່ອນພັດທະນາ</h2>
           </div>
-          <ul className="list-inside list-disc space-y-2 p-5 text-sm text-slate-700">
+          <ul className="list-inside list-disc space-y-2 p-5 text-sm text-muted">
             {openQuestions.map((q) => (
               <li key={q}>{q}</li>
             ))}
@@ -128,7 +131,7 @@ export function ModuleShell({
       )}
 
       <div className="text-sm">
-        <Link href="/dashboard" className="text-gold-700 hover:underline">
+        <Link href="/dashboard" className="btn-ghost">
           ← ກັບໄປ Dashboard
         </Link>
       </div>

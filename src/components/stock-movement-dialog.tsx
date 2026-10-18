@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dec, GRAMS_PER_BAHT } from '@kpv/domain';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight } from '@/lib/format';
+import { Dialog } from './dialog';
 
 export type MovementKind = 'IN' | 'OUT' | 'TRANSFER';
 
@@ -187,14 +188,26 @@ export function StockMovementDialog({
     (kind !== 'IN' || Number(totalCost.replace(/,/g, '')) > 0) &&
     (usesSku ? lines.some((l) => l.goldSkuId) : Boolean(goldTypeId));
 
-  return (
-    <div className="card p-5">
-      <div className="mb-4 flex items-center justify-between">
-        <h2 className="card-title">{titleLo}</h2>
-        <button className="btn-secondary py-1 text-xs" onClick={onClose}>ປິດ</button>
-      </div>
+  const errorId = 'movement-error';
 
-      <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      size="lg"
+      title={titleLo}
+      footer={
+        <>
+          <button className="btn-secondary" onClick={onClose}>ຍົກເລີກ</button>
+          <button className="btn-primary" disabled={!canSubmit || submit.isPending}
+            aria-describedby={error ? errorId : undefined}
+            onClick={() => submit.mutate()}>
+            {submit.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
+          </button>
+        </>
+      }
+    >
+      <div className="grid gap-4 md:grid-cols-2">
         {kind === 'TRANSFER' ? (
           <div>
             <label className="label" htmlFor="dir">ທິດທາງ</label>
@@ -252,18 +265,18 @@ export function StockMovementDialog({
 
       {/* Repeatable lines with the TOR's Add button */}
       <div className="mt-5">
-        <div className="mb-2 flex items-center justify-between">
+        <div className="mb-2 flex items-center justify-between gap-3">
           <span className="label mb-0">ລາຍການ</span>
-          <button className="btn-secondary py-1 text-xs"
+          <button className="btn-secondary"
             onClick={() => setLines((p) => [...p, emptyLine()])}>
             + Add
           </button>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-3">
           {lines.map((line, i) => (
-            <div key={i} className="grid gap-2 lg:grid-cols-[2fr_1fr_0.8fr_1fr_auto]">
+            <div key={i} className="grid gap-2 md:grid-cols-[2fr_1fr_0.8fr_1fr_auto]">
               {usesSku ? (
-                <select className="input" value={line.goldSkuId}
+                <select className="input" aria-label="full_sku_name" value={line.goldSkuId}
                   onChange={(e) => {
                     const sku = skus.find((s) => s.id === e.target.value);
                     setLine(i, {
@@ -275,33 +288,33 @@ export function StockMovementDialog({
                   {skus.map((s) => <option key={s.id} value={s.id}>{s.fullSkuName}</option>)}
                 </select>
               ) : (
-                <select className="input" value={line.goldTypeId || goldTypeId}
+                <select className="input" aria-label="ປະເພດຄຳ" value={line.goldTypeId || goldTypeId}
                   onChange={(e) => setLine(i, { goldTypeId: e.target.value })}>
                   <option value="">ປະເພດຄຳ</option>
                   {goldTypes.map((t) => <option key={t.id} value={t.id}>{t.nameLo}</option>)}
                 </select>
               )}
-              <input className="input num" inputMode="decimal" placeholder="weight_g"
+              <input className="input num" aria-label="weight_g" inputMode="decimal" placeholder="weight_g"
                 value={line.weightG} onChange={(e) => setLine(i, { weightG: e.target.value })} />
-              <input className="input num" type="number" min={1} value={line.quantity}
+              <input className="input num" aria-label="ຈຳນວນ" type="number" min={1} value={line.quantity}
                 onChange={(e) => setLine(i, { quantity: Number(e.target.value) || 1 })} />
-              <div className="input num bg-slate-50 text-right text-slate-500">
+              <div className="input num flex items-center justify-end text-muted">
                 {/^\d+(\.\d+)?$/.test(line.weightG)
                   ? formatWeight(dec(line.weightG).mul(line.quantity).toFixed())
                   : '—'}
               </div>
-              <button className="btn-secondary px-3 text-xs" disabled={lines.length === 1}
+              <button className="btn-secondary" disabled={lines.length === 1}
                 onClick={() => setLines((p) => p.filter((_, idx) => idx !== i))}>
                 ລຶບ
               </button>
             </div>
           ))}
         </div>
-        <p className="mt-2 text-xs text-slate-500">GOLD (g) = weight_g × ຈຳນວນ</p>
+        <p className="mt-2 text-xs text-muted">GOLD (g) = weight_g × ຈຳນວນ</p>
       </div>
 
       {kind === 'IN' && (
-        <div className="mt-5 grid gap-4 md:grid-cols-3">
+        <div className="mt-5 grid gap-4 md:grid-cols-2">
           <div>
             <label className="label" htmlFor="cost">ຕົ້ນທຶນຄໍາ (LAK)</label>
             <input id="cost" className="input num" inputMode="decimal" value={totalCost}
@@ -310,14 +323,15 @@ export function StockMovementDialog({
           <div>
             <label className="label" htmlFor="labor">ຄ່າແຮງ (THB)</label>
             <input id="labor" className="input num" inputMode="decimal" value={laborFeeThb}
+              aria-describedby="labor-hint"
               onChange={(e) => setLaborFeeThb(e.target.value)} />
-            <p className="mt-1 text-xs text-slate-500">ບັນທຶກເປັນ +AP (Cash) ຄ່າແຮງຄ້າງຈ່າຍ</p>
+            <p id="labor-hint" className="mt-1 text-xs text-muted">ບັນທຶກເປັນ +AP (Cash) ຄ່າແຮງຄ້າງຈ່າຍ</p>
           </div>
         </div>
       )}
 
       {/* Running totals */}
-      <div className="mt-5 grid gap-3 rounded-md bg-slate-50 p-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="recessed mt-5 grid gap-3 rounded-xl p-4 sm:grid-cols-3">
         <Field labelLo="ລວມຈຳນວນ" value={String(totals.quantity)} />
         <Field labelLo="ລວມ GOLD (g)" value={formatWeight(totals.goldG.toFixed())} />
         <Field labelLo="ລາຄາ/g" value={formatLak(totals.pricePerG.toFixed())} />
@@ -335,7 +349,7 @@ export function StockMovementDialog({
       </div>
 
       {kind === 'OUT' && (
-        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+        <div className="notice status-warning mt-3">
           {isFactoryOut
             ? 'OUT ໄປ FACTORY: ຕ້ອງລໍຖ້າ Admin/Manager Approve ແລ້ວ ລະບົບຍັງບໍ່ຕັດຍອດ — ຈະໄປຢູ່ Module ຕິດຕາມ Stock Out ໄປ FACTORY ຈົນກວ່າຈະປ້ອນນ້ຳໜັກທີ່ FACTORY ປະເມີນ.'
             : 'Stock OUT ຕ້ອງລໍຖ້າ Admin/Manager Approve ກ່ອນຈຶ່ງຕັດຍອດ.'}
@@ -343,27 +357,19 @@ export function StockMovementDialog({
       )}
 
       {error && (
-        <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div id={errorId} role="alert" className="notice status-danger mt-3">
           {error}
         </div>
       )}
-
-      <div className="mt-4 flex gap-2">
-        <button className="btn-primary" disabled={!canSubmit || submit.isPending}
-          onClick={() => submit.mutate()}>
-          {submit.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
-        </button>
-        <button className="btn-secondary" onClick={onClose}>ຍົກເລີກ</button>
-      </div>
-    </div>
+    </Dialog>
   );
 }
 
 function Field({ labelLo, value, strong }: { labelLo: string; value: string; strong?: boolean }) {
   return (
     <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{labelLo}</div>
-      <div className={`num mt-0.5 ${strong ? 'text-lg font-bold text-gold-700' : 'font-semibold text-slate-800'}`}>
+      <div className="section-label">{labelLo}</div>
+      <div className={`num mt-0.5 ${strong ? 'text-lg font-bold text-gold-light' : 'font-semibold text-fg-strong'}`}>
         {value}
       </div>
     </div>
