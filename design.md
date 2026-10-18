@@ -55,10 +55,12 @@ Google Fonts: Noto+Sans+Lao:wght@300;400;500;600;700 · Noto+Serif+Lao:wght@600;
 | Inner highlight | `inset 0 1px 0 rgba(255,255,255,0.9)` |
 | Recessed | `rgba(255,255,255,0.7)` |
 | Text primary | `#3b1a0c` · strong `#2e1208` · muted `rgba(59,26,12,0.62–0.86)` |
-| Gold | `#a87424` · dark `#7a4a0e` · mid `#8a5a12` |
-| Success text | `#1f7a45` |
+| Gold | text `#7f5110` · icons and borders `#a87424` · dark `#7a4a0e` · mid `#8a5a12` |
+| Success text | `#186638` |
 | **Sidebar and header** | Red glass: `linear-gradient(170deg, rgba(150,22,18,0.94), rgba(96,10,8,0.96))`. Inside them, use the **dark-theme** text, gold, border, and recessed tokens. |
 | Login brand panel | `linear-gradient(160deg, rgba(128,20,16,0.9), rgba(78,10,8,0.94))` with gold `#e8c46a` text |
+
+Light-theme gold text and success text are darker than the icon gold so that they reach 4.5:1 on light glass (see Accessibility). Use `#a87424` only for icons, borders and other non-text marks.
 
 ### Gold gradient
 - Text, dark theme: `linear-gradient(180deg, #fbe7b0 0%, #e2b553 55%, #b8862c 100%)`. Apply with `background-clip: text; color: transparent`.
