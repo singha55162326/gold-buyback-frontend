@@ -3,17 +3,170 @@
 @tailwind utilities;
 
 @layer base {
+  /* ---------------------------------------------------------------- *
+   * Tokens. Dark is the default. `[data-surface="dark"]` re-declares
+   * them so the red-glass chrome stays dark inside the light theme.
+   * ---------------------------------------------------------------- */
+  :root,
+  :root[data-theme='dark'],
+  [data-surface='dark'] {
+    color-scheme: dark;
+
+    --page-bg: radial-gradient(ellipse 120% 90% at 30% 0%, #6e0f0f 0%, #3a0707 45%, #160404 100%);
+    --page-base: #1a0606;
+    --glow-gold: radial-gradient(circle, rgba(214, 160, 62, 0.45), transparent 65%);
+    --glow-red: radial-gradient(circle, rgba(178, 34, 34, 0.6), transparent 65%);
+    --texture: repeating-linear-gradient(
+      135deg,
+      rgba(232, 196, 106, 0.022) 0 1px,
+      transparent 1px 22px
+    );
+
+    --surface: linear-gradient(150deg, rgba(255, 236, 200, 0.12), rgba(255, 220, 170, 0.04));
+    --surface-chrome: var(--surface);
+    --surface-solid: #3a0d0b; /* menus / popovers that must stay opaque */
+    --border: rgba(240, 204, 130, 0.26);
+    --border-hover: rgba(240, 204, 130, 0.5);
+    --border-active: rgba(240, 204, 130, 0.7);
+    --highlight: inset 0 1px 0 rgba(255, 240, 210, 0.25);
+    --recessed: rgba(20, 4, 4, 0.32);
+    --recessed-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3); /* style-guard-ignore */
+    --card-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.6); /* style-guard-ignore */
+
+    --fg: #f7ead2;
+    --fg-strong: #fbf0d8;
+    --muted: rgba(247, 234, 210, 0.72);
+    --placeholder: rgba(247, 234, 210, 0.5);
+    --gold: #e8c46a;
+    --gold-icon: #d9b465;
+    --gold-light: #fbe7b0;
+    --gold-mid: #f3d998;
+    --gold-text-gradient: linear-gradient(180deg, #fbe7b0 0%, #e2b553 55%, #b8862c 100%);
+    --gold-fill: linear-gradient(180deg, #f8e2a4 0%, #e3b65a 48%, #c08f32 100%);
+    --on-gold: #3a0a04;
+    --line: rgba(240, 204, 130, 0.26);
+    --row-line: rgba(240, 204, 130, 0.1);
+    --row-hover: rgba(232, 196, 106, 0.06);
+    --gold-tint: rgba(232, 196, 106, 0.14);
+    --stat-glow: rgba(232, 196, 106, 0.18);
+    --scrim: rgba(10, 2, 2, 0.55);
+
+    --success-dot: #5fd38d;
+    --success: #9df0bd;
+    --success-bg: rgba(95, 211, 141, 0.14);
+    --success-border: rgba(95, 211, 141, 0.35);
+    --warning-dot: #f2b544;
+    --warning: #ffd889;
+    --warning-bg: rgba(242, 181, 68, 0.14);
+    --warning-border: rgba(242, 181, 68, 0.38);
+    --danger-dot: #ff7a6b;
+    --danger: #ffb4a8;
+    --danger-bg: rgba(255, 122, 107, 0.14);
+    --danger-border: rgba(255, 122, 107, 0.38);
+  }
+
+  :root[data-theme='light'] {
+    color-scheme: light;
+
+    --page-bg: radial-gradient(ellipse 120% 90% at 30% 0%, #fffaf0 0%, #f6ebd6 50%, #ead8b8 100%);
+    --page-base: #f4ead8;
+    --glow-gold: radial-gradient(circle, rgba(214, 160, 62, 0.42), transparent 65%);
+    --glow-red: radial-gradient(circle, rgba(200, 70, 50, 0.2), transparent 65%);
+    --texture: repeating-linear-gradient(
+      135deg,
+      rgba(168, 118, 36, 0.035) 0 1px,
+      transparent 1px 22px
+    );
+
+    --surface: linear-gradient(150deg, rgba(255, 255, 255, 0.62), rgba(255, 248, 236, 0.38));
+    --surface-chrome: linear-gradient(170deg, rgba(150, 22, 18, 0.94), rgba(96, 10, 8, 0.96));
+    --surface-solid: #fcf7ef;
+    --border: rgba(168, 118, 36, 0.26);
+    --border-hover: rgba(168, 118, 36, 0.5);
+    --border-active: rgba(168, 118, 36, 0.7);
+    --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    --recessed: rgba(255, 255, 255, 0.7);
+    --recessed-shadow: inset 0 1px 2px rgba(120, 80, 20, 0.12);
+    --card-shadow: 0 18px 40px -22px rgba(90, 50, 10, 0.35);
+
+    --fg: #3b1a0c;
+    --fg-strong: #2e1208;
+    --muted: rgba(59, 26, 12, 0.72);
+    --placeholder: rgba(59, 26, 12, 0.5);
+    /* Text gold: #a87424 is only 3.8:1 on light glass, so labels and links use
+       the "mid" #8a5a12 (5.5:1). #a87424 stays for icons and borders.
+       Text gold is #7f5110: #8a5a12 measured 4.49:1 on gold-tint badges over the
+       cream page (contrast guard), #7f5110 holds >= 5:1 there. */
+    --gold: #7f5110;
+    --gold-icon: #a87424;
+    --gold-light: #7a4a0e;
+    --gold-mid: #7a4a0e;
+    --gold-text-gradient: linear-gradient(180deg, #c99a3c 0%, #9a6a1c 55%, #6b430c 100%);
+    --line: rgba(168, 118, 36, 0.26);
+    --row-line: rgba(168, 118, 36, 0.14);
+    --row-hover: rgba(168, 118, 36, 0.07);
+    --gold-tint: rgba(168, 118, 36, 0.14);
+    --stat-glow: rgba(168, 118, 36, 0.14);
+    --scrim: rgba(46, 18, 8, 0.45);
+
+    --success-dot: #2f9a5c;
+    /* #1f7a45 measured 4.1:1 on success-bg over the cream page; #186638 holds >= 5.3:1. */
+    --success: #186638;
+    --success-bg: rgba(31, 122, 69, 0.1);
+    --success-border: rgba(31, 122, 69, 0.3);
+    --warning-dot: #c48014;
+    --warning: #8a5300;
+    --warning-bg: rgba(196, 128, 20, 0.12);
+    --warning-border: rgba(196, 128, 20, 0.35);
+    --danger-dot: #c0392b;
+    --danger: #a3231a;
+    --danger-bg: rgba(163, 35, 26, 0.08);
+    --danger-border: rgba(163, 35, 26, 0.3);
+  }
+
+  /* Must come after the light block so it wins inside red-glass panels. The
+     token declarations are shared with the first rule above; this one only
+     re-asserts text color for the subtree. */
+  [data-surface='dark'] {
+    color: var(--fg);
+  }
+
+  /* The dark token block resets --surface-chrome to glass; inside the light
+     theme the chrome itself (an element carrying data-surface) is red glass. */
+  :root[data-theme='light'] [data-surface='dark'] {
+    --surface-chrome: linear-gradient(170deg, rgba(150, 22, 18, 0.94), rgba(96, 10, 8, 0.96));
+  }
+
   html {
     /* Lao script relies on stacked diacritics; give them room everywhere. */
     -webkit-text-size-adjust: 100%;
+    background-color: var(--page-base);
   }
 
   body {
-    /* The brand gradient is the page backdrop. It is fixed so it does not
-       repeat or shift while a long ledger scrolls. */
-    @apply bg-brand-gradient text-slate-800 antialiased;
+    background-color: var(--page-base);
+    background-image: var(--page-bg);
     background-attachment: fixed;
+    color: var(--fg);
+    @apply font-sans antialiased;
     min-height: 100vh;
+    /* Stacking context so the Backdrop and texture (negative z) paint above
+       the body background instead of under it. */
+    isolation: isolate;
+  }
+
+  /* Static diagonal texture, never animated. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image: var(--texture);
+  }
+
+  ::selection {
+    background: var(--gold-tint);
   }
 
   /* Tabular numerals keep money columns aligned across rows. */
@@ -22,77 +175,218 @@
     font-feature-settings: 'tnum';
   }
 
-  /* Scrollbars inside the dark rail, so they do not show as light gutters. */
-  .rail-scroll {
+  /* Gold-tinted scrollbars inside the sidebar nav. */
+  .nav-scroll {
     scrollbar-width: thin;
-    scrollbar-color: rgb(255 255 255 / 0.22) transparent;
+    scrollbar-color: rgba(232, 196, 106, 0.35) transparent;
   }
-  .rail-scroll::-webkit-scrollbar {
+  .nav-scroll::-webkit-scrollbar {
     width: 6px;
   }
-  .rail-scroll::-webkit-scrollbar-thumb {
-    background-color: rgb(255 255 255 / 0.22);
+  .nav-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(232, 196, 106, 0.35);
     border-radius: 9999px;
   }
-  .rail-scroll::-webkit-scrollbar-track {
+  .nav-scroll::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(232, 196, 106, 0.55);
+  }
+  .nav-scroll::-webkit-scrollbar-track {
     background: transparent;
   }
 }
 
 @layer components {
   /* ---------------------------------------------------------------- *
-   * Chrome — sidebar and header sit ON the gradient
+   * Surfaces
    * ---------------------------------------------------------------- */
 
-  .rail {
-    /* The rail carries the gradient itself rather than letting the body's show
-       through: below `lg` it becomes a drawer floating over the light canvas,
-       where a translucent fill would be unreadable. */
-    @apply bg-brand-gradient text-white/90 shadow-rail;
+  .glass {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    backdrop-filter: blur(20px) saturate(140%);
+    box-shadow: var(--card-shadow), var(--highlight);
+    color: var(--fg);
   }
 
-  .rail-group-label {
-    @apply flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2
-           text-xs font-semibold uppercase tracking-wide text-white/55
-           transition-colors hover:bg-white/10 hover:text-white/80;
-  }
-
-  .rail-link {
-    @apply flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-sm
-           text-white/75 transition-colors hover:bg-white/10 hover:text-white;
-  }
-
-  .rail-link-active {
-    /* Gold marks the current page — the shop's own accent against the red. */
-    @apply bg-white/15 font-medium text-white
-           shadow-[inset_2px_0_0_theme(colors.gold.400)];
-  }
-
-  .topbar {
-    @apply bg-black/15 text-white backdrop-blur-sm;
-  }
-
-  /* ---------------------------------------------------------------- *
-   * Canvas — the light working surface the data lives on
-   * ---------------------------------------------------------------- */
-
-  .canvas {
-    /* Dense numeric tables stay on a light surface: eight hours of reading
-       ledgers on dark red would be punishing. The gradient frames it. */
-    @apply rounded-tl-2xl bg-slate-50 text-slate-800 shadow-canvas;
+  .glass-lg {
+    border-radius: 24px;
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    backdrop-filter: blur(24px) saturate(140%);
   }
 
   .card {
-    @apply rounded-xl border border-slate-200/80 bg-white shadow-sm
-           transition-shadow hover:shadow-md;
+    @apply glass;
+    transition:
+      transform 0.18s ease,
+      border-color 0.18s ease;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-hover);
   }
 
   .card-header {
-    @apply flex items-center justify-between gap-3 border-b border-slate-200/80 px-5 py-3.5;
+    @apply flex items-center justify-between gap-3 px-5 py-3.5;
+    border-bottom: 1px solid var(--line);
   }
 
   .card-title {
-    @apply text-base font-semibold text-slate-900;
+    @apply text-[11.5px] font-medium;
+    color: var(--gold);
+    letter-spacing: 0.02em;
+  }
+
+  .recessed {
+    background: var(--recessed);
+    box-shadow: var(--recessed-shadow);
+    border: 1px solid var(--line);
+  }
+
+  .divider {
+    height: 1px;
+    width: 100%;
+    background: linear-gradient(90deg, transparent, rgba(232, 196, 106, 0.5), transparent);
+  }
+  .divider-diamond {
+    @apply divider relative;
+  }
+  .divider-diamond::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 6px;
+    height: 6px;
+    background: var(--gold);
+    transform: translate(-50%, -50%) rotate(45deg);
+  }
+
+  /* ---------------------------------------------------------------- *
+   * App shell chrome. Always used together with data-surface="dark" so
+   * the light theme gets red glass and dark tokens inside.
+   * ---------------------------------------------------------------- */
+
+  .chrome {
+    background: var(--surface-chrome);
+    border: 1px solid var(--border);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    backdrop-filter: blur(24px) saturate(140%);
+    box-shadow: var(--card-shadow), var(--highlight);
+    color: var(--fg);
+  }
+
+  .shell-sidebar {
+    @apply chrome flex h-full w-full flex-col;
+    border-radius: 22px;
+  }
+  @media (max-width: 1023.98px) {
+    /* The off-canvas drawer floats over page text: back the glass with a
+       solid colour so nothing shows through. */
+    .shell-sidebar {
+      background: var(--surface-chrome), var(--surface-solid);
+    }
+  }
+
+  .shell-header {
+    @apply chrome;
+    border-radius: 18px;
+    padding: 12px 14px 12px 24px;
+  }
+  @media (max-width: 1023.98px) {
+    .shell-header {
+      padding: 12px 12px 12px 14px;
+    }
+  }
+
+  .chrome-btn {
+    @apply recessed inline-flex shrink-0 items-center justify-center text-gold;
+    height: 42px;
+    min-width: 42px;
+    border-radius: 12px;
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease;
+  }
+  .chrome-btn:hover {
+    border-color: var(--border-hover);
+  }
+
+  .nav-group-trigger {
+    @apply flex w-full items-center justify-between gap-2 text-xs font-semibold;
+    min-height: 42px;
+    padding: 0 12px;
+    border-radius: 12px;
+    color: var(--gold);
+    transition: background-color 0.15s ease;
+  }
+  .nav-group-trigger:hover:not(:disabled) {
+    background: var(--row-hover);
+  }
+  .nav-group-trigger:disabled {
+    cursor: default;
+  }
+
+  .nav-count {
+    @apply num inline-flex items-center justify-center text-[11px] font-medium;
+    height: 18px;
+    min-width: 18px;
+    padding: 0 6px;
+    border-radius: 9999px;
+    background: rgba(232, 196, 106, 0.16);
+    color: var(--gold-light);
+  }
+
+  .nav-children {
+    margin: 2px 0 8px 14px;
+    padding-left: 8px;
+    border-left: 1px solid rgba(232, 196, 106, 0.3);
+  }
+
+  .nav-link {
+    @apply flex items-center justify-between gap-2 text-[13.5px];
+    min-height: 42px;
+    padding: 0 12px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    color: var(--muted);
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease,
+      border-color 0.15s ease;
+  }
+  .nav-link:hover {
+    background: var(--row-hover);
+    color: var(--fg);
+  }
+  .nav-link:focus-visible,
+  .nav-group-trigger:focus-visible {
+    /* Inset so the scroll container does not clip the ring. */
+    outline-offset: -2px;
+  }
+  .nav-link-ref {
+    @apply num shrink-0 text-right text-[10px];
+    color: var(--muted);
+  }
+
+  .nav-link-active,
+  .nav-link-active:hover {
+    @apply font-semibold;
+    background: linear-gradient(90deg, rgba(232, 196, 106, 0.26), rgba(232, 196, 106, 0.08));
+    border-color: rgba(240, 204, 130, 0.45);
+    box-shadow: 0 6px 18px -8px rgba(226, 170, 70, 0.55);
+    color: #fbe7b0;
+  }
+  .nav-link-active .nav-link-ref {
+    color: #fbe7b0;
+  }
+
+  /* Opaque-backed floating panels (user menu, notifications). */
+  .menu-panel {
+    @apply glass glass-lg;
+    background-color: var(--surface-solid);
+    background-image: var(--surface);
   }
 
   /* ---------------------------------------------------------------- *
@@ -100,41 +394,168 @@
    * ---------------------------------------------------------------- */
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm
-           font-medium transition-all focus-visible:outline-none
-           focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-1
-           disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 text-sm font-medium;
+    min-height: 42px;
+    padding: 0 18px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    transition:
+      transform 0.15s ease,
+      box-shadow 0.15s ease,
+      border-color 0.15s ease,
+      background-color 0.15s ease;
+  }
+  .btn:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+  .btn:disabled,
+  .btn[aria-disabled='true'] {
+    cursor: not-allowed;
+    opacity: 0.5;
+    transform: none;
   }
 
-  .btn-primary {
-    @apply btn bg-brand-600 text-white shadow-sm hover:bg-brand-700 active:bg-brand-800;
+  .btn-primary,
+  .btn-gold {
+    @apply btn;
+    background: var(--gold-fill);
+    color: var(--on-gold);
+    font-weight: 600;
+    box-shadow: 0 8px 20px -10px rgba(226, 170, 70, 0.6);
+  }
+  .btn-primary:hover:not(:disabled),
+  .btn-gold:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 26px -10px rgba(226, 170, 70, 0.85);
+  }
+  .btn-primary:active:not(:disabled),
+  .btn-gold:active:not(:disabled) {
+    transform: translateY(0);
   }
 
   .btn-secondary {
-    @apply btn border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50;
+    @apply btn;
+    background: var(--recessed);
+    box-shadow: var(--recessed-shadow);
+    border-color: var(--line);
+    color: var(--fg);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    border-color: var(--border-hover);
   }
 
-  .btn-gold {
-    @apply btn bg-gold-500 text-white shadow-sm hover:bg-gold-600;
+  .btn-ghost {
+    @apply btn;
+    background: transparent;
+    color: var(--gold);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--row-hover);
   }
 
   .btn-danger {
-    @apply btn bg-red-600 text-white hover:bg-red-700;
+    @apply btn;
+    background: var(--danger-bg);
+    border-color: var(--danger-border);
+    color: var(--danger);
   }
-
-  /* Buttons that live on the dark rail or header. */
-  .btn-on-dark {
-    @apply btn border border-white/20 bg-white/10 text-white hover:bg-white/20;
+  .btn-danger:hover:not(:disabled) {
+    border-color: var(--danger-dot);
   }
 
   .input {
-    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm
-           transition-colors placeholder:text-slate-400
-           focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20;
+    @apply w-full text-sm;
+    height: 42px;
+    padding: 0 14px;
+    border-radius: 12px;
+    background: var(--recessed);
+    box-shadow: var(--recessed-shadow);
+    border: 1px solid var(--line);
+    color: var(--fg);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .input::placeholder {
+    color: var(--placeholder);
+  }
+  .input:focus,
+  .input:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+    border-color: var(--gold);
+    box-shadow:
+      var(--recessed-shadow),
+      0 0 0 3px var(--gold-tint);
+  }
+  .input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  select.input {
+    padding-right: 32px;
+    cursor: pointer;
+  }
+  select.input option {
+    background: var(--surface-solid);
+    color: var(--fg);
+  }
+  textarea.input {
+    height: auto;
+    min-height: 84px;
+    padding: 10px 14px;
+    resize: vertical;
+  }
+
+  .input-lg {
+    height: 52px;
+    border-radius: 14px;
+    padding-left: 14px;
+  }
+  .input-icon .input-lg {
+    padding-left: 46px;
+  }
+  textarea.input-lg {
+    height: auto;
+  }
+
+  /* Wrapper for a leading 18px line icon inside `.input-lg`. */
+  .input-icon {
+    position: relative;
+  }
+  .input-icon > svg {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    width: 18px;
+    height: 18px;
+    transform: translateY(-50%);
+    color: var(--gold-icon);
+    pointer-events: none;
+  }
+
+  .login-card {
+    border-radius: 28px;
+    -webkit-backdrop-filter: blur(26px) saturate(140%);
+    backdrop-filter: blur(26px) saturate(140%);
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 16px;
   }
 
   .label {
-    @apply mb-1 block text-sm font-medium text-slate-700;
+    @apply mb-1.5 block text-[13px] font-medium;
+    color: var(--gold);
+  }
+
+  .section-label {
+    @apply text-[11.5px] font-medium;
+    color: var(--gold);
+    letter-spacing: 0.02em;
   }
 
   /* ---------------------------------------------------------------- *
@@ -155,24 +576,177 @@
      silently beat every `<th className="text-right">` in the app, leaving
      numeric headers left-aligned over right-aligned figures.
 
-     No `uppercase`/`tracking-wide`: Lao has no capital letters, and letter
+     No `uppercase`/wide tracking: Lao has no capital letters, and letter
      spacing pulls its stacked vowel and tone marks away from their base
      consonant. */
   .table :where(th) {
-    @apply whitespace-nowrap border-b border-slate-200 bg-slate-100/70 px-3 py-2.5
-           text-left text-xs font-semibold text-slate-600;
+    @apply whitespace-nowrap px-3 py-2.5 text-left text-[11.5px] font-medium;
+    background: var(--recessed);
+    border-bottom: 1px solid var(--line);
+    color: var(--gold);
+    letter-spacing: 0.02em;
   }
 
   .table :where(td) {
-    @apply whitespace-nowrap border-b border-slate-100 px-3 py-2.5;
+    @apply whitespace-nowrap px-3 py-2.5;
+    border-bottom: 1px solid var(--row-line);
   }
 
-  /* `num` means tabular figures, nothing more — it is also used on phone
+  /* `num` means tabular figures, nothing more. It is also used on phone
      numbers and ids, which read better left-aligned. Alignment stays a
      separate decision, made per column with `text-right`. */
 
   .table tbody tr:hover {
-    @apply bg-brand-50/40;
+    background: var(--row-hover);
+  }
+
+  .sell-price {
+    color: var(--gold-mid);
+    font-weight: 600;
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Badges & status
+   * ---------------------------------------------------------------- */
+
+  .badge {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium;
+    border: 1px solid var(--line);
+  }
+
+  .status-success,
+  .status-warning,
+  .status-danger {
+    @apply badge;
+  }
+  .status-success::before,
+  .status-warning::before,
+  .status-danger::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    flex-shrink: 0;
+  }
+  .status-success {
+    background: var(--success-bg);
+    border-color: var(--success-border);
+    color: var(--success);
+  }
+  .status-success::before {
+    background: var(--success-dot);
+  }
+  .status-warning {
+    background: var(--warning-bg);
+    border-color: var(--warning-border);
+    color: var(--warning);
+  }
+  .status-warning::before {
+    background: var(--warning-dot);
+  }
+  .status-danger {
+    background: var(--danger-bg);
+    border-color: var(--danger-border);
+    color: var(--danger);
+  }
+  .status-danger::before {
+    background: var(--danger-dot);
+  }
+
+  /* Block-level inline message (errors, notes) built on a status colour. */
+  .notice {
+    @apply flex items-start gap-2 px-3 py-2.5 text-sm font-normal;
+    border-radius: 12px;
+    white-space: normal;
+  }
+  .notice::before {
+    margin-top: 0.55em;
+  }
+
+  /* APPROVED / ready-for-your-turn: gold, between warning and success. */
+  .status-approved {
+    @apply badge;
+    background: var(--gold-tint);
+    border-color: var(--gold);
+    color: var(--gold);
+  }
+  .status-approved::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 9999px;
+    flex-shrink: 0;
+    background: var(--gold);
+  }
+
+  /* Decorative corner glow for stat cards (parent: relative overflow-hidden). */
+  .stat-glow {
+    position: absolute;
+    top: -40px;
+    right: -40px;
+    width: 120px;
+    height: 120px;
+    border-radius: 9999px;
+    background: var(--stat-glow);
+    filter: blur(18px);
+    pointer-events: none;
+  }
+
+  .text-gold-gradient {
+    background-image: var(--gold-text-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+
+  /* ---------------------------------------------------------------- *
+   * Dialog
+   * ---------------------------------------------------------------- */
+
+  .dialog-scrim {
+    @apply fixed inset-0 z-50 flex items-center justify-center p-4;
+    background: rgba(10, 2, 2, 0.55); /* style-guard-ignore */
+    -webkit-backdrop-filter: blur(4px);
+    backdrop-filter: blur(4px);
+    animation: dialog-fade 0.18s ease both;
+  }
+  .dialog-panel {
+    @apply flex w-full flex-col;
+    max-height: 90vh;
+    animation: dialog-pop 0.18s ease both;
+  }
+  .dialog-panel:focus {
+    outline: none;
+  }
+  .dialog-head {
+    @apply flex items-start justify-between gap-3 px-5 pb-3 pt-4;
+    border-bottom: 1px solid var(--line);
+  }
+  .dialog-body {
+    @apply min-h-0 flex-1 overflow-y-auto px-5 py-4;
+  }
+  .dialog-foot {
+    @apply flex flex-wrap justify-end gap-2 px-5 py-3;
+    border-top: 1px solid var(--line);
+  }
+  @keyframes dialog-fade {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes dialog-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .dialog-scrim,
+    .dialog-panel {
+      animation: none;
+    }
   }
 
   /* ---------------------------------------------------------------- *
@@ -186,7 +760,9 @@
   }
 
   .toast {
-    @apply flex items-start gap-2.5 rounded-xl border bg-white p-3.5 shadow-lg;
+    @apply glass glass-lg flex items-start gap-2.5 p-3.5;
+    background-color: var(--surface-solid);
+    background-image: var(--surface);
   }
 
   /* Radix drives these data-states; the swipe keeps the finger's x offset. */
@@ -212,39 +788,167 @@
    * ---------------------------------------------------------------- */
 
   .pager {
-    @apply flex flex-wrap items-center justify-between gap-3 border-t
-           border-slate-200/80 px-5 py-3 text-sm text-slate-600;
+    @apply flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
   }
 
   .pager-btn {
-    @apply inline-flex h-8 min-w-8 items-center justify-center rounded-lg border
-           border-slate-300 bg-white px-2 text-sm text-slate-700 transition-colors
-           hover:border-slate-400 hover:bg-slate-50
-           disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white;
+    @apply inline-flex min-w-[42px] items-center justify-center px-2 text-sm;
+    min-height: 42px;
+    border-radius: 12px;
+    background: var(--recessed);
+    border: 1px solid var(--line);
+    color: var(--fg);
+    transition:
+      border-color 0.15s ease,
+      background-color 0.15s ease;
+  }
+  .pager-btn:hover:not(:disabled) {
+    border-color: var(--border-hover);
+  }
+  .pager-btn:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+  .pager-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
   }
 
-  .pager-btn-active {
-    @apply border-brand-600 bg-brand-600 text-white hover:border-brand-700 hover:bg-brand-700;
-  }
-
-  .badge {
-    @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+  .pager-btn-active,
+  .pager-btn-active:hover:not(:disabled) {
+    background: var(--gold-fill);
+    border-color: transparent;
+    color: var(--on-gold);
+    font-weight: 600;
   }
 }
 
-/* Print: drop the gradient so ink and legibility win (TOR §4.2 ພິມຕາຕະລາງ). */
-@media print {
-  body {
-    background: #fff !important;
+/* Theme toggle: both icons are in the DOM; <html data-theme> picks one (no first-paint flash). */
+.theme-icon-light {
+  display: none;
+}
+:root[data-theme='light'] .theme-icon-light {
+  display: inline;
+}
+:root[data-theme='light'] .theme-icon-dark {
+  display: none;
+}
+
+/* Gold focus ring on anything focusable that has no component class. */
+a:focus-visible,
+button:focus-visible,
+[role='button']:focus-visible,
+[role='tab']:focus-visible,
+summary:focus-visible,
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card:hover,
+  .btn-primary:hover,
+  .btn-gold:hover {
+    transform: none !important;
   }
-  .rail,
-  .topbar,
+  * {
+    transition-duration: 0.01ms !important;
+  }
+  .toast[data-state],
+  .toast[data-swipe='end'] {
+    animation: none !important;
+  }
+}
+
+/* Print: plain paper so ink and legibility win (TOR 4.2, print tables). */
+@media print {
+  html,
+  body {
+    background: #fdfaf4 !important;
+    color: #2e1208 !important;
+  }
+  body::before {
+    display: none !important;
+  }
+  /* Light text tokens on paper, whatever theme is on screen. */
+  :root,
+  :root[data-theme='dark'],
+  [data-surface='dark'] {
+    --fg: #3b1a0c;
+    --fg-strong: #2e1208;
+    --muted: rgba(59, 26, 12, 0.72);
+    --gold: #8a5a12;
+    --gold-mid: #7a4a0e;
+    --gold-light: #7a4a0e;
+    color-scheme: light;
+    --gold-icon: #a87424;
+    --border: rgba(168, 118, 36, 0.26);
+    --border-hover: rgba(168, 118, 36, 0.5);
+    --line: rgba(168, 118, 36, 0.26);
+    --row-line: rgba(168, 118, 36, 0.14);
+    --recessed: transparent;
+    --success: #1f7a45;
+    --success-bg: rgba(31, 122, 69, 0.1);
+    --success-border: rgba(31, 122, 69, 0.3);
+    --warning: #8a5300;
+    --warning-bg: rgba(196, 128, 20, 0.12);
+    --warning-border: rgba(196, 128, 20, 0.35);
+    --danger: #a3231a;
+    --danger-bg: rgba(163, 35, 26, 0.08);
+    --danger-border: rgba(163, 35, 26, 0.3);
+  }
+  .text-gold-gradient {
+    background: none !important;
+    -webkit-text-fill-color: currentColor !important;
+    color: #2e1208 !important;
+  }
+  .chrome,
   .no-print {
     display: none !important;
   }
-  .canvas {
+  /* The screen shell is a 2-column grid sized for the (hidden) sidebar; on a
+     wide sheet <main> would land in the 272px column. Stack it as plain flow. */
+  .shell-grid {
+    display: block !important;
+    padding: 0 !important;
+  }
+  .shell-grid > * {
+    min-width: 0;
+  }
+  main,
+  .shell-grid main {
+    width: 100% !important;
+    max-width: none !important;
+  }
+  /* Wide ledgers must not be clipped by the scroll wrapper or run off the sheet. */
+  .table-wrap {
+    overflow: visible !important;
+  }
+  .table {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: auto;
+    font-size: 11px;
+  }
+  .table :where(th),
+  .table :where(td) {
+    white-space: normal !important;
+    padding: 6px 6px;
+  }
+  .table tr {
+    break-inside: avoid;
+  }
+  .glass,
+  .card,
+  .recessed {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
     box-shadow: none !important;
-    border-radius: 0 !important;
-    background: #fff !important;
+    background: transparent !important;
+    color: #2e1208 !important;
   }
 }

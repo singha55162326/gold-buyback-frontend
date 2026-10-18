@@ -11,6 +11,8 @@ const config: Config = {
     extend: {
       fontFamily: {
         sans: ['var(--font-lao)', 'Noto Sans Lao', 'Phetsarath OT', 'system-ui', 'sans-serif'],
+        serif: ['var(--font-serif-lao)', 'Noto Serif Lao', 'serif'],
+        latin: ['var(--font-latin)', 'Cormorant Garamond', 'serif'],
         mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
       fontSize: {
@@ -22,7 +24,24 @@ const config: Config = {
         '2xl': ['1.5rem', { lineHeight: '1.6' }],
         '3xl': ['1.875rem', { lineHeight: '1.5' }],
       },
+      borderRadius: {
+        glass: '18px',
+        panel: '22px',
+      },
       colors: {
+        /** Semantic theme tokens: values live in globals.css. No opacity modifiers. */
+        fg: 'var(--fg)',
+        'fg-strong': 'var(--fg-strong)',
+        muted: 'var(--muted)',
+        line: 'var(--line)',
+        surface: 'var(--surface-solid)',
+        recessed: 'var(--recessed)',
+        success: 'var(--success)',
+        warning: 'var(--warning)',
+        danger: 'var(--danger)',
+        'success-dot': 'var(--success-dot)',
+        'warning-dot': 'var(--warning-dot)',
+        'danger-dot': 'var(--danger-dot)',
         /** The shop's brand red — the gradient stops and the shades around them. */
         brand: {
           50: '#fdf2f2',
@@ -39,6 +58,9 @@ const config: Config = {
         },
         /** Gold reads as the accent against the red — the shop's own pairing. */
         gold: {
+          DEFAULT: 'var(--gold)',
+          light: 'var(--gold-light)',
+          mid: 'var(--gold-mid)',
           50: '#fdf9ed',
           100: '#f8eecb',
           200: '#f0dc94',
