@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { PageHead } from '@/components/page-head';
 import { getStoredUser } from '@/lib/api';
 import type { Role } from '@/lib/nav';
 
@@ -59,41 +60,39 @@ export default function HelpPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">ຄູ່ມືການໃຊ້ງານລະບົບ</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            ຈັດຕາມໜ້າທີ່ — ຫາພາກຂອງທ່ານແລ້ວອ່ານສະເພາະພາກນັ້ນກໍ່ພຽງພໍ
-          </p>
-        </div>
-        {role && (
-          <label className="flex items-center gap-2 text-sm text-slate-600">
-            <input
-              id="onlyMine"
-              type="checkbox"
-              className="h-4 w-4 accent-brand-600"
-              checked={onlyMine}
-              onChange={(e) => setOnlyMine(e.target.checked)}
-            />
-            ສະແດງສະເພາະພາກຂອງຂ້ອຍ ({ROLE_LABEL[role]})
-          </label>
-        )}
-      </div>
+      <PageHead
+        title="ຄູ່ມືການໃຊ້ງານລະບົບ"
+        subtitle="ຈັດຕາມໜ້າທີ່ — ຫາພາກຂອງທ່ານແລ້ວອ່ານສະເພາະພາກນັ້ນກໍ່ພຽງພໍ"
+        actions={
+          role && (
+            <label className="flex min-h-[42px] cursor-pointer items-center gap-2 text-sm text-fg">
+              <input
+                id="onlyMine"
+                type="checkbox"
+                className="h-4 w-4 accent-[var(--gold)]"
+                checked={onlyMine}
+                onChange={(e) => setOnlyMine(e.target.checked)}
+              />
+              ສະແດງສະເພາະພາກຂອງຂ້ອຍ ({ROLE_LABEL[role]})
+            </label>
+          )
+        }
+      />
 
       {/* Contents — jumping beats scrolling in a document this long. */}
-      <nav className="card p-4" aria-label="ສາລະບານ">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <nav data-fade className="card p-5" aria-label="ສາລະບານ">
+        <div className="section-label mb-2">
           ສາລະບານ
         </div>
         <ol className="grid gap-x-4 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
           {visible.map((s, i) => (
             <li key={s.id} className="flex items-baseline gap-2 text-sm">
-              <span className="num w-5 shrink-0 text-right text-xs text-slate-400">{i + 1}</span>
-              <a href={`#${s.id}`} className="text-brand-700 hover:underline">
+              <span className="num w-5 shrink-0 text-right text-xs text-muted">{i + 1}</span>
+              <a href={`#${s.id}`} className="text-gold hover:underline">
                 {s.titleLo}
               </a>
               {role && s.roles?.includes(role) && (
-                <span className="badge bg-gold-100 text-gold-800">ຂອງທ່ານ</span>
+                <span className="badge border border-gold text-gold bg-[var(--gold-tint)]">ຂອງທ່ານ</span>
               )}
             </li>
           ))}
@@ -439,13 +438,13 @@ function Chapter({
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} className="card scroll-mt-4 p-5">
+    <section id={id} data-fade className="card scroll-mt-4 p-5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="num flex h-6 w-6 items-center justify-center rounded-md bg-brand-50 text-xs font-bold text-brand-700">
+        <span className="num flex h-6 w-6 items-center justify-center rounded-md border border-line bg-recessed text-xs font-bold text-gold">
           {n}
         </span>
-        <h2 className="text-lg font-semibold text-slate-900">{titleLo}</h2>
-        {mine && <span className="badge bg-gold-100 text-gold-800">ພາກຂອງທ່ານ</span>}
+        <h2 className="font-serif text-xl font-semibold leading-snug text-gold">{titleLo}</h2>
+        {mine && <span className="badge border border-gold text-gold bg-[var(--gold-tint)]">ພາກຂອງທ່ານ</span>}
       </div>
       <div className="mt-2">{children}</div>
     </section>
@@ -453,20 +452,20 @@ function Chapter({
 }
 
 function H3({ children }: { children: React.ReactNode }) {
-  return <h3 className="mt-5 text-sm font-semibold text-slate-900">{children}</h3>;
+  return <h3 className="mt-5 text-sm font-semibold text-fg-strong">{children}</h3>;
 }
 
 function P({ children }: { children: React.ReactNode }) {
-  return <p className="mt-2 max-w-[68ch] text-sm text-slate-700">{children}</p>;
+  return <p className="mt-2 max-w-[72ch] text-sm text-fg">{children}</p>;
 }
 
 function B({ children }: { children: React.ReactNode }) {
-  return <strong className="font-semibold text-slate-900">{children}</strong>;
+  return <strong className="font-semibold text-fg-strong">{children}</strong>;
 }
 
 function Code({ children }: { children: React.ReactNode }) {
   return (
-    <code className="rounded border border-slate-200 bg-slate-50 px-1 py-0.5 text-xs">
+    <code className="rounded border border-line bg-recessed px-1 py-0.5 text-xs text-fg-strong">
       {children}
     </code>
   );
@@ -475,7 +474,7 @@ function Code({ children }: { children: React.ReactNode }) {
 /** A link that also reads as one — the manual points at real screens. */
 function Go({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link href={href} className="font-medium text-brand-700 underline underline-offset-2">
+    <Link href={href} className="font-medium text-gold underline underline-offset-2">
       {children}
     </Link>
   );
@@ -486,12 +485,12 @@ function Steps({ items }: { items: [string] | [string, string][] | string[][] })
     <ol className="mt-3 space-y-2">
       {(items as string[][]).map((item, i) => (
         <li key={i} className="flex gap-3">
-          <span className="num mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-100 text-[11px] font-semibold text-slate-600">
+          <span className="num mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-line bg-recessed text-[11px] font-semibold text-gold">
             {i + 1}
           </span>
-          <span className="max-w-[64ch] text-sm text-slate-700">
+          <span className="max-w-[72ch] text-sm text-fg">
             {item[0]}
-            {item[1] && <span className="mt-0.5 block text-xs text-slate-500">{item[1]}</span>}
+            {item[1] && <span className="mt-0.5 block text-xs text-muted">{item[1]}</span>}
           </span>
         </li>
       ))}
@@ -502,31 +501,37 @@ function Steps({ items }: { items: [string] | [string, string][] | string[][] })
 function Chain({ steps, noteLo }: { steps: string[]; noteLo?: string }) {
   return (
     <div className="mt-3">
-      <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+      <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-recessed p-3">
         {steps.map((s, i) => (
           <span key={s} className="flex items-center gap-1.5">
             <span
               className={`rounded-full border px-2.5 py-0.5 text-xs ${
                 i === steps.length - 1
-                  ? 'border-transparent bg-emerald-100 font-semibold text-emerald-800'
-                  : 'border-slate-200 bg-white text-slate-700'
+                  ? 'status-success !px-2.5 font-semibold'
+                  : 'border-line bg-surface text-fg'
               }`}
             >
               {s}
             </span>
-            {i < steps.length - 1 && <span className="text-slate-400">→</span>}
+            {i < steps.length - 1 && <span className="text-muted" aria-hidden="true">→</span>}
           </span>
         ))}
       </div>
-      {noteLo && <p className="mt-1 text-xs text-slate-500">{noteLo}</p>}
+      {noteLo && <p className="mt-1 text-xs text-muted">{noteLo}</p>}
     </div>
   );
 }
 
+const TONE_TITLE = {
+  stop: 'text-danger',
+  warn: 'text-warning',
+  info: 'text-gold',
+} as const;
+
 const TONE = {
-  stop: 'border-red-200 bg-red-50 text-red-900',
-  warn: 'border-amber-200 bg-amber-50 text-amber-900',
-  info: 'border-gold-200 bg-gold-50 text-slate-800',
+  stop: 'border-[var(--danger-border)] bg-[var(--danger-bg)]',
+  warn: 'border-[var(--warning-border)] bg-[var(--warning-bg)]',
+  info: 'border-gold bg-[var(--gold-tint)]',
 } as const;
 
 function Callout({
@@ -539,16 +544,16 @@ function Callout({
   children: React.ReactNode;
 }) {
   return (
-    <div className={`mt-3 rounded-lg border px-4 py-3 text-sm ${TONE[tone]}`}>
-      <div className="font-semibold">{titleLo}</div>
-      <div className="mt-0.5 max-w-[66ch] opacity-90">{children}</div>
+    <div className={`mt-3 rounded-xl border px-4 py-3 text-sm text-fg ${TONE[tone]}`}>
+      <div className={`font-semibold ${TONE_TITLE[tone]}`}>{titleLo}</div>
+      <div className="mt-0.5 max-w-[72ch]">{children}</div>
     </div>
   );
 }
 
 function Table({ head, rows }: { head: string[]; rows: string[][] }) {
   return (
-    <div className="table-wrap mt-3">
+    <div className="table-wrap mt-3" tabIndex={0} role="region" aria-label={head.join(' · ')}>
       <table className="table">
         <thead>
           <tr>
@@ -561,7 +566,7 @@ function Table({ head, rows }: { head: string[]; rows: string[][] }) {
           {rows.map((r, i) => (
             <tr key={i}>
               {r.map((cell, j) => (
-                <td key={j} className={j === 0 ? 'font-medium text-slate-900' : 'text-slate-700'}>
+                <td key={j} className={j === 0 ? 'font-medium text-fg-strong' : 'text-fg'}>
                   {cell}
                 </td>
               ))}

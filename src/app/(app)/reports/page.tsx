@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useQuery } from '@tanstack/react-query';
+import { PageHead } from '@/components/page-head';
 import { api } from '@/lib/api';
 import { formatLak, formatMoney, formatWeight, formatDate, formatDateTime } from '@/lib/format';
 
@@ -145,15 +146,13 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Report</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ລາຍງານສະຫຼຸບ — ເລືອກປະເພດ ແລະ ຊ່ວງວັນທີ ແລ້ວ Export ເປັນ CSV (TOR §3.7)
-        </p>
-      </div>
+      <PageHead
+        title="Report"
+        subtitle="ລາຍງານສະຫຼຸບ — ເລືອກປະເພດ ແລະ ຊ່ວງວັນທີ ແລ້ວ Export ເປັນ CSV (TOR §3.7)"
+      />
 
-      <div className="card p-5">
-        <div className="grid gap-4 md:grid-cols-4">
+      <div data-fade className="card p-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="label" htmlFor="kind">ປະເພດລາຍງານ</label>
             <select id="kind" className="input" value={kind}
@@ -171,23 +170,27 @@ export default function ReportsPage() {
             <input id="to" type="date" className="input" value={to}
               onChange={(e) => setTo(e.target.value)} />
           </div>
-          <div className="flex items-end gap-2">
+          <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-1">
             <button className="btn-primary" disabled={filtered.length === 0} onClick={exportCsv}>
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className=""><path d="M12 4v11m0 0-4-4m4 4 4-4M5 20h14" /></svg>
               Export CSV
             </button>
-            <button className="btn-secondary" onClick={() => window.print()}>ພິມ</button>
+            <button className="btn-secondary" onClick={() => window.print()}>
+              <svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="text-[var(--gold-icon)]"><path d="M7 9V4h10v5M7 17H5a1 1 0 0 1-1-1v-5a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v5a1 1 0 0 1-1 1h-2M7 14h10v6H7z" /></svg>
+              ພິມ
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">{report.labelLo}</h2>
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-muted">
             {filtered.length} ແຖວ{rows.length !== filtered.length ? ` (ຈາກ ${rows.length})` : ''}
           </span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label={report.labelLo}>
           <table className="table">
             <thead>
               <tr>
@@ -198,10 +201,10 @@ export default function ReportsPage() {
             </thead>
             <tbody>
               {isLoading && (
-                <tr><td colSpan={columns.length} className="py-8 text-center text-slate-400">ກຳລັງໂຫຼດ...</td></tr>
+                <tr><td colSpan={columns.length} className="py-8 text-center text-muted">ກຳລັງໂຫຼດ...</td></tr>
               )}
               {!isLoading && filtered.length === 0 && (
-                <tr><td colSpan={columns.length} className="py-8 text-center text-slate-400">ບໍ່ມີຂໍ້ມູນໃນຊ່ວງທີ່ເລືອກ</td></tr>
+                <tr><td colSpan={columns.length} className="py-8 text-center text-muted">ບໍ່ມີຂໍ້ມູນໃນຊ່ວງທີ່ເລືອກ</td></tr>
               )}
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
