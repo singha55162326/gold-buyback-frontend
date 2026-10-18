@@ -532,6 +532,17 @@
     height: auto;
   }
 
+  /* 16px on phones: anything smaller makes iOS zoom the page on focus. */
+  @media (max-width: 639.98px) {
+    .input,
+    .input-lg,
+    select,
+    textarea,
+    input:not([type='checkbox']):not([type='radio']) {
+      font-size: 16px;
+    }
+  }
+
   /* Wrapper for a leading 18px line icon inside `.input-lg`. */
   .input-icon {
     position: relative;
@@ -722,12 +733,10 @@
     background: rgba(10, 2, 2, 0.55); /* style-guard-ignore */
     -webkit-backdrop-filter: blur(4px);
     backdrop-filter: blur(4px);
-    animation: dialog-fade 0.18s ease both;
   }
   .dialog-panel {
     @apply flex w-full flex-col;
     max-height: 90vh;
-    animation: dialog-pop 0.18s ease both;
   }
   .dialog-panel:focus {
     outline: none;
@@ -742,23 +751,6 @@
   .dialog-foot {
     @apply flex flex-wrap justify-end gap-2 px-5 py-3;
     border-top: 1px solid var(--line);
-  }
-  @keyframes dialog-fade {
-    from {
-      opacity: 0;
-    }
-  }
-  @keyframes dialog-pop {
-    from {
-      opacity: 0;
-      transform: scale(0.97);
-    }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .dialog-scrim,
-    .dialog-panel {
-      animation: none;
-    }
   }
 
   /* ---------------------------------------------------------------- *
@@ -777,13 +769,7 @@
     background-image: var(--surface);
   }
 
-  /* Radix drives these data-states; the swipe keeps the finger's x offset. */
-  .toast[data-state='open'] {
-    @apply animate-toast-in;
-  }
-  .toast[data-state='closed'] {
-    @apply animate-toast-out;
-  }
+  /* Toasts appear and leave instantly; the swipe keeps the finger's x offset. */
   .toast[data-swipe='move'] {
     transform: translateX(var(--radix-toast-swipe-move-x));
   }
@@ -792,7 +778,7 @@
     transition: transform 160ms ease-out;
   }
   .toast[data-swipe='end'] {
-    @apply animate-toast-swipe-out;
+    transform: translateX(var(--radix-toast-swipe-end-x));
   }
 
   /* ---------------------------------------------------------------- *
@@ -869,10 +855,6 @@ input[type='radio']:focus-visible,
   }
   * {
     transition-duration: 0.01ms !important;
-  }
-  .toast[data-state],
-  .toast[data-swipe='end'] {
-    animation: none !important;
   }
 }
 

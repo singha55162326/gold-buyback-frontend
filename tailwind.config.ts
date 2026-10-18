@@ -81,35 +81,6 @@ const config: Config = {
         canvas: '0 1px 3px rgb(0 0 0 / 0.08), 0 12px 32px -12px rgb(0 0 0 / 0.28)',
         rail: 'inset -1px 0 0 rgb(255 255 255 / 0.08)',
       },
-      keyframes: {
-        'collapsible-down': {
-          from: { height: '0' },
-          to: { height: 'var(--radix-collapsible-content-height)' },
-        },
-        'collapsible-up': {
-          from: { height: 'var(--radix-collapsible-content-height)' },
-          to: { height: '0' },
-        },
-        'toast-in': {
-          from: { transform: 'translateX(110%)', opacity: '0' },
-          to: { transform: 'translateX(0)', opacity: '1' },
-        },
-        'toast-out': {
-          from: { transform: 'translateX(0)', opacity: '1' },
-          to: { transform: 'translateX(110%)', opacity: '0' },
-        },
-        'toast-swipe-out': {
-          from: { transform: 'translateX(var(--radix-toast-swipe-end-x))' },
-          to: { transform: 'translateX(110%)' },
-        },
-      },
-      animation: {
-        'collapsible-down': 'collapsible-down 180ms ease-out',
-        'collapsible-up': 'collapsible-up 160ms ease-in',
-        'toast-in': 'toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1)',
-        'toast-out': 'toast-out 160ms ease-in',
-        'toast-swipe-out': 'toast-swipe-out 140ms ease-out',
-      },
     },
   },
   plugins: [],

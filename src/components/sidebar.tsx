@@ -168,10 +168,7 @@ export function Sidebar({ role }: { role: Role }) {
                 </span>
               </Collapsible.Trigger>
 
-              <Collapsible.Content
-                className="overflow-hidden data-[state=closed]:animate-collapsible-up
-                           data-[state=open]:animate-collapsible-down"
-              >
+              <Collapsible.Content className="overflow-hidden">
                 <ul className="nav-children space-y-0.5">
                   {group.items.map((item) => {
                     const active =
