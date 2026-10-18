@@ -25,8 +25,8 @@ export default function AppError({
 
   return (
     <div className="mx-auto max-w-md py-10 text-center">
-      <div className="card p-7">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-red-50 text-red-600">
+      <div className="card glass-lg p-7" data-fade>
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-[var(--danger-border)] bg-[var(--danger-bg)] text-danger">
           <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true" fill="none">
             <path
               d="M12 8.5v4.2M12 16.2h.01M10.3 3.9 2.6 17.2a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"
@@ -38,13 +38,13 @@ export default function AppError({
           </svg>
         </div>
 
-        <h1 className="mt-4 text-lg font-semibold text-slate-900">ໜ້ານີ້ເກີດຂໍ້ຜິດພາດ</h1>
-        <p className="mt-1 text-sm text-slate-500">
+        <h1 className="mt-4 font-serif text-lg font-bold text-gold-gradient">ໜ້ານີ້ເກີດຂໍ້ຜິດພາດ</h1>
+        <p className="mt-1 text-sm text-muted">
           ຂໍ້ມູນຂອງທ່ານບໍ່ໄດ້ຫາຍໄປ. ລອງໂຫຼດຄືນເບິ່ງກ່ອນ.
         </p>
 
         {error.digest && (
-          <p className="mt-3 text-xs text-slate-400">
+          <p className="mt-3 text-xs text-muted">
             ລະຫັດອ້າງອີງ <span className="mono">{error.digest}</span>
           </p>
         )}
@@ -58,7 +58,7 @@ export default function AppError({
           </Link>
         </div>
 
-        <p className="mt-4 text-xs text-slate-400">
+        <p className="mt-4 text-xs text-muted">
           ຖ້າຍັງເປັນອີກ ໃຫ້ແຈ້ງຜູ້ດູແລພ້ອມບອກວ່າທ່ານຢູ່ໜ້າໃດ ແລະ ກົດປຸ່ມຫຍັງ
         </p>
       </div>
