@@ -6,6 +6,7 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
 
 interface Category { id: string; code: string; nameLo: string; kind: 'INCOME' | 'EXPENSE' }
 interface Bank { id: string; nameLo: string }
@@ -69,22 +70,22 @@ export default function IncomeExpensePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ຈັດການລາຍຮັບລາຍຈ່າຍ</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ບັນທຶກລາຍຮັບ / ລາຍຈ່າຍ ຜ່ານ Cash ຫຼື Bank (TOR §3.7)
-        </p>
-      </div>
+      <PageHead
+        title="ຈັດການລາຍຮັບລາຍຈ່າຍ"
+        subtitle="ບັນທຶກລາຍຮັບ / ລາຍຈ່າຍ ຜ່ານ Cash ຫຼື Bank (TOR §3.7)"
+      />
 
-      <div className="card p-5">
-        <div className="mb-4 flex gap-2">
+      <div data-fade className="card p-5">
+        <div className="mb-4 flex flex-wrap gap-2">
           <button
+            type="button" aria-pressed={kind === 'INCOME'}
             className={kind === 'INCOME' ? 'btn-primary' : 'btn-secondary'}
             onClick={() => { setKind('INCOME'); setCategoryId(''); }}
           >
             ລາຍຮັບ
           </button>
           <button
+            type="button" aria-pressed={kind === 'EXPENSE'}
             className={kind === 'EXPENSE' ? 'btn-primary' : 'btn-secondary'}
             onClick={() => { setKind('EXPENSE'); setCategoryId(''); }}
           >
@@ -92,7 +93,7 @@ export default function IncomeExpensePage() {
           </button>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <div>
             <label className="label" htmlFor="cat">ລາຍການ</label>
             <select id="cat" className="input" value={categoryId}
@@ -130,10 +131,10 @@ export default function IncomeExpensePage() {
           </div>
           <div>
             <label className="label" htmlFor="amt">ຈຳນວນເງິນ</label>
-            <input id="amt" className="input num" inputMode="decimal" value={amount}
+            <input id="amt" className="input num" inputMode="decimal" aria-describedby={error ? 'ie-error' : undefined} value={amount}
               onChange={(e) => setAmount(e.target.value)} />
           </div>
-          <div className="md:col-span-2">
+          <div className="sm:col-span-2">
             <label className="label" htmlFor="note">Note</label>
             <input id="note" className="input" value={note}
               onChange={(e) => setNote(e.target.value)} />
@@ -141,20 +142,20 @@ export default function IncomeExpensePage() {
         </div>
 
         {error && (
-          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          <div id="ie-error" role="alert" className="notice status-danger mt-3">{error}</div>
         )}
 
         <div className="mt-4">
-          <button className="btn-primary" disabled={!canSave || create.isPending}
+          <button className="btn-primary min-h-[54px] w-full sm:w-auto sm:min-w-[240px]" disabled={!canSave || create.isPending}
             onClick={() => create.mutate()}>
             {create.isPending ? 'ກຳລັງບັນທຶກ...' : `ບັນທຶກ${kind === 'INCOME' ? 'ລາຍຮັບ' : 'ລາຍຈ່າຍ'}`}
           </button>
         </div>
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ປະຫວັດ</h2></div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ">
           <table className="table">
             <thead>
               <tr>
@@ -171,23 +172,23 @@ export default function IncomeExpensePage() {
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={9} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີລາຍການ</td></tr>
+                <tr><td colSpan={9} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
               )}
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td className="font-mono text-xs">{row.code}</td>
                   <td>{formatDateTime(row.createdAt)}</td>
                   <td>
-                    <span className={row.kind === 'INCOME' ? 'badge bg-emerald-100 text-emerald-800' : 'badge bg-red-100 text-red-800'}>
+                    <span className={row.kind === 'INCOME' ? 'status-success' : 'status-danger'}>
                       {row.kind === 'INCOME' ? 'ລາຍຮັບ' : 'ລາຍຈ່າຍ'}
                     </span>
                   </td>
                   <td>{row.category.nameLo}</td>
-                  <td className="text-slate-500">{row.method}</td>
-                  <td className="text-slate-500">{row.bankAccount?.nameLo ?? '—'}</td>
+                  <td className="text-muted">{row.method}</td>
+                  <td className="text-muted">{row.bankAccount?.nameLo ?? '—'}</td>
                   <td>{row.currency}</td>
                   <td className="num text-right font-medium">{formatMoney(row.amount)}</td>
-                  <td className="text-slate-500">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.note ?? '—'}</td>
                 </tr>
               ))}
             </tbody>

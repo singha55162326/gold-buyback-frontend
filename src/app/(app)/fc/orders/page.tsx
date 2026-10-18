@@ -6,6 +6,8 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDate, formatDateTime } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
+import { statusClass } from '@/lib/status';
 
 interface GoldItem { id: string; nameLo: string }
 interface Partner { id: string; nameLo: string }
@@ -30,13 +32,13 @@ interface Order {
   supplier: { nameLo: string } | null;
 }
 
-const STATUS: Record<OrderStatus, { lo: string; cls: string }> = {
-  ORDER_PLACED: { lo: 'Order ສຳເລັດ', cls: 'bg-blue-100 text-blue-800' },
-  SENT_TO_SMITH: { lo: 'ສັ່ງຊ່າງ ສຳເລັດ', cls: 'bg-indigo-100 text-indigo-800' },
-  RECEIVED_FROM_SMITH: { lo: 'ຮັບເຄື່ອງຈາກຊ່າງ ສຳເລັດ', cls: 'bg-violet-100 text-violet-800' },
-  AWAITING_PICKUP: { lo: 'ລໍຖ້າລູກຄ້າຮັບເຄື່ອງ', cls: 'bg-amber-100 text-amber-800' },
-  COMPLETED: { lo: 'Completed', cls: 'bg-emerald-100 text-emerald-800' },
-  CANCELLED: { lo: 'ຍົກເລີກ', cls: 'bg-slate-100 text-slate-600' },
+const STATUS: Record<OrderStatus, { lo: string }> = {
+  ORDER_PLACED: { lo: 'Order ສຳເລັດ' },
+  SENT_TO_SMITH: { lo: 'ສັ່ງຊ່າງ ສຳເລັດ' },
+  RECEIVED_FROM_SMITH: { lo: 'ຮັບເຄື່ອງຈາກຊ່າງ ສຳເລັດ' },
+  AWAITING_PICKUP: { lo: 'ລໍຖ້າລູກຄ້າຮັບເຄື່ອງ' },
+  COMPLETED: { lo: 'Completed' },
+  CANCELLED: { lo: 'ຍົກເລີກ' },
 };
 
 /** The one step each status may advance to (TOR §7). */
@@ -188,26 +190,24 @@ export default function OrdersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">ລາຍການ Order</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            ສັ່ງເຮັດຄຳຕາມສັ່ງ — ເງິນມັດຈໍາເຂົ້າ Module Advace ຈົນກວ່າລູກຄ້າຮັບເຄື່ອງ (TOR §7)
-          </p>
-        </div>
-        <button className="btn-primary" onClick={() => { setShowAdd((v) => !v); setPaying(null); setAdvancing(null); }}>
-          ສ້າງ Order
-        </button>
-      </div>
+      <PageHead
+        title="ລາຍການ Order"
+        subtitle="ສັ່ງເຮັດຄຳຕາມສັ່ງ — ເງິນມັດຈໍາເຂົ້າ Module Advace ຈົນກວ່າລູກຄ້າຮັບເຄື່ອງ (TOR §7)"
+        actions={
+          <button className="btn-primary" onClick={() => { setShowAdd((v) => !v); setPaying(null); setAdvancing(null); }}>
+            ສ້າງ Order
+          </button>
+        }
+      />
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div id="orders-error" role="alert" className="notice status-danger">{error}</div>
       )}
 
       {showAdd && (
-        <div className="card p-5">
+        <div data-fade className="card p-5">
           <h2 className="card-title mb-4">ຟອມ Order</h2>
-          <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className="label" htmlFor="phone">ເບີໂທ (8 ໂຕ)</label>
               <input id="phone" className="input num" inputMode="numeric" maxLength={8}
@@ -256,9 +256,9 @@ export default function OrdersPage() {
             </div>
           </div>
 
-          <div className="mt-5 border-t border-slate-200 pt-5">
-            <h3 className="label">Receive — ເງິນຮັບຈາກລູກຄ້າ</h3>
-            <div className="grid gap-4 md:grid-cols-4">
+          <div className="mt-5 border-t border-line pt-5">
+            <h3 className="section-label mb-3">Receive — ເງິນຮັບຈາກລູກຄ້າ</h3>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <label className="label" htmlFor="method">Cash / Bank</label>
                 <select id="method" className="input" value={method}
@@ -291,15 +291,15 @@ export default function OrdersPage() {
                 <input id="amt" className="input num" inputMode="decimal" value={amount}
                   onChange={(e) => setAmount(e.target.value)} />
               </div>
-              <div className="md:col-span-2">
+              <div className="sm:col-span-2">
                 <label className="label" htmlFor="note">Note</label>
                 <input id="note" className="input" value={note} onChange={(e) => setNote(e.target.value)} />
               </div>
             </div>
           </div>
 
-          <div className="mt-4 flex gap-2">
-            <button className="btn-primary" disabled={!canSave || create.isPending}
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button className="btn-primary min-h-[54px]" aria-describedby={error ? 'orders-error' : undefined} disabled={!canSave || create.isPending}
               onClick={() => create.mutate()}>
               {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ສ້າງ Order'}
             </button>
@@ -309,7 +309,7 @@ export default function OrdersPage() {
       )}
 
       {advancing && (
-        <div className="card p-5">
+        <div data-fade className="card p-5">
           <h2 className="card-title mb-4">
             {advancing.code} → {STATUS[NEXT[advancing.status]!].lo}
           </h2>
@@ -336,7 +336,7 @@ export default function OrdersPage() {
                   onChange={(e) => setTransitionDate(e.target.value)} />
               </div>
             )}
-            <button className="btn-primary"
+            <button className="btn-primary" aria-describedby={error ? 'orders-error' : undefined}
               disabled={
                 advance.isPending ||
                 (NEXT[advancing.status] === 'SENT_TO_SMITH' && !supplierId)
@@ -347,7 +347,7 @@ export default function OrdersPage() {
             <button className="btn-secondary" onClick={() => setAdvancing(null)}>ຍົກເລີກ</button>
           </div>
           {NEXT[advancing.status] === 'COMPLETED' && Number(advancing.balanceAmount) > 0 && (
-            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <div className="notice status-warning mt-3">
               ຍັງມີຍອດຄົງເຫຼືອ {formatLak(advancing.balanceAmount)} LAK — ຕ້ອງຊຳຣະໃຫ້ຄົບກ່ອນ.
               ໃຊ້ປຸ່ມ &quot;ຊຳຣະເພີ່ມ&quot; ແລ້ວລະບົບຈະປິດ Order ໃຫ້ອັດຕະໂນມັດ.
             </div>
@@ -356,7 +356,7 @@ export default function OrdersPage() {
       )}
 
       {paying && (
-        <div className="card p-5">
+        <div data-fade className="card p-5">
           <h2 className="card-title mb-4">
             ຊຳຣະເພີ່ມ — {paying.code} (ຄົງເຫຼືອ {formatLak(paying.balanceAmount)} LAK)
           </h2>
@@ -394,7 +394,7 @@ export default function OrdersPage() {
                 placeholder={paying.balanceAmount} value={amount}
                 onChange={(e) => setAmount(e.target.value)} />
             </div>
-            <button className="btn-primary" disabled={!amount.trim() || pay.isPending}
+            <button className="btn-primary" aria-describedby={error ? 'orders-error' : undefined} disabled={!amount.trim() || pay.isPending}
               onClick={() => pay.mutate(paying)}>
               {pay.isPending ? 'ກຳລັງບັນທຶກ...' : 'ຮັບເງິນ'}
             </button>
@@ -403,12 +403,12 @@ export default function OrdersPage() {
         </div>
       )}
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ລາຍການ Order</h2>
-          <span className="text-xs text-slate-500">{orders.length} ລາຍການ</span>
+          <span className="num text-xs text-muted">{orders.length} ລາຍການ</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການ Order">
           <table className="table">
             <thead>
               <tr>
@@ -429,7 +429,7 @@ export default function OrdersPage() {
             </thead>
             <tbody>
               {orders.length === 0 && (
-                <tr><td colSpan={13} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີ Order</td></tr>
+                <tr><td colSpan={13} className="py-8 text-center text-muted">ຍັງບໍ່ມີ Order</td></tr>
               )}
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
@@ -441,16 +441,17 @@ export default function OrdersPage() {
                   <td>{row.goldItem.nameLo}</td>
                   <td className="num text-right">{formatWeight(row.weightG)}</td>
                   <td className="num text-right">{formatLak(row.totalAmount)}</td>
-                  <td className="num text-right text-emerald-700">{formatLak(row.receivedAmount)}</td>
+                  <td className="num text-right text-success">{formatLak(row.receivedAmount)}</td>
                   <td className="num text-right font-medium">{formatLak(row.balanceAmount)}</td>
-                  <td className="text-slate-500">{row.supplier?.nameLo ?? '—'}</td>
+                  <td className="text-muted">{row.supplier?.nameLo ?? '—'}</td>
                   <td>
-                    <span className={`badge ${STATUS[row.status].cls}`}>{STATUS[row.status].lo}</span>
+                    <span className={statusClass(row.status)}>{STATUS[row.status].lo}</span>
                   </td>
                   <td className="text-right">
-                    <div className="flex justify-end gap-3">
+                    <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                       {NEXT[row.status] && (
-                        <button className="text-sm text-gold-700 hover:underline"
+                        <button className="btn-ghost"
+                          aria-label={`${STATUS[NEXT[row.status]!].lo} ${row.code}`}
                           onClick={() => {
                             setAdvancing(row); setPaying(null); setShowAdd(false);
                             setSupplierId(''); setTransitionDate(today());
@@ -459,7 +460,8 @@ export default function OrdersPage() {
                         </button>
                       )}
                       {Number(row.balanceAmount) > 0 && row.status !== 'CANCELLED' && (
-                        <button className="text-sm text-emerald-700 hover:underline"
+                        <button className="btn-ghost text-success"
+                          aria-label={`ຊຳຣະເພີ່ມ ${row.code}`}
                           onClick={() => {
                             setPaying(row); setAdvancing(null); setShowAdd(false); setAmount('');
                           }}>
@@ -467,7 +469,7 @@ export default function OrdersPage() {
                         </button>
                       )}
                       {!NEXT[row.status] && Number(row.balanceAmount) === 0 && (
-                        <span className="text-xs text-slate-400">—</span>
+                        <span className="text-xs text-muted">—</span>
                       )}
                     </div>
                   </td>
@@ -477,7 +479,7 @@ export default function OrdersPage() {
           </table>
         </div>
         <Pagination {...pager} />
-        <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+        <p className="border-t border-line px-5 py-3 text-xs text-muted">
           ★ ເງິນມັດຈໍາບັນທຶກເປັນ +Advance · ເມື່ອຢືນຢັນລູກຄ້າຮັບເຄື່ອງ ຈະຕັດ −Advance.
           ເມື່ອຍອດຄົງເຫຼືອ = 0 ລະບົບປ່ຽນສະຖານະເປັນ Completed ອັດຕະໂນມັດ.
         </p>

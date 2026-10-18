@@ -5,6 +5,7 @@ import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
 
 interface BankBalance {
   bankAccountId: string; bankCode: string; bankNameLo: string;
@@ -89,25 +90,23 @@ export default function FcBankPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Module Bank</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ຍອດ Bank ຕົວຈິງ ແຍກຕາມທະນາຄານ ແລະ ສະກຸນເງິນ · ຍອດເງິນຂາດດຸນ (TOR §3.7)
-        </p>
-      </div>
+      <PageHead
+        title="Module Bank"
+        subtitle="ຍອດ Bank ຕົວຈິງ ແຍກຕາມທະນາຄານ ແລະ ສະກຸນເງິນ · ຍອດເງິນຂາດດຸນ (TOR §3.7)"
+      />
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div id="bank-error" role="alert" className="notice status-danger">{error}</div>
       )}
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ຍອດ Bank (To Day)</h2>
           {!canSetNet && (
-            <span className="text-xs text-slate-500">ເງິນ Bank ສຸດທິ ແກ້ໄຂໄດ້ສະເພາະ Admin & Manager</span>
+            <span className="text-xs text-muted">ເງິນ Bank ສຸດທິ ແກ້ໄຂໄດ້ສະເພາະ Admin & Manager</span>
           )}
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ຍອດ Bank (To Day)">
           <table className="table">
             <thead>
               <tr>
@@ -128,25 +127,28 @@ export default function FcBankPage() {
                   <tr key={key}>
                     <td className="font-medium">{row.bankNameLo}</td>
                     <td>{row.currency}</td>
-                    <td className="num text-right text-emerald-700">{formatMoney(row.inflow)}</td>
-                    <td className="num text-right text-red-600">{formatMoney(row.outflow)}</td>
+                    <td className="num text-right text-success">{formatMoney(row.inflow)}</td>
+                    <td className="num text-right text-danger">{formatMoney(row.outflow)}</td>
                     <td className="num text-right font-semibold">{formatMoney(row.actual)}</td>
                     <td className="num text-right">
                       {editingNet === key ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <input className="input num w-32 py-1 text-right text-xs" inputMode="decimal"
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <input className="input num w-36 text-right" inputMode="decimal"
+                            aria-label={`ເງິນ Bank ສຸດທິ ${row.bankNameLo} ${row.currency}`}
+                            aria-describedby={error ? 'bank-error' : undefined}
                             value={netAmount} onChange={(e) => setNetAmount(e.target.value)} autoFocus />
-                          <button className="text-xs text-gold-700 hover:underline"
+                          <button className="btn-primary"
                             onClick={() => setNet.mutate(row)} disabled={setNet.isPending}>
                             ບັນທຶກ
                           </button>
-                          <button className="text-xs text-slate-500 hover:underline"
+                          <button className="btn-secondary"
                             onClick={() => setEditingNet(null)}>
                             ຍົກເລີກ
                           </button>
                         </div>
                       ) : canSetNet ? (
-                        <button className="text-gold-700 hover:underline"
+                        <button className="btn-ghost"
+                          aria-label={`${row.net === null ? 'ຕັ້ງຄ່າ' : formatMoney(row.net)} ${row.bankNameLo} ${row.currency}`}
                           onClick={() => { setEditingNet(key); setNetAmount(row.net ?? ''); }}>
                           {row.net === null ? 'ຕັ້ງຄ່າ' : formatMoney(row.net)}
                         </button>
@@ -154,7 +156,7 @@ export default function FcBankPage() {
                         formatMoney(row.net)
                       )}
                     </td>
-                    <td className={`num text-right ${variance === null ? '' : variance === 0 ? 'text-emerald-700' : 'font-semibold text-red-600'}`}>
+                    <td className={`num text-right ${variance === null ? '' : variance === 0 ? 'text-success' : 'font-semibold text-danger'}`}>
                       {row.variance === null ? '—' : formatMoney(row.variance)}
                     </td>
                   </tr>
@@ -165,9 +167,9 @@ export default function FcBankPage() {
         </div>
       </div>
 
-      <div className="card p-5">
+      <div data-fade className="card p-5">
         <h2 className="card-title mb-4">ບັນທຶກທຸລະກຳ Bank</h2>
-        <div className="grid gap-4 md:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <div>
             <label className="label" htmlFor="bank">ທະນາຄານ</label>
             <select id="bank" className="input" value={bankAccountId}
@@ -197,7 +199,7 @@ export default function FcBankPage() {
           </div>
           <div>
             <label className="label" htmlFor="amt">ຈຳນວນເງິນ</label>
-            <input id="amt" className="input num" inputMode="decimal" value={amount}
+            <input id="amt" className="input num" inputMode="decimal" aria-describedby={error ? 'bank-error' : undefined} value={amount}
               onChange={(e) => setAmount(e.target.value)} />
           </div>
           <div>
@@ -206,16 +208,16 @@ export default function FcBankPage() {
           </div>
         </div>
         <div className="mt-4">
-          <button className="btn-primary" disabled={!bankAccountId || !amount.trim() || create.isPending}
+          <button className="btn-primary min-h-[54px] w-full sm:w-auto sm:min-w-[240px]" disabled={!bankAccountId || !amount.trim() || create.isPending}
             onClick={() => create.mutate()}>
             {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
           </button>
         </div>
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ປະຫວັດ Bank</h2></div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Bank">
           <table className="table">
             <thead>
               <tr>
@@ -229,16 +231,16 @@ export default function FcBankPage() {
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={6} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີລາຍການ</td></tr>
+                <tr><td colSpan={6} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
               )}
               {rows.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDateTime(row.createdAt)}</td>
                   <td>{row.bankAccount.nameLo}</td>
-                  <td className="text-slate-500">{row.type}</td>
+                  <td className="text-muted">{row.type}</td>
                   <td>{row.currency}</td>
                   <td className="num text-right font-medium">{formatMoney(row.amount)}</td>
-                  <td className="text-slate-500">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.note ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
