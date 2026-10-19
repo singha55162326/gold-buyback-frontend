@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import { StatCard } from '@/components/stat-card';
 
@@ -41,11 +42,11 @@ export default function WalletPage() {
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: balances = [] } = useQuery({
+  const { data: balances = [], isError: balancesFailed, error: balancesError, refetch: refetchBalances } = useQuery({
     queryKey: ['cash', 'balances'],
     queryFn: () => api.get<Balance[]>('/cash/balances'),
   });
-  const { data: requests = [] } = useQuery({
+  const { data: requests = [], isError: requestsFailed, error: requestsError, refetch: refetchRequests } = useQuery({
     queryKey: ['cash', 'requests'],
     queryFn: () => api.get<Request[]>('/cash/requests'),
   });
@@ -101,6 +102,7 @@ export default function WalletPage() {
         title="ກະເປົ໋າເງິນສົດ (To Day)"
         subtitle="ເບີກເງິນ (+) / ມອບເງິນ (−) — ເງິນເຄື່ອນໄຫວຕອນກົດ Completed ເທົ່ານັ້ນ (TOR §4.1)"
       />
+      {balancesFailed && <QueryErrorNotice error={balancesError} onRetry={() => void refetchBalances()} />}
 
       <div className="stat-grid">
         {balances.map((b) => (
@@ -173,9 +175,7 @@ export default function WalletPage() {
               </tr>
             </thead>
             <tbody>
-              {requests.length === 0 && (
-                <tr><td colSpan={8} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow colSpan={8} isError={requestsFailed} error={requestsError} isEmpty={requests.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRequests()} />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDateTime(row.createdAt)}</td>

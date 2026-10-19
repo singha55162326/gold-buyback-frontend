@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 
 interface GoldType { id: string; code: string; nameLo: string }
@@ -81,19 +82,19 @@ export default function BuybackPage() {
   const [viewing, setViewing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: goldTypes = [] } = useQuery({
+  const { data: goldTypes = [], isError: goldTypesFailed, error: goldTypesError, refetch: refetchGoldTypes } = useQuery({
     queryKey: ['catalog', 'gold-types'],
     queryFn: () => api.get<GoldType[]>('/catalog/gold-types?stockOnly=true'),
   });
-  const { data: goldItems = [] } = useQuery({
+  const { data: goldItems = [], isError: goldItemsFailed, error: goldItemsError, refetch: refetchGoldItems } = useQuery({
     queryKey: ['catalog', 'gold-items'],
     queryFn: () => api.get<GoldItem[]>('/catalog/gold-items'),
   });
-  const { data: banks = [] } = useQuery({
+  const { data: banks = [], isError: banksFailed, error: banksError, refetch: refetchBanks } = useQuery({
     queryKey: ['catalog', 'bank-accounts'],
     queryFn: () => api.get<BankAccount[]>('/catalog/bank-accounts'),
   });
-  const { data: rows = [] } = useQuery({
+  const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['buyback'],
     queryFn: () => api.get<BuybackRow[]>('/buyback'),
   });
@@ -192,6 +193,9 @@ export default function BuybackPage() {
         title="Buyback — ການຊື້ຄຳຄືນ"
         subtitle="ຄຳຮ້ານ KPV ແລະ ຄຳຮ້ານອື່ນ (ຄຳຕົ້ມ) — ສ້າງລາຍການສົ່ງໃຫ້ payment ອະນຸມັດ (TOR §5.1)"
       />
+      {goldTypesFailed && <QueryErrorNotice error={goldTypesError} onRetry={() => void refetchGoldTypes()} />}
+      {goldItemsFailed && <QueryErrorNotice error={goldItemsError} onRetry={() => void refetchGoldItems()} />}
+      {banksFailed && <QueryErrorNotice error={banksError} onRetry={() => void refetchBanks()} />}
 
       <div data-fade className="card p-5">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -350,9 +354,7 @@ export default function BuybackPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={12} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow colSpan={12} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
               {rows.map((row) => (
                 <Fragment key={row.id}>
                 <tr>

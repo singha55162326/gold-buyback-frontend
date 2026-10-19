@@ -7,6 +7,7 @@ import { dec } from '@kpv/domain';
 import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 
 interface GoldItem { id: string; nameLo: string }
@@ -59,19 +60,19 @@ export default function CreditPage() {
   const [instalment, setInstalment] = useState<Credit | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: goldItems = [] } = useQuery({
+  const { data: goldItems = [], isError: goldItemsFailed, error: goldItemsError, refetch: refetchGoldItems } = useQuery({
     queryKey: ['catalog', 'gold-items'],
     queryFn: () => api.get<GoldItem[]>('/catalog/gold-items'),
   });
-  const { data: cabinets = [] } = useQuery({
+  const { data: cabinets = [], isError: cabinetsFailed, error: cabinetsError, refetch: refetchCabinets } = useQuery({
     queryKey: ['catalog', 'cabinets'],
     queryFn: () => api.get<Cabinet[]>('/catalog/cabinets'),
   });
-  const { data: banks = [] } = useQuery({
+  const { data: banks = [], isError: banksFailed, error: banksError, refetch: refetchBanks } = useQuery({
     queryKey: ['catalog', 'bank-accounts'],
     queryFn: () => api.get<Bank[]>('/catalog/bank-accounts'),
   });
-  const { data: credits = [] } = useQuery({
+  const { data: credits = [], isError: creditsFailed, error: creditsError, refetch: refetchCredits } = useQuery({
     queryKey: ['credit'],
     queryFn: () => api.get<Credit[]>('/credit'),
   });
@@ -149,6 +150,9 @@ export default function CreditPage() {
         title="ລາຍການສິນເຊື່ອ"
         subtitle="ຂາຍຄຳແບບວາງດາວ — ຍອດຕິດໜີ້ບັນທຶກເປັນ AR (Cash) ຫຼັງ payment ອະນຸມັດ (TOR §5.3)"
       />
+      {goldItemsFailed && <QueryErrorNotice error={goldItemsError} onRetry={() => void refetchGoldItems()} />}
+      {cabinetsFailed && <QueryErrorNotice error={cabinetsError} onRetry={() => void refetchCabinets()} />}
+      {banksFailed && <QueryErrorNotice error={banksError} onRetry={() => void refetchBanks()} />}
 
       {error && (
         <div id="credit-error" role="alert" className="notice status-danger">{error}</div>
@@ -334,9 +338,7 @@ export default function CreditPage() {
               </tr>
             </thead>
             <tbody>
-              {credits.length === 0 && (
-                <tr><td colSpan={12} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow colSpan={12} isError={creditsFailed} error={creditsError} isEmpty={credits.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchCredits()} />
               {credits.map((row) => (
                 <tr key={row.id}>
                   <td className="font-mono text-xs">{row.code}</td>

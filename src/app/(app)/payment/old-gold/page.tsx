@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 
 interface GoldType { id: string; nameLo: string }
@@ -39,15 +40,15 @@ export default function OldGoldPage() {
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: goldTypes = [] } = useQuery({
+  const { data: goldTypes = [], isError: goldTypesFailed, error: goldTypesError, refetch: refetchGoldTypes } = useQuery({
     queryKey: ['catalog', 'gold-types'],
     queryFn: () => api.get<GoldType[]>('/catalog/gold-types?stockOnly=true'),
   });
-  const { data: summary = [] } = useQuery({
+  const { data: summary = [], isError: summaryFailed, error: summaryError, refetch: refetchSummary } = useQuery({
     queryKey: ['stock', 'old-gold-summary'],
     queryFn: () => api.get<SummaryRow[]>('/stock/old-gold-summary'),
   });
-  const { data: handovers = [] } = useQuery({
+  const { data: handovers = [], isError: handoversFailed, error: handoversError, refetch: refetchHandovers } = useQuery({
     queryKey: ['stock', 'handovers'],
     queryFn: () => api.get<Handover[]>('/stock/handovers'),
   });
@@ -76,6 +77,7 @@ export default function OldGoldPage() {
         subtitle="ຄຳເກົ່າທີ່ຮັບເຂົ້າໃນມື້ ແລະ ການມອບຄຳລະຫວ່າງມື້ໃຫ້ສາງ (TOR §4.2)"
         actions={<button className="btn-secondary" onClick={() => window.print()}>ພິມຕາຕະລາງ</button>}
       />
+      {goldTypesFailed && <QueryErrorNotice error={goldTypesError} onRetry={() => void refetchGoldTypes()} />}
 
       {error && (
         <div id="oldgold-error" role="alert" className="notice status-danger">{error}</div>
@@ -97,9 +99,7 @@ export default function OldGoldPage() {
               </tr>
             </thead>
             <tbody>
-              {summary.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-muted">ຍັງບໍ່ມີຂໍ້ມູນໃນມື້ນີ້</td></tr>
-              )}
+              <TableStateRow colSpan={7} isError={summaryFailed} error={summaryError} isEmpty={summary.length === 0} emptyText="ຍັງບໍ່ມີຂໍ້ມູນໃນມື້ນີ້" onRetry={() => void refetchSummary()} />
               {summary.map((row) => (
                 <tr key={row.goldTypeId}>
                   <td className="font-medium">{row.goldTypeNameLo}</td>
@@ -175,9 +175,7 @@ export default function OldGoldPage() {
               </tr>
             </thead>
             <tbody>
-              {handovers.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow colSpan={7} isError={handoversFailed} error={handoversError} isEmpty={handovers.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchHandovers()} />
               {handovers.map((row) => (
                 <tr key={row.id}>
                   <td className="font-mono text-xs">{row.code}</td>

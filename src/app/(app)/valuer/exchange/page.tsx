@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 
 interface GoldType { id: string; nameLo: string }
@@ -68,23 +69,23 @@ export default function ExchangePage() {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: goldTypes = [] } = useQuery({
+  const { data: goldTypes = [], isError: goldTypesFailed, error: goldTypesError, refetch: refetchGoldTypes } = useQuery({
     queryKey: ['catalog', 'gold-types'],
     queryFn: () => api.get<GoldType[]>('/catalog/gold-types?stockOnly=true'),
   });
-  const { data: goldItems = [] } = useQuery({
+  const { data: goldItems = [], isError: goldItemsFailed, error: goldItemsError, refetch: refetchGoldItems } = useQuery({
     queryKey: ['catalog', 'gold-items'],
     queryFn: () => api.get<GoldItem[]>('/catalog/gold-items'),
   });
-  const { data: skus = [] } = useQuery({
+  const { data: skus = [], isError: skusFailed, error: skusError, refetch: refetchSkus } = useQuery({
     queryKey: ['skus'],
     queryFn: () => api.get<Sku[]>('/skus'),
   });
-  const { data: cabinets = [] } = useQuery({
+  const { data: cabinets = [], isError: cabinetsFailed, error: cabinetsError, refetch: refetchCabinets } = useQuery({
     queryKey: ['catalog', 'cabinets'],
     queryFn: () => api.get<Cabinet[]>('/catalog/cabinets'),
   });
-  const { data: rows = [] } = useQuery({
+  const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['exchange'],
     queryFn: () => api.get<ExchangeRow[]>('/exchange'),
   });
@@ -173,6 +174,10 @@ export default function ExchangePage() {
         title="ລາຍການປ່ຽນເປັນເງິນ"
         subtitle="Gold Exchange & Trade-in — ນ້ຳໜັກຕ້ອງສົມດຸນພໍດີຈຶ່ງບັນທຶກໄດ້ (TOR §5.2)"
       />
+      {goldTypesFailed && <QueryErrorNotice error={goldTypesError} onRetry={() => void refetchGoldTypes()} />}
+      {goldItemsFailed && <QueryErrorNotice error={goldItemsError} onRetry={() => void refetchGoldItems()} />}
+      {skusFailed && <QueryErrorNotice error={skusError} onRetry={() => void refetchSkus()} />}
+      {cabinetsFailed && <QueryErrorNotice error={cabinetsError} onRetry={() => void refetchCabinets()} />}
 
       {error && (
         <div id="exchange-error" role="alert" className="notice status-danger">{error}</div>
@@ -401,9 +406,7 @@ export default function ExchangePage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={10} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow colSpan={10} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
               {rows.map((row) => {
                 const oldG = row.oldLines.reduce((s, l) => s + Number(l.weightG) * l.quantity, 0);
                 const newG = row.newLines.reduce((s, l) => s + Number(l.weightG) * l.quantity, 0);

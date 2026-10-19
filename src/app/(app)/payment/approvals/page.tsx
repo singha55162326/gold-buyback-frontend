@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice } from '@/components/query-state';
 
 interface PendingBuyback {
   id: string; code: string; weightG: string; quantity: number;
@@ -132,13 +133,17 @@ export default function PaymentApprovalsPage() {
         subtitle="Buyback, ປ່ຽນເປັນເງິນ ແລະ ສິນເຊື່ອ ທີ່ຜູ້ປະເມີນສ້າງໄວ້ (TOR §4.2)"
       />
 
+      {buybacks.isError && <QueryErrorNotice error={buybacks.error} onRetry={() => void buybacks.refetch()} />}
+      {exchanges.isError && <QueryErrorNotice error={exchanges.error} onRetry={() => void exchanges.refetch()} />}
+      {credits.isError && <QueryErrorNotice error={credits.error} onRetry={() => void credits.refetch()} />}
+
       {error && (
         <div id="approvals-error" role="alert" className="notice status-danger">
           {error}
         </div>
       )}
 
-      {total === 0 && (
+      {total === 0 && !buybacks.isError && !exchanges.isError && !credits.isError && (
         <div data-fade className="card p-10 text-center text-muted">ບໍ່ມີລາຍການລໍຖ້າອະນຸມັດ</div>
       )}
 
