@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dec, GRAMS_PER_BAHT, trimTrailingZeros } from '@kpv/domain';
 import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { formatWeight } from '@/lib/format';
 
 interface GoldItem {
@@ -46,12 +47,12 @@ export default function SkusPage() {
   const [weightG, setWeightG] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: goldItems = [] } = useQuery({
+  const { data: goldItems = [], isError: goldItemsFailed, error: goldItemsError, refetch: refetchGoldItems } = useQuery({
     queryKey: ['catalog', 'gold-items'],
     queryFn: () => api.get<GoldItem[]>('/catalog/gold-items'),
   });
 
-  const { data: skus = [] } = useQuery({
+  const { data: skus = [], isLoading: skusLoading, isError: skusFailed, error: skusError, refetch: refetchSkus } = useQuery({
     queryKey: ['skus'],
     queryFn: () => api.get<Sku[]>('/skus'),
   });
@@ -94,6 +95,10 @@ export default function SkusPage() {
         title="ຈັດການ SKU ນ້ຳໜັກຂອງຄຳ"
         subtitle="ປ້ອນຊື່ສິນຄ້າ ແລະ ນ້ຳໜັກ (g) — ລະບົບຄິດໄລ່ບາດຄຳ ແລະ ຕັ້ງຊື່ SKU ອັດຕະໂນມັດ (TOR §3.6)"
       />
+
+      {goldItemsFailed && (
+        <QueryErrorNotice error={goldItemsError} onRetry={() => void refetchGoldItems()} />
+      )}
 
       <div data-fade className="card p-5">
         <div className="grid gap-4 md:grid-cols-3">
@@ -209,13 +214,16 @@ export default function SkusPage() {
               </tr>
             </thead>
             <tbody>
-              {skus.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-muted">
-                    ຍັງບໍ່ມີ SKU
-                  </td>
-                </tr>
-              )}
+              <TableStateRow
+                colSpan={5}
+                isLoading={skusLoading}
+                isError={skusFailed}
+                error={skusError}
+                isEmpty={skus.length === 0}
+                emptyText="ຍັງບໍ່ມີ SKU"
+                onRetry={() => void refetchSkus()}
+                dense
+              />
               {pager.pageItems.map((sku) => (
                 <tr key={sku.id}>
                   <td className="font-medium">{sku.fullSkuName}</td>

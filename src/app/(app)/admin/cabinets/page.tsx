@@ -6,6 +6,7 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { formatWeight } from '@/lib/format';
 
 interface Cabinet {
@@ -34,12 +35,12 @@ export default function CabinetsPage() {
   const [viewing, setViewing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: cabinets = [] } = useQuery({
+  const { data: cabinets = [], isError: cabinetsFailed, error: cabinetsError, refetch: refetchCabinets } = useQuery({
     queryKey: ['catalog', 'cabinets'],
     queryFn: () => api.get<Cabinet[]>('/catalog/cabinets'),
   });
 
-  const { data: contents } = useQuery({
+  const { data: contents, isError: contentsFailed, error: contentsError, refetch: refetchContents } = useQuery({
     queryKey: ['catalog', 'cabinets', viewing],
     queryFn: () => api.get<CabinetContents>(`/catalog/cabinets/${viewing}`),
     enabled: Boolean(viewing),
@@ -106,6 +107,14 @@ export default function CabinetsPage() {
               </tr>
             </thead>
             <tbody>
+              <TableStateRow
+                colSpan={3}
+                isError={cabinetsFailed}
+                error={cabinetsError}
+                isEmpty={false}
+                emptyText=""
+                onRetry={() => void refetchCabinets()}
+              />
               {pager.pageItems.map((cab) => (
                 <tr key={cab.id}>
                   <td className="font-mono text-xs text-muted">{cab.code}</td>
@@ -123,6 +132,10 @@ export default function CabinetsPage() {
         </div>
         <Pagination {...pager} />
       </div>
+
+      {viewing && contentsFailed && (
+        <QueryErrorNotice error={contentsError} onRetry={() => void refetchContents()} />
+      )}
 
       {viewing && contents && (
         <div data-fade className="card">
@@ -142,13 +155,12 @@ export default function CabinetsPage() {
                 </tr>
               </thead>
               <tbody>
-                {contents.lines.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="py-6 text-center text-muted">
-                      ຍັງບໍ່ມີຄຳໃນຕູ້ນີ້
-                    </td>
-                  </tr>
-                )}
+                <TableStateRow
+                  colSpan={3}
+                  isEmpty={contents.lines.length === 0}
+                  emptyText="ຍັງບໍ່ມີຄຳໃນຕູ້ນີ້"
+                  dense
+                />
                 {contents.lines.map((line) => (
                   <tr key={line.id}>
                     <td>{line.goldSku.fullSkuName}</td>

@@ -5,6 +5,7 @@ import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
+import { TableStateRow } from '@/components/query-state';
 import { formatLak, formatWeight, formatDate, formatDateTime } from '@/lib/format';
 
 interface PriceLine {
@@ -46,16 +47,19 @@ export default function ProductsPage() {
   const [showSteps, setShowSteps] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: current } = useQuery({
+  const { data: current, isError: currentFailedRaw, error: currentError, refetch: refetchCurrent } = useQuery({
     queryKey: ['pricing', 'current'],
     queryFn: () => api.get<CurrentBoard>('/pricing/current'),
     retry: false,
   });
 
-  const { data: history = [] } = useQuery({
+  const { data: history = [], isLoading: historyLoading, isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['pricing', 'history'],
     queryFn: () => api.get<HistoryRow[]>('/pricing/history?limit=30'),
   });
+
+  // 404 on /pricing/current means "no price set yet" (empty text), not a failure.
+  const currentFailed = currentFailedRaw && !(currentError instanceof ApiError && currentError.status === 404);
 
   const save = useMutation({
     mutationFn: (price1Baht: string) => api.post('/pricing/set', { price1Baht }),
@@ -153,13 +157,14 @@ export default function ProductsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={showSteps ? 9 : 5} className="py-8 text-center text-muted">
-                    ຍັງບໍ່ມີການຕັ້ງລາຄາ — ປ້ອນລາຄາຂາຍ 1 ບາດ ດ້ານເທິງ ແລ້ວກົດ Set Pricing
-                  </td>
-                </tr>
-              )}
+              <TableStateRow
+                colSpan={showSteps ? 9 : 5}
+                isError={currentFailed}
+                error={currentError}
+                isEmpty={rows.length === 0}
+                emptyText="ຍັງບໍ່ມີການຕັ້ງລາຄາ — ປ້ອນລາຄາຂາຍ 1 ບາດ ດ້ານເທິງ ແລ້ວກົດ Set Pricing"
+                onRetry={() => void refetchCurrent()}
+              />
               {rows.map((line) => (
                 <tr key={line.tierCode}>
                   <td className="font-medium">{line.labelLo}</td>
@@ -211,13 +216,16 @@ export default function ProductsPage() {
               </tr>
             </thead>
             <tbody>
-              {history.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="py-6 text-center text-muted">
-                    ຍັງບໍ່ມີປະຫວັດ
-                  </td>
-                </tr>
-              )}
+              <TableStateRow
+                colSpan={4}
+                isLoading={historyLoading}
+                isError={historyFailed}
+                error={historyError}
+                isEmpty={history.length === 0}
+                emptyText="ຍັງບໍ່ມີປະຫວັດ"
+                dense
+                onRetry={() => void refetchHistory()}
+              />
               {history.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDateTime(row.date)}</td>

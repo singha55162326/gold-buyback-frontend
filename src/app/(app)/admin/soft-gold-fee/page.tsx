@@ -6,6 +6,7 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { formatLak, formatDateTime } from '@/lib/format';
 import { AuditView } from '@/components/audit-view';
 
@@ -26,16 +27,19 @@ export default function SoftGoldFeePage() {
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: current } = useQuery({
+  const { data: current, isError: currentFailedRaw, error: currentError, refetch: refetchCurrent } = useQuery({
     queryKey: ['fees', 'soft-gold'],
     queryFn: () => api.get<SoftGoldFee>('/fees/soft-gold'),
     retry: false,
   });
 
-  const { data: history = [] } = useQuery({
+  const { data: history = [], isLoading: historyLoading, isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['fees', 'soft-gold', 'history'],
     queryFn: () => api.get<HistoryRow[]>('/fees/soft-gold/history?limit=30'),
   });
+
+  // 404 means "fee not set yet", not a failure.
+  const currentFailed = currentFailedRaw && !(currentError instanceof ApiError && currentError.status === 404);
 
   const save = useMutation({
     mutationFn: () => api.post('/fees/soft-gold', { value: value.replace(/,/g, '').trim() }),
@@ -69,6 +73,11 @@ export default function SoftGoldFeePage() {
           <div className="num mt-1 text-2xl font-bold text-gold">
             {current ? `${formatLak(current.value)} LAK` : '—'}
           </div>
+          {currentFailed && (
+            <div className="mt-3">
+              <QueryErrorNotice error={currentError} onRetry={() => void refetchCurrent()} />
+            </div>
+          )}
         </div>
 
         <div className="flex flex-wrap items-end gap-4">
@@ -117,13 +126,16 @@ export default function SoftGoldFeePage() {
               </tr>
             </thead>
             <tbody>
-              {history.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="py-6 text-center text-muted">
-                    ຍັງບໍ່ມີປະຫວັດ
-                  </td>
-                </tr>
-              )}
+              <TableStateRow
+                colSpan={3}
+                isLoading={historyLoading}
+                isError={historyFailed}
+                error={historyError}
+                isEmpty={history.length === 0}
+                emptyText="ຍັງບໍ່ມີປະຫວັດ"
+                onRetry={() => void refetchHistory()}
+                dense
+              />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDateTime(row.effectiveAt)}</td>

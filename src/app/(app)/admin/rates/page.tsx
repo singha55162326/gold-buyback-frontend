@@ -15,6 +15,7 @@ import {
   YAxis,
 } from 'recharts';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { useChartTheme } from '@/lib/chart-theme';
 import { api, ApiError } from '@/lib/api';
 import { formatRate, formatDate } from '@/lib/format';
@@ -69,21 +70,24 @@ export default function RatesPage() {
   });
   const [error, setError] = useState<string | null>(null);
 
-  const { data: current } = useQuery({
+  const { data: current, isError: currentFailedRaw, error: currentError, refetch: refetchCurrent } = useQuery({
     queryKey: ['rates', 'current'],
     queryFn: () => api.get<Rates>('/rates/current'),
     retry: false,
   });
 
-  const { data: history = [] } = useQuery({
+  const { data: history = [], isLoading: historyLoading, isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['rates', 'history'],
     queryFn: () => api.get<HistoryRow[]>('/rates/history?limit=30'),
   });
 
-  const { data: series = [] } = useQuery({
+  const { data: series = [], isError: seriesFailed, error: seriesError, refetch: refetchSeries } = useQuery({
     queryKey: ['rates', 'series'],
     queryFn: () => api.get<SeriesPoint[]>('/rates/series?months=12'),
   });
+
+  // 404 on /rates/current means "no rates set yet", not a failure.
+  const currentFailed = currentFailedRaw && !(currentError instanceof ApiError && currentError.status === 404);
 
   const save = useMutation({
     mutationFn: () =>
@@ -137,6 +141,8 @@ export default function RatesPage() {
         subtitle="ອັດຕາແລກປ່ຽນ Sell ແລະ Buyback ສຳລັບ THB ແລະ USD (TOR §3.3)"
       />
 
+      {currentFailed && <QueryErrorNotice error={currentError} onRetry={() => void refetchCurrent()} />}
+
       <div className="stat-grid">
         <StatCard label="THB Sell" value={current?.thbSellRate ? formatRate(current.thbSellRate) : '—'} sub="THB/LAK" />
         <StatCard label="USD Sell" value={current?.usdSellRate ? formatRate(current.usdSellRate) : '—'} sub="USD/LAK" />
@@ -187,6 +193,8 @@ export default function RatesPage() {
         </div>
       </div>
 
+      {seriesFailed && <QueryErrorNotice error={seriesError} onRetry={() => void refetchSeries()} />}
+
       <div className="grid gap-6 lg:grid-cols-2">
         <RateChart
           titleLo="ປະຫວັດອັດຕາ THB/LAK"
@@ -224,13 +232,16 @@ export default function RatesPage() {
               </tr>
             </thead>
             <tbody>
-              {history.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-6 text-center text-muted">
-                    ຍັງບໍ່ມີປະຫວັດ
-                  </td>
-                </tr>
-              )}
+              <TableStateRow
+                colSpan={6}
+                isLoading={historyLoading}
+                isError={historyFailed}
+                error={historyError}
+                isEmpty={history.length === 0}
+                emptyText="ຍັງບໍ່ມີປະຫວັດ"
+                onRetry={() => void refetchHistory()}
+                dense
+              />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDate(row.effectiveAt)}</td>

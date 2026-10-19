@@ -5,6 +5,7 @@ import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
+import { TableStateRow } from '@/components/query-state';
 import { formatLak, formatWeight } from '@/lib/format';
 import { AuditView } from '@/components/audit-view';
 
@@ -30,7 +31,7 @@ export default function DeductionsPage() {
   const [value, setValue] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: rows = [] } = useQuery({
+  const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['fees', 'deductions'],
     queryFn: () => api.get<Deduction[]>('/fees/buyback-deductions'),
   });
@@ -86,6 +87,14 @@ export default function DeductionsPage() {
               </tr>
             </thead>
             <tbody>
+              <TableStateRow
+                colSpan={5}
+                isError={rowsFailed}
+                error={rowsError}
+                isEmpty={false}
+                emptyText=""
+                onRetry={() => void refetchRows()}
+              />
               {rows.map((row) => (
                 <tr key={row.id}>
                   <td className="font-medium">{row.tier.labelLo}</td>

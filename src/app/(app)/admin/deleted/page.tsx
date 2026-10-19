@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Pagination, usePagination } from '@/components/pagination';
 import { api } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
+import { TableStateRow } from '@/components/query-state';
 import { formatDateTime } from '@/lib/format';
 
 interface DeletedRow {
@@ -13,7 +14,7 @@ interface DeletedRow {
 
 /** TOR §3.7 — Deleted List. */
 export default function DeletedListPage() {
-  const { data = [], isLoading } = useQuery({
+  const { data = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['admin', 'deleted'],
     queryFn: () => api.get<DeletedRow[]>('/admin/deleted'),
   });
@@ -44,10 +45,15 @@ export default function DeletedListPage() {
               </tr>
             </thead>
             <tbody>
-              {isLoading && <tr><td colSpan={4} className="py-6 text-center text-muted">ກຳລັງໂຫຼດ...</td></tr>}
-              {!isLoading && data.length === 0 && (
-                <tr><td colSpan={4} className="py-8 text-center text-muted">ບໍ່ມີລາຍການທີ່ຖືກລຶບ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={4}
+                isLoading={isLoading}
+                isError={isError}
+                error={error}
+                isEmpty={data.length === 0}
+                emptyText="ບໍ່ມີລາຍການທີ່ຖືກລຶບ"
+                onRetry={() => void refetch()}
+              />
               {pager.pageItems.map((row) => (
                 <tr key={`${row.entity}-${row.id}`}>
                   <td><span className="badge recessed text-fg">{row.labelLo}</span></td>

@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { TableStateRow } from '@/components/query-state';
 import type { Role } from '@/lib/nav';
 
 interface User {
@@ -48,7 +49,7 @@ export default function UsersPage() {
   const [phone, setPhone] = useState('');
   const [whatsappNumber, setWhatsappNumber] = useState('');
 
-  const { data: users = [] } = useQuery({
+  const { data: users = [], isError: usersFailed, error: usersError, refetch: refetchUsers } = useQuery({
     queryKey: ['admin', 'users'],
     queryFn: () => api.get<User[]>('/admin/users'),
   });
@@ -185,6 +186,14 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody>
+              <TableStateRow
+                colSpan={8}
+                isError={usersFailed}
+                error={usersError}
+                isEmpty={false}
+                emptyText=""
+                onRetry={() => void refetchUsers()}
+              />
               {pager.pageItems.map((user) => (
                 <tr key={user.id}>
                   <td className="font-mono text-xs">{user.username}</td>

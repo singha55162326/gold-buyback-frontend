@@ -6,6 +6,7 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
+import { TableStateRow } from '@/components/query-state';
 
 interface GoldType {
   id: string;
@@ -46,7 +47,7 @@ function GoldTypePanel() {
   const [isStockType, setIsStockType] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: rows = [] } = useQuery({
+  const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['catalog', 'gold-types'],
     queryFn: () => api.get<GoldType[]>('/catalog/gold-types'),
   });
@@ -111,6 +112,14 @@ function GoldTypePanel() {
             </tr>
           </thead>
           <tbody>
+            <TableStateRow
+              colSpan={3}
+              isError={rowsFailed}
+              error={rowsError}
+              isEmpty={false}
+              emptyText=""
+              onRetry={() => void refetchRows()}
+            />
             {pager.pageItems.map((row) => (
               <tr key={row.id}>
                 <td className="font-mono text-xs text-muted">{row.code}</td>
@@ -133,7 +142,7 @@ function GoldItemPanel() {
   const [nameLo, setNameLo] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: rows = [] } = useQuery({
+  const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['catalog', 'gold-items'],
     queryFn: () => api.get<GoldItem[]>('/catalog/gold-items'),
   });
@@ -191,6 +200,14 @@ function GoldItemPanel() {
             </tr>
           </thead>
           <tbody>
+            <TableStateRow
+              colSpan={2}
+              isError={rowsFailed}
+              error={rowsError}
+              isEmpty={false}
+              emptyText=""
+              onRetry={() => void refetchRows()}
+            />
             {itemPager.pageItems.map((row) => (
               <tr key={row.id}>
                 <td className="font-mono text-xs text-muted">{row.code}</td>

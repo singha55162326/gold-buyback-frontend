@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 
 interface Status {
   enabled: boolean;
@@ -53,13 +54,13 @@ export default function NotificationSettingsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: status, isLoading } = useQuery({
+  const { data: status, isLoading, isError: statusFailed, error: statusError, refetch: refetchStatus } = useQuery({
     queryKey: ['notifications', 'whatsapp', 'status'],
     queryFn: () => api.get<Status>('/notifications/whatsapp/status'),
     refetchInterval: 60_000,
   });
 
-  const { data: log = [] } = useQuery({
+  const { data: log = [], isLoading: logLoading, isError: logFailed, error: logError, refetch: refetchLog } = useQuery({
     queryKey: ['notifications', 'whatsapp', 'log'],
     queryFn: () => api.get<LogRow[]>('/notifications/whatsapp/log'),
   });
@@ -136,6 +137,8 @@ export default function NotificationSettingsPage() {
         </div>
       )}
 
+      {statusFailed && <QueryErrorNotice error={statusError} onRetry={() => void refetchStatus()} />}
+
       <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ສະຖານະ Gateway</h2>
@@ -200,9 +203,15 @@ export default function NotificationSettingsPage() {
               </tr>
             </thead>
             <tbody>
-              {log.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-muted">ຍັງບໍ່ມີການສົ່ງ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={7}
+                isLoading={logLoading}
+                isError={logFailed}
+                error={logError}
+                isEmpty={log.length === 0}
+                emptyText="ຍັງບໍ່ມີການສົ່ງ"
+                onRetry={() => void refetchLog()}
+              />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDateTime(row.createdAt)}</td>

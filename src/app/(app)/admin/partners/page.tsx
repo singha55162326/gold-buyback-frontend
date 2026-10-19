@@ -6,6 +6,7 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
+import { TableStateRow } from '@/components/query-state';
 
 interface Partner {
   id: string;
@@ -31,7 +32,7 @@ export default function PartnersPage() {
   const [tracksGoldApAr, setTracksGoldApAr] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: rows = [] } = useQuery({
+  const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['catalog', 'partners'],
     queryFn: () => api.get<Partner[]>('/catalog/partners'),
   });
@@ -121,6 +122,14 @@ export default function PartnersPage() {
               </tr>
             </thead>
             <tbody>
+              <TableStateRow
+                colSpan={4}
+                isError={rowsFailed}
+                error={rowsError}
+                isEmpty={false}
+                emptyText=""
+                onRetry={() => void refetchRows()}
+              />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td className="font-mono text-xs text-muted">{row.code}</td>
