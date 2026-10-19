@@ -7,6 +7,7 @@ import { StockMovementDialog, type MovementKind } from '@/components/stock-movem
 import { formatLak, formatWeight, formatDate, gramsToBaht } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { StatCard } from '@/components/stat-card';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 
 interface Wac { newWeightG: string; newCost: string }
 interface SkuBalance {
@@ -27,15 +28,15 @@ export default function StockNewPage() {
   const canMove =
     user?.role === 'WAREHOUSE' || user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  const { data: wac } = useQuery({
+  const { data: wac, isError: wacFailed, error: wacError, refetch: refetchWac } = useQuery({
     queryKey: ['ledger', 'wac'],
     queryFn: () => api.get<Wac>('/ledger/wac'),
   });
-  const { data: balances = [] } = useQuery({
+  const { data: balances = [], isError: balancesFailed, error: balancesError, refetch: refetchBalances } = useQuery({
     queryKey: ['stock', 'new', 'balances'],
     queryFn: () => api.get<SkuBalance[]>('/stock/new/balances'),
   });
-  const { data: history = [] } = useQuery({
+  const { data: history = [], isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['stock', 'new', 'history'],
     queryFn: () => api.get<LedgerRow[]>('/stock/new/history'),
   });
@@ -62,6 +63,8 @@ export default function StockNewPage() {
         <StockMovementDialog kind={dialog} scope="NEW" onClose={() => setDialog(null)} />
       )}
 
+      {wacFailed && <QueryErrorNotice error={wacError} onRetry={() => void refetchWac()} />}
+
       <div className="stat-grid">
         <StatCard label="GOLD (g) NEW" value={wac ? formatWeight(wac.newWeightG) : '—'}
           sub={wac ? `${gramsToBaht(wac.newWeightG)} ບາດ` : ''} />
@@ -85,9 +88,7 @@ export default function StockNewPage() {
               </tr>
             </thead>
             <tbody>
-              {balances.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-muted">ຍັງບໍ່ມີຍອດໃນມື້ນີ້</td></tr>
-              )}
+              <TableStateRow colSpan={7} isError={balancesFailed} error={balancesError} isEmpty={balances.length === 0} emptyText="ຍັງບໍ່ມີຍອດໃນມື້ນີ້" onRetry={() => void refetchBalances()} />
               {balances.map((row) => (
                 <tr key={row.id}>
                   <td className="font-medium">{row.goldSku.fullSkuName}</td>
@@ -108,13 +109,31 @@ export default function StockNewPage() {
         </p>
       </div>
 
-      <LedgerTable titleLo="ປະຫວັດ Stock (NEW)" rows={history} />
+      <LedgerTable
+        titleLo="ປະຫວັດ Stock (NEW)"
+        rows={history}
+        isError={historyFailed}
+        error={historyError}
+        onRetry={() => void refetchHistory()}
+      />
     </div>
   );
 }
 
 
-function LedgerTable({ titleLo, rows }: { titleLo: string; rows: LedgerRow[] }) {
+function LedgerTable({
+  titleLo,
+  rows,
+  isError,
+  error,
+  onRetry,
+}: {
+  titleLo: string;
+  rows: LedgerRow[];
+  isError: boolean;
+  error: unknown;
+  onRetry: () => void;
+}) {
   return (
     <div data-fade className="card">
       <div className="card-header"><h2 className="card-title">{titleLo}</h2></div>
@@ -134,9 +153,7 @@ function LedgerTable({ titleLo, rows }: { titleLo: string; rows: LedgerRow[] }) 
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 && (
-              <tr><td colSpan={9} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-            )}
+            <TableStateRow colSpan={9} isError={isError} error={error} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={onRetry} />
             {rows.map((row) => (
               <tr key={row.id}>
                 <td>{formatDate(row.businessDate)}</td>

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Pagination, usePagination } from '@/components/pagination';
 import { PageHead } from '@/components/page-head';
 import { api } from '@/lib/api';
+import { TableStateRow } from '@/components/query-state';
 import { formatMoney, formatDate } from '@/lib/format';
 
 interface ApArRow {
@@ -24,12 +25,12 @@ const SIDE_LABEL = {
 
 /** TOR §9 — AP/AR (Cash). */
 export default function ApArCashPage() {
-  const { data = [] } = useQuery({
+  const { data = [], isError: summaryFailed, error: summaryError, refetch: refetchSummary } = useQuery({
     queryKey: ['ledger', 'ap-ar', 'cash'],
     queryFn: () => api.get<ApArRow[]>('/ledger/ap-ar/cash'),
   });
 
-  const { data: history = [] } = useQuery({
+  const { data: history = [], isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['ledger', 'ap-ar', 'cash', 'history'],
     queryFn: () => api.get<HistoryRow[]>('/ledger/ap-ar/cash/history'),
   });
@@ -59,6 +60,7 @@ export default function ApArCashPage() {
                 </tr>
               </thead>
               <tbody>
+                <TableStateRow colSpan={5} isError={summaryFailed} error={summaryError} isEmpty={false} emptyText="" onRetry={() => void refetchSummary()} />
                 {data.filter((r) => r.side === side).map((row) => (
                   <tr key={row.currency}>
                     <td className="font-medium">{row.currency}</td>
@@ -93,9 +95,7 @@ export default function ApArCashPage() {
               </tr>
             </thead>
             <tbody>
-              {history.length === 0 && (
-                <tr><td colSpan={8} className="py-6 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow dense colSpan={8} isError={historyFailed} error={historyError} isEmpty={history.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchHistory()} />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDate(row.businessDate)}</td>

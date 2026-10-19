@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query';
 import { PageHead } from '@/components/page-head';
 import { api } from '@/lib/api';
 import { formatLak, formatMoney, formatWeight, formatDate, formatDateTime } from '@/lib/format';
+import { TableStateRow } from '@/components/query-state';
 
 type ReportKind = 'BUYBACK' | 'EXCHANGE' | 'CREDIT' | 'ORDER' | 'CASH' | 'STOCK_NEW' | 'STOCK_OLD';
 
@@ -108,7 +109,7 @@ export default function ReportsPage() {
 
   const report = REPORTS.find((r) => r.kind === kind)!;
 
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: rows = [], isLoading, isError, error, refetch } = useQuery({
     queryKey: ['report', kind],
     queryFn: () => api.get<Row[]>(report.path),
   });
@@ -200,12 +201,7 @@ export default function ReportsPage() {
               </tr>
             </thead>
             <tbody>
-              {isLoading && (
-                <tr><td colSpan={columns.length} className="py-8 text-center text-muted">ກຳລັງໂຫຼດ...</td></tr>
-              )}
-              {!isLoading && filtered.length === 0 && (
-                <tr><td colSpan={columns.length} className="py-8 text-center text-muted">ບໍ່ມີຂໍ້ມູນໃນຊ່ວງທີ່ເລືອກ</td></tr>
-              )}
+              <TableStateRow colSpan={columns.length} isLoading={isLoading} isError={isError} error={error} isEmpty={filtered.length === 0} emptyText="ບໍ່ມີຂໍ້ມູນໃນຊ່ວງທີ່ເລືອກ" onRetry={() => void refetch()} />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   {columns.map((c) => (

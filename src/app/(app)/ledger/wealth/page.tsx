@@ -2,9 +2,10 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { PageHead } from '@/components/page-head';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { formatLak, formatRate, formatMoney, formatWeight } from '@/lib/format';
 import { StatCard } from '@/components/stat-card';
+import { TableStateRow } from '@/components/query-state';
 
 interface Wealth {
   totalLak: string; totalThb: string; totalUsd: string;
@@ -16,11 +17,13 @@ interface Wealth {
 
 /** TOR §3.7 — Module Wealth. */
 export default function WealthPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError: failedRaw, error, refetch } = useQuery({
     queryKey: ['ledger', 'wealth'],
     queryFn: () => api.get<Wealth>('/ledger/wealth'),
     retry: false,
   });
+  // A 404 means "not configured yet", which the page already shows as empty.
+  const isError = failedRaw && !(error instanceof ApiError && error.status === 404);
 
   return (
     <div className="space-y-6">
@@ -48,7 +51,7 @@ export default function WealthPage() {
               </tr>
             </thead>
             <tbody>
-              {isLoading && <tr><td colSpan={4} className="py-6 text-center text-muted">ກຳລັງໂຫຼດ...</td></tr>}
+              <TableStateRow colSpan={4} isLoading={isLoading} isError={isError} error={error} isEmpty={false} emptyText="" onRetry={() => void refetch()} />
               {data && (
                 <>
                   <tr>

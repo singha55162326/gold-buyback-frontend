@@ -6,6 +6,7 @@ import { dec, GRAMS_PER_BAHT } from '@kpv/domain';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight } from '@/lib/format';
 import { Dialog } from './dialog';
+import { QueryErrorNotice } from './query-state';
 
 export type MovementKind = 'IN' | 'OUT' | 'TRANSFER';
 
@@ -53,22 +54,31 @@ export function StockMovementDialog({
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: skus = [] } = useQuery({
+  const skusQ = useQuery({
     queryKey: ['skus'],
     queryFn: () => api.get<Sku[]>('/skus'),
   });
-  const { data: goldTypes = [] } = useQuery({
+  const goldTypesQ = useQuery({
     queryKey: ['catalog', 'gold-types'],
     queryFn: () => api.get<GoldType[]>('/catalog/gold-types?stockOnly=true'),
   });
-  const { data: partners = [] } = useQuery({
+  const partnersQ = useQuery({
     queryKey: ['catalog', 'partners'],
     queryFn: () => api.get<Partner[]>('/catalog/partners'),
   });
-  const { data: wac } = useQuery({
+  const wacQ = useQuery({
     queryKey: ['ledger', 'wac'],
     queryFn: () => api.get<Wac>('/ledger/wac'),
   });
+
+  const skus = skusQ.data ?? [];
+  const goldTypes = goldTypesQ.data ?? [];
+  const partners = partnersQ.data ?? [];
+  const wac = wacQ.data;
+  const failedQuery = [skusQ, goldTypesQ, partnersQ, wacQ].find((q) => q.isError);
+  const retryFailed = () => {
+    for (const q of [skusQ, goldTypesQ, partnersQ, wacQ]) if (q.isError) void q.refetch();
+  };
 
   /** IN sources vs OUT destinations differ (TOR §7.2). */
   const partnerOptions = useMemo(() => {
@@ -207,6 +217,11 @@ export function StockMovementDialog({
         </>
       }
     >
+      {failedQuery && (
+        <div className="mb-4">
+          <QueryErrorNotice error={failedQuery.error} onRetry={retryFailed} />
+        </div>
+      )}
       <div className="grid gap-4 md:grid-cols-2">
         {kind === 'TRANSFER' ? (
           <div>

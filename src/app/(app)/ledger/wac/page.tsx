@@ -5,6 +5,7 @@ import { PageHead } from '@/components/page-head';
 import { api } from '@/lib/api';
 import { formatLak, formatWeight, gramsToBaht } from '@/lib/format';
 import { StatCard } from '@/components/stat-card';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 
 interface Wac {
   newWeightG: string; newCost: string;
@@ -15,7 +16,7 @@ interface Wac {
 
 /** TOR §3.7 — WAC ປັດຈຸບັນ. Always derived from the newest ledger rows. */
 export default function WacPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['ledger', 'wac'],
     queryFn: () => api.get<Wac>('/ledger/wac'),
   });
@@ -47,7 +48,7 @@ export default function WacPage() {
               </tr>
             </thead>
             <tbody>
-              {isLoading && <tr><td colSpan={4} className="py-6 text-center text-muted">ກຳລັງໂຫຼດ...</td></tr>}
+              <TableStateRow colSpan={4} isLoading={isLoading} isError={isError} error={error} isEmpty={false} emptyText="" onRetry={() => void refetch()} />
               {data && (
                 <>
                   <tr>

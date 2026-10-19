@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { PageHead } from '@/components/page-head';
 import { api } from '@/lib/api';
+import { TableStateRow } from '@/components/query-state';
 import { formatMoney, formatWeight } from '@/lib/format';
 
 interface Coh {
@@ -16,7 +17,7 @@ interface Coh {
 
 /** TOR §3.7 — COH Cash ແລະ COH Gold. */
 export default function CohPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['ledger', 'coh'],
     queryFn: () => api.get<Coh>('/ledger/coh'),
   });
@@ -45,7 +46,7 @@ export default function CohPage() {
               </tr>
             </thead>
             <tbody>
-              {isLoading && <tr><td colSpan={8} className="py-6 text-center text-muted">ກຳລັງໂຫຼດ...</td></tr>}
+              <TableStateRow colSpan={8} isLoading={isLoading} isError={isError} error={error} isEmpty={false} emptyText="" onRetry={() => void refetch()} />
               {data?.cash.map((row) => (
                 <tr key={row.currency}>
                   <td className="font-medium">{row.currency}</td>
@@ -81,6 +82,7 @@ export default function CohPage() {
               </tr>
             </thead>
             <tbody>
+              <TableStateRow colSpan={6} isError={isError} error={error} isEmpty={false} emptyText="" onRetry={() => void refetch()} />
               {data && (
                 <tr>
                   <td className="num text-right">{formatWeight(data.gold.newG)}</td>

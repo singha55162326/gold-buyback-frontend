@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatLak, formatWeight, formatDate } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 
 interface Tracking {
@@ -37,7 +38,7 @@ export default function FactoryTrackingPage() {
   const user = getStoredUser();
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  const { data: rows = [] } = useQuery({
+  const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['stock', 'factory'],
     queryFn: () => api.get<Tracking[]>('/stock/factory'),
   });
@@ -97,9 +98,7 @@ export default function FactoryTrackingPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={9} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow colSpan={9} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
               {pager.pageItems.map((row) => {
                 const locked = row.status === 'COMPLETED' && !isAdmin;
                 return (
