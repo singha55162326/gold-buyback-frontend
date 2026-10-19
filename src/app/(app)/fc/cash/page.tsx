@@ -8,6 +8,7 @@ import { api, ApiError } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { StatCard } from '@/components/stat-card';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 
 interface Balance { currency: 'LAK' | 'THB' | 'USD'; inflow: string; outflow: string; balance: string }
 interface Row {
@@ -32,14 +33,16 @@ export default function FcCashPage() {
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: balances = [] } = useQuery({
+  const balancesQuery = useQuery({
     queryKey: ['cash', 'balances'],
     queryFn: () => api.get<Balance[]>('/cash/balances'),
   });
-  const { data: rows = [] } = useQuery({
+  const balances = balancesQuery.data ?? [];
+  const rowsQuery = useQuery({
     queryKey: ['cash', 'history'],
     queryFn: () => api.get<Row[]>('/cash/history'),
   });
+  const rows = rowsQuery.data ?? [];
 
   const create = useMutation({
     mutationFn: () =>
@@ -68,6 +71,10 @@ export default function FcCashPage() {
         title="Module Cash"
         subtitle="ຍອດເງິນສົດຄົງເຫຼືອ ແລະ ການເຄື່ອນໄຫວເງິນສົດໃນມື້ (TOR §3.7)"
       />
+
+      {balancesQuery.isError && (
+        <QueryErrorNotice error={balancesQuery.error} onRetry={() => void balancesQuery.refetch()} />
+      )}
 
       <div className="stat-grid">
         {balances.map((b) => (
@@ -138,9 +145,15 @@ export default function FcCashPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={6} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={6}
+                isLoading={rowsQuery.isLoading}
+                isError={rowsQuery.isError}
+                error={rowsQuery.error}
+                isEmpty={rows.length === 0}
+                emptyText="ຍັງບໍ່ມີລາຍການ"
+                onRetry={() => void rowsQuery.refetch()}
+              />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDateTime(row.createdAt)}</td>

@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 
 interface Category { id: string; code: string; nameLo: string; kind: 'INCOME' | 'EXPENSE' }
 interface Bank { id: string; nameLo: string }
@@ -29,18 +30,22 @@ export default function IncomeExpensePage() {
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: categories = [] } = useQuery({
+  const categoriesQuery = useQuery({
     queryKey: ['finance', 'ie-categories', kind],
     queryFn: () => api.get<Category[]>(`/finance/income-expense/categories?kind=${kind}`),
   });
-  const { data: banks = [] } = useQuery({
+  const categories = categoriesQuery.data ?? [];
+  const banksQuery = useQuery({
     queryKey: ['catalog', 'bank-accounts'],
     queryFn: () => api.get<Bank[]>('/catalog/bank-accounts'),
   });
-  const { data: rows = [] } = useQuery({
+  const banks = banksQuery.data ?? [];
+  const rowsQuery = useQuery({
     queryKey: ['finance', 'income-expense'],
     queryFn: () => api.get<Row[]>('/finance/income-expense'),
   });
+  const rows = rowsQuery.data ?? [];
+  const formQuery = [categoriesQuery, banksQuery].find((q) => q.isError);
 
   const create = useMutation({
     mutationFn: () =>
@@ -74,6 +79,8 @@ export default function IncomeExpensePage() {
         title="ຈັດການລາຍຮັບລາຍຈ່າຍ"
         subtitle="ບັນທຶກລາຍຮັບ / ລາຍຈ່າຍ ຜ່ານ Cash ຫຼື Bank (TOR §3.7)"
       />
+
+      {formQuery && <QueryErrorNotice error={formQuery.error} onRetry={() => void formQuery.refetch()} />}
 
       <div data-fade className="card p-5">
         <div className="mb-4 flex flex-wrap gap-2">
@@ -171,9 +178,15 @@ export default function IncomeExpensePage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={9} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={9}
+                isLoading={rowsQuery.isLoading}
+                isError={rowsQuery.isError}
+                error={rowsQuery.error}
+                isEmpty={rows.length === 0}
+                emptyText="ຍັງບໍ່ມີລາຍການ"
+                onRetry={() => void rowsQuery.refetch()}
+              />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td className="font-mono text-xs">{row.code}</td>

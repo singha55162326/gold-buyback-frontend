@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 
 interface CashRequest {
@@ -29,11 +30,11 @@ export default function FcApprovalsPage() {
   const [reason, setReason] = useState('');
   const [rejecting, setRejecting] = useState<string | null>(null);
 
-  const { data: requests = [] } = useQuery({
+  const { data: requests = [], isError: requestsError, error: requestsErr, refetch: refetchRequests } = useQuery({
     queryKey: ['cash', 'requests', 'PENDING'],
     queryFn: () => api.get<CashRequest[]>('/cash/requests?status=PENDING'),
   });
-  const { data: shifts = [] } = useQuery({
+  const { data: shifts = [], isError: shiftsError, error: shiftsErr, refetch: refetchShifts } = useQuery({
     queryKey: ['shifts', 'pending'],
     queryFn: () => api.get<PendingShift[]>('/shifts/pending'),
   });
@@ -86,7 +87,10 @@ export default function FcApprovalsPage() {
         <div id="fc-approvals-error" role="alert" className="notice status-danger">{error}</div>
       )}
 
-      {total === 0 && (
+      {requestsError && <QueryErrorNotice error={requestsErr} onRetry={() => void refetchRequests()} />}
+      {shiftsError && <QueryErrorNotice error={shiftsErr} onRetry={() => void refetchShifts()} />}
+
+      {total === 0 && !requestsError && !shiftsError && (
         <div data-fade className="card p-10 text-center text-muted">ບໍ່ມີລາຍການລໍຖ້າອະນຸມັດ</div>
       )}
 

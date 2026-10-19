@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatWeight, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import { StatCard } from '@/components/stat-card';
 
@@ -34,10 +35,11 @@ export default function ConsignmentsPage() {
   const [viewing, setViewing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data } = useQuery({
+  const query = useQuery({
     queryKey: ['finance', 'consignments'],
     queryFn: () => api.get<Payload>('/finance/consignments'),
   });
+  const data = query.data;
 
   const create = useMutation({
     mutationFn: () =>
@@ -81,6 +83,8 @@ export default function ConsignmentsPage() {
         title="ຝາກສິນຄ້າ"
         subtitle="ຄຳທີ່ລູກຄ້າຝາກໄວ້ກັບຮ້ານ — ບໍ່ນັບເຂົ້າ Stock ຫຼື COH Gold (TOR §3.7)"
       />
+
+      {query.isError && <QueryErrorNotice error={query.error} onRetry={() => void query.refetch()} />}
 
       <div className="stat-grid">
         <StatCard label="ນໍ້າໜັກລວມ (ຝາກຢູ່)" value={data ? `${formatWeight(data.totals.totalWeightG)} g` : '—'} />
@@ -166,9 +170,15 @@ export default function ConsignmentsPage() {
               </tr>
             </thead>
             <tbody>
-              {(data?.rows ?? []).length === 0 && (
-                <tr><td colSpan={10} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={10}
+                isLoading={query.isLoading}
+                isError={query.isError}
+                error={query.error}
+                isEmpty={(data?.rows ?? []).length === 0}
+                emptyText="ຍັງບໍ່ມີລາຍການ"
+                onRetry={() => void query.refetch()}
+              />
               {(data?.rows ?? []).map((row) => (
                 <Fragment key={row.id}>
                   <tr>

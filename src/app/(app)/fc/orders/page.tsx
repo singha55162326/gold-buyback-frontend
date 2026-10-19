@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDate, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 
 interface GoldItem { id: string; nameLo: string }
@@ -88,22 +89,27 @@ export default function OrdersPage() {
   const [supplierId, setSupplierId] = useState('');
   const [transitionDate, setTransitionDate] = useState(today());
 
-  const { data: goldItems = [] } = useQuery({
+  const goldItemsQuery = useQuery({
     queryKey: ['catalog', 'gold-items'],
     queryFn: () => api.get<GoldItem[]>('/catalog/gold-items'),
   });
-  const { data: partners = [] } = useQuery({
+  const goldItems = goldItemsQuery.data ?? [];
+  const partnersQuery = useQuery({
     queryKey: ['catalog', 'partners'],
     queryFn: () => api.get<Partner[]>('/catalog/partners'),
   });
-  const { data: banks = [] } = useQuery({
+  const partners = partnersQuery.data ?? [];
+  const banksQuery = useQuery({
     queryKey: ['catalog', 'bank-accounts'],
     queryFn: () => api.get<Bank[]>('/catalog/bank-accounts'),
   });
-  const { data: orders = [] } = useQuery({
+  const banks = banksQuery.data ?? [];
+  const ordersQuery = useQuery({
     queryKey: ['orders'],
     queryFn: () => api.get<Order[]>('/orders'),
   });
+  const orders = ordersQuery.data ?? [];
+  const catalogQuery = [goldItemsQuery, partnersQuery, banksQuery].find((q) => q.isError);
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -202,6 +208,10 @@ export default function OrdersPage() {
 
       {error && (
         <div id="orders-error" role="alert" className="notice status-danger">{error}</div>
+      )}
+
+      {catalogQuery && (
+        <QueryErrorNotice error={catalogQuery.error} onRetry={() => void catalogQuery.refetch()} />
       )}
 
       {showAdd && (
@@ -428,9 +438,15 @@ export default function OrdersPage() {
               </tr>
             </thead>
             <tbody>
-              {orders.length === 0 && (
-                <tr><td colSpan={13} className="py-8 text-center text-muted">ຍັງບໍ່ມີ Order</td></tr>
-              )}
+              <TableStateRow
+                colSpan={13}
+                isLoading={ordersQuery.isLoading}
+                isError={ordersQuery.isError}
+                error={ordersQuery.error}
+                isEmpty={orders.length === 0}
+                emptyText="ຍັງບໍ່ມີ Order"
+                onRetry={() => void ordersQuery.refetch()}
+              />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td className="font-mono text-xs">{row.code}</td>

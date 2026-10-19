@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 
 interface BankBalance {
   bankAccountId: string; bankCode: string; bankNameLo: string;
@@ -41,18 +42,21 @@ export default function FcBankPage() {
   const [netAmount, setNetAmount] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: balances = [] } = useQuery({
+  const balancesQuery = useQuery({
     queryKey: ['cash', 'bank', 'balances'],
     queryFn: () => api.get<BankBalance[]>('/cash/bank/balances'),
   });
-  const { data: banks = [] } = useQuery({
+  const balances = balancesQuery.data ?? [];
+  const banksQuery = useQuery({
     queryKey: ['catalog', 'bank-accounts'],
     queryFn: () => api.get<Bank[]>('/catalog/bank-accounts'),
   });
-  const { data: rows = [] } = useQuery({
+  const banks = banksQuery.data ?? [];
+  const rowsQuery = useQuery({
     queryKey: ['cash', 'bank', 'history'],
     queryFn: () => api.get<Row[]>('/cash/bank/history'),
   });
+  const rows = rowsQuery.data ?? [];
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['cash'] });
@@ -95,6 +99,10 @@ export default function FcBankPage() {
         subtitle="ຍອດ Bank ຕົວຈິງ ແຍກຕາມທະນາຄານ ແລະ ສະກຸນເງິນ · ຍອດເງິນຂາດດຸນ (TOR §3.7)"
       />
 
+      {banksQuery.isError && (
+        <QueryErrorNotice error={banksQuery.error} onRetry={() => void banksQuery.refetch()} />
+      )}
+
       {error && (
         <div id="bank-error" role="alert" className="notice status-danger">{error}</div>
       )}
@@ -120,6 +128,15 @@ export default function FcBankPage() {
               </tr>
             </thead>
             <tbody>
+              <TableStateRow
+                colSpan={7}
+                isLoading={false}
+                isError={balancesQuery.isError}
+                error={balancesQuery.error}
+                isEmpty={false}
+                emptyText=""
+                onRetry={() => void balancesQuery.refetch()}
+              />
               {balances.map((row) => {
                 const key = `${row.bankAccountId}-${row.currency}`;
                 const variance = row.variance === null ? null : Number(row.variance);
@@ -230,9 +247,15 @@ export default function FcBankPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={6} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={6}
+                isLoading={rowsQuery.isLoading}
+                isError={rowsQuery.isError}
+                error={rowsQuery.error}
+                isEmpty={rows.length === 0}
+                emptyText="ຍັງບໍ່ມີລາຍການ"
+                onRetry={() => void rowsQuery.refetch()}
+              />
               {rows.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDateTime(row.createdAt)}</td>

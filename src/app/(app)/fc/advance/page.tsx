@@ -7,6 +7,7 @@ import { api } from '@/lib/api';
 import Link from 'next/link';
 import { formatMoney, formatWeight, formatDate } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import { StatCard } from '@/components/stat-card';
 
@@ -45,14 +46,16 @@ interface Row {
  */
 export default function AdvancePage() {
   const [viewing, setViewing] = useState<string | null>(null);
-  const { data: summary } = useQuery({
+  const summaryQuery = useQuery({
     queryKey: ['finance', 'advance'],
     queryFn: () => api.get<Summary>('/finance/advance'),
   });
-  const { data: rows = [] } = useQuery({
+  const summary = summaryQuery.data;
+  const rowsQuery = useQuery({
     queryKey: ['finance', 'advance', 'history'],
     queryFn: () => api.get<Row[]>('/finance/advance/history'),
   });
+  const rows = rowsQuery.data ?? [];
 
   const pager = usePagination(rows);
 
@@ -63,6 +66,10 @@ export default function AdvancePage() {
         title="Module Advace"
         subtitle="ເງິນມັດຈໍາ Order ຮັບລ່ວງໜ້າ — ຫັກອອກຈາກ COH Cash ຈົນກວ່າລູກຄ້າຮັບເຄື່ອງ (TOR §7)"
       />
+
+      {summaryQuery.isError && (
+        <QueryErrorNotice error={summaryQuery.error} onRetry={() => void summaryQuery.refetch()} />
+      )}
 
       <div className="stat-grid">
         {(summary?.totals ?? []).map((t) => (
@@ -97,9 +104,15 @@ export default function AdvancePage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={13} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={13}
+                isLoading={rowsQuery.isLoading}
+                isError={rowsQuery.isError}
+                error={rowsQuery.error}
+                isEmpty={rows.length === 0}
+                emptyText="ຍັງບໍ່ມີລາຍການ"
+                onRetry={() => void rowsQuery.refetch()}
+              />
               {pager.pageItems.map((row) => (
                 <Fragment key={row.id}>
                 <tr>
