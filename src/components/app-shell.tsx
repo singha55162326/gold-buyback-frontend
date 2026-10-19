@@ -74,6 +74,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="shell-grid min-h-dvh p-4 lg:grid lg:grid-cols-[272px_minmax(0,1fr)] lg:items-start lg:gap-4">
+      <a href="#main" className="skip-link">ຂ້າມໄປເນື້ອຫາ</a>
       {/* Sidebar: off-canvas drawer below lg, sticky full-height column from lg up.
           The wrapper only positions; the glass (and data-fade) live on the nav. */}
       <div
@@ -189,7 +190,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             at its top so it is seen before any transaction starts. */}
         <div className="mt-6">
           <ShiftBanner role={user.role} />
-          <main>{children}</main>
+          <main id="main" tabIndex={-1} className="outline-none">{children}</main>
         </div>
       </div>
     </div>
