@@ -8,6 +8,7 @@ import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDate, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
+import { NumberInput } from '@/components/number-input';
 import { statusClass } from '@/lib/status';
 
 interface GoldItem { id: string; nameLo: string }
@@ -251,8 +252,8 @@ export default function OrdersPage() {
             </div>
             <div>
               <label className="label" htmlFor="weightG">ນ້ຳໜັກ (g)</label>
-              <input id="weightG" className="input num" inputMode="decimal" value={weightG}
-                onChange={(e) => setWeightG(e.target.value)} />
+              <NumberInput id="weightG" className="input num" decimals={4} value={weightG}
+                onValueChange={setWeightG} />
             </div>
             <div>
               <label className="label" htmlFor="qty">ຈຳນວນ</label>
@@ -261,8 +262,8 @@ export default function OrdersPage() {
             </div>
             <div>
               <label className="label" htmlFor="total">TOTAL (LAK)</label>
-              <input id="total" className="input num" inputMode="decimal" value={totalAmount}
-                onChange={(e) => setTotalAmount(e.target.value)} />
+              <NumberInput id="total" className="input num" decimals={0} value={totalAmount}
+                onValueChange={setTotalAmount} />
             </div>
           </div>
 
@@ -298,8 +299,8 @@ export default function OrdersPage() {
               </div>
               <div>
                 <label className="label" htmlFor="amt">ຈຳນວນເງິນ</label>
-                <input id="amt" className="input num" inputMode="decimal" value={amount}
-                  onChange={(e) => setAmount(e.target.value)} />
+                <NumberInput id="amt" className="input num" decimals={currency === 'LAK' ? 0 : 2} value={amount}
+                  onValueChange={setAmount} />
               </div>
               <div className="sm:col-span-2">
                 <label className="label" htmlFor="note">Note</label>
@@ -400,9 +401,9 @@ export default function OrdersPage() {
             </div>
             <div>
               <label className="label" htmlFor="pamt">ຈຳນວນເງິນ</label>
-              <input id="pamt" className="input num" inputMode="decimal"
+              <NumberInput id="pamt" className="input num" decimals={currency === 'LAK' ? 0 : 2}
                 placeholder={paying.balanceAmount} value={amount}
-                onChange={(e) => setAmount(e.target.value)} />
+                onValueChange={setAmount} />
             </div>
             <button className="btn-primary" aria-describedby={error ? 'orders-error' : undefined} disabled={!amount.trim() || pay.isPending}
               onClick={() => pay.mutate(paying)}>

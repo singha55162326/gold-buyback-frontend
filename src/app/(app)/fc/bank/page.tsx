@@ -7,6 +7,7 @@ import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
+import { NumberInput } from '@/components/number-input';
 
 interface BankBalance {
   bankAccountId: string; bankCode: string; bankNameLo: string;
@@ -150,10 +151,10 @@ export default function FcBankPage() {
                     <td className="num text-right">
                       {editingNet === key ? (
                         <div className="flex flex-wrap items-center justify-end gap-2">
-                          <input className="input num w-36 text-right" inputMode="decimal"
+                          <NumberInput className="input num w-36 text-right" decimals={row.currency === 'LAK' ? 0 : 2}
                             aria-label={`ເງິນ Bank ສຸດທິ ${row.bankNameLo} ${row.currency}`}
                             aria-describedby={error ? 'bank-error' : undefined}
-                            value={netAmount} onChange={(e) => setNetAmount(e.target.value)} autoFocus />
+                            value={netAmount} onValueChange={setNetAmount} autoFocus />
                           <button className="btn-primary"
                             onClick={() => setNet.mutate(row)} disabled={setNet.isPending}>
                             ບັນທຶກ
@@ -216,8 +217,8 @@ export default function FcBankPage() {
           </div>
           <div>
             <label className="label" htmlFor="amt">ຈຳນວນເງິນ</label>
-            <input id="amt" className="input num" inputMode="decimal" aria-describedby={error ? 'bank-error' : undefined} value={amount}
-              onChange={(e) => setAmount(e.target.value)} />
+            <NumberInput id="amt" className="input num" decimals={currency === 'LAK' ? 0 : 2} aria-describedby={error ? 'bank-error' : undefined} value={amount}
+              onValueChange={setAmount} />
           </div>
           <div>
             <label className="label" htmlFor="note">Note</label>

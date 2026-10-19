@@ -8,6 +8,7 @@ import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatLak, formatWeight, formatDate } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { TableStateRow } from '@/components/query-state';
+import { NumberInput } from '@/components/number-input';
 import { statusClass } from '@/lib/status';
 
 interface Tracking {
@@ -110,13 +111,13 @@ export default function FactoryTrackingPage() {
                     <td className="num text-right">{formatWeight(row.goldOutG)}</td>
                     <td className="num text-right">
                       {editing === row.id ? (
-                        <input
+                        <NumberInput
                           className="input num w-36 text-right"
                           aria-label={`ນໍ້າໜັກg FACTORY ປະເມີນ ${row.movement.code}`}
                           aria-describedby={error ? 'factory-error' : undefined}
-                          inputMode="decimal"
+                          decimals={4}
                           value={weight}
-                          onChange={(e) => setWeight(e.target.value)}
+                          onValueChange={setWeight}
                           autoFocus
                         />
                       ) : (

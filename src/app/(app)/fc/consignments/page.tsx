@@ -9,6 +9,7 @@ import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import { StatCard } from '@/components/stat-card';
+import { NumberInput } from '@/components/number-input';
 
 interface Line { nameLo: string; weightG: string; quantity: number }
 interface Row {
@@ -126,8 +127,8 @@ export default function ConsignmentsPage() {
               <div key={index} className="grid gap-2 sm:grid-cols-[2fr_1fr_1fr_auto]">
                 <input className="input" aria-label={`ລາຍການ ${index + 1}`} placeholder="ລາຍການ" value={line.nameLo}
                   onChange={(e) => setLine(index, { nameLo: e.target.value })} />
-                <input className="input num" aria-label={`ນ້ຳໜັກ (g) ${index + 1}`} inputMode="decimal" placeholder="ນ້ຳໜັກ (g)"
-                  value={line.weightG} onChange={(e) => setLine(index, { weightG: e.target.value })} />
+                <NumberInput className="input num" aria-label={`ນ້ຳໜັກ (g) ${index + 1}`} decimals={4} placeholder="ນ້ຳໜັກ (g)"
+                  value={line.weightG} onValueChange={(v) => setLine(index, { weightG: v })} />
                 <input className="input num" aria-label={`ຈຳນວນ ${index + 1}`} type="number" min={1} value={line.quantity}
                   onChange={(e) => setLine(index, { quantity: Number(e.target.value) || 1 })} />
                 <button className="btn-secondary px-3" aria-label={`ລຶບ ${index + 1}`} disabled={lines.length === 1}
