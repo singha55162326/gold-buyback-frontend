@@ -15,6 +15,7 @@ import {
   YAxis,
 } from 'recharts';
 import { PageHead } from '@/components/page-head';
+import { NumberInput } from '@/components/number-input';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { useChartTheme } from '@/lib/chart-theme';
 import { api, ApiError } from '@/lib/api';
@@ -164,13 +165,13 @@ export default function RatesPage() {
               <label className="label" htmlFor={field.key}>
                 {field.labelLo}
               </label>
-              <input
+              <NumberInput
                 id={field.key}
                 className="input num"
-                inputMode="decimal"
+                decimals={2}
                 value={form[field.key]}
                 aria-describedby={error ? 'rates-error' : undefined}
-                onChange={(e) => setForm((f) => ({ ...f, [field.key]: e.target.value }))}
+                onValueChange={(v) => setForm((f) => ({ ...f, [field.key]: v }))}
               />
             </div>
           ))}

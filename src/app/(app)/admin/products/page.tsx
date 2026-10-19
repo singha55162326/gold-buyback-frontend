@@ -5,6 +5,7 @@ import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
+import { NumberInput } from '@/components/number-input';
 import { TableStateRow } from '@/components/query-state';
 import { formatLak, formatWeight, formatDate, formatDateTime } from '@/lib/format';
 
@@ -95,14 +96,14 @@ export default function ProductsPage() {
             <label className="label" htmlFor="price1Baht">
               ລາຄາຂາຍ ຮູບປະພັນ 1 ບາດ (LAK)
             </label>
-            <input
+            <NumberInput
               id="price1Baht"
               className="input num"
-              inputMode="decimal"
+              decimals={0}
               placeholder={current ? formatLak(current.price1Baht) : '45,859,000'}
               value={input}
               aria-describedby={error ? 'price-error' : undefined}
-              onChange={(e) => setInput(e.target.value)}
+              onValueChange={setInput}
             />
           </div>
 

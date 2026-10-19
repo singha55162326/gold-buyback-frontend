@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dec, GRAMS_PER_BAHT, trimTrailingZeros } from '@kpv/domain';
 import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
+import { NumberInput } from '@/components/number-input';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { formatWeight } from '@/lib/format';
 
@@ -146,18 +147,15 @@ export default function SkusPage() {
             <label className="label" htmlFor="weightG">
               ນ້ຳໜັກ (g)
             </label>
-            <input
+            <NumberInput
               id="weightG"
               className="input num"
               aria-describedby={error ? 'sku-error' : undefined}
-              inputMode="decimal"
+              decimals={3}
               placeholder="15"
               value={weightG}
               // TOR 3.6: weight is entered to 3 decimal places.
-              onChange={(e) => {
-                const next = e.target.value;
-                if (next === '' || /^\d*\.?\d{0,3}$/.test(next)) setWeightG(next);
-              }}
+              onValueChange={setWeightG}
             />
           </div>
         </div>

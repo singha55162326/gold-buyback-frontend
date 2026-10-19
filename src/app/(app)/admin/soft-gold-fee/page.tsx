@@ -6,6 +6,7 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
+import { NumberInput } from '@/components/number-input';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { formatLak, formatDateTime } from '@/lib/format';
 import { AuditView } from '@/components/audit-view';
@@ -85,14 +86,14 @@ export default function SoftGoldFeePage() {
             <label className="label" htmlFor="value">
               ຄ່າຄຳອ່ອນໃໝ່ (LAK)
             </label>
-            <input
+            <NumberInput
               id="value"
               className="input num"
-              inputMode="decimal"
+              decimals={0}
               placeholder="400,000"
               value={value}
               aria-describedby={error ? 'soft-error' : undefined}
-              onChange={(e) => setValue(e.target.value)}
+              onValueChange={setValue}
             />
           </div>
           <button

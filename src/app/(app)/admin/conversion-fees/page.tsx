@@ -9,6 +9,7 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { AuditView } from '@/components/audit-view';
 import { TableStateRow } from '@/components/query-state';
 import { PageHead } from '@/components/page-head';
+import { NumberInput } from '@/components/number-input';
 
 interface Tier {
   labelLo: string;
@@ -265,24 +266,24 @@ function JewelryPanel({ rows, tiers, loading, query, onSaved, onError }: Jewelry
             </div>
             <div className="min-w-40">
               <label className="label" htmlFor="jw-good">ຄ່າປ່ຽນຮູບປະພັນດີ (LAK)</label>
-              <input
+              <NumberInput
                 id="jw-good"
                 className="input input-lg num"
-                inputMode="decimal"
+                decimals={0}
                 placeholder="269,000"
                 value={good}
-                onChange={(e) => setGood(e.target.value)}
+                onValueChange={setGood}
               />
             </div>
             <div className="min-w-40">
               <label className="label" htmlFor="jw-dmg">ຄ່າປ່ຽນເສຍຮູບ (LAK)</label>
-              <input
+              <NumberInput
                 id="jw-dmg"
                 className="input input-lg num"
-                inputMode="decimal"
+                decimals={0}
                 placeholder="1,029,000"
                 value={damaged}
-                onChange={(e) => setDamaged(e.target.value)}
+                onValueChange={setDamaged}
               />
             </div>
             <button
@@ -329,12 +330,12 @@ function JewelryPanel({ rows, tiers, loading, query, onSaved, onError }: Jewelry
                 <td className="num text-right">{formatWeight(row.weightG)}</td>
                 <td className="num text-right">
                   {editing === row.id ? (
-                    <input
+                    <NumberInput
                       className="input num w-32 text-right"
-                      inputMode="decimal"
+                      decimals={0}
                       aria-label={`${row.tier.labelLo} — ຄ່າປ່ຽນຮູບປະພັນດີ (LAK)`}
                       value={good}
-                      onChange={(e) => setGood(e.target.value)}
+                      onValueChange={setGood}
                       autoFocus
                     />
                   ) : (
@@ -343,12 +344,12 @@ function JewelryPanel({ rows, tiers, loading, query, onSaved, onError }: Jewelry
                 </td>
                 <td className="num text-right">
                   {editing === row.id ? (
-                    <input
+                    <NumberInput
                       className="input num w-32 text-right"
-                      inputMode="decimal"
+                      decimals={0}
                       aria-label={`${row.tier.labelLo} — ຄ່າປ່ຽນເສຍຮູບ (LAK)`}
                       value={damaged}
-                      onChange={(e) => setDamaged(e.target.value)}
+                      onValueChange={setDamaged}
                     />
                   ) : (
                     formatLak(row.feeDamagedShape)
@@ -513,35 +514,35 @@ function BarPanel({ rows, loading, query, onSaved, onError }: BarPanelProps) {
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-32">
               <label className="label" htmlFor="bar-w">ນ້ຳໜັກ / g</label>
-              <input
+              <NumberInput
                 id="bar-w"
                 className="input input-lg num"
-                inputMode="decimal"
+                decimals={4}
                 placeholder="15"
                 value={weight}
-                onChange={(e) => setWeight(e.target.value)}
+                onValueChange={setWeight}
               />
             </div>
             <div className="min-w-40">
               <label className="label" htmlFor="bar-j">ຄຳແທ່ງ-ຮູບປະພັນ (LAK)</label>
-              <input
+              <NumberInput
                 id="bar-j"
                 className="input input-lg num"
-                inputMode="decimal"
+                decimals={0}
                 placeholder="329,000"
                 value={toJewelry}
-                onChange={(e) => setToJewelry(e.target.value)}
+                onValueChange={setToJewelry}
               />
             </div>
             <div className="min-w-40">
               <label className="label" htmlFor="bar-b">ຄຳແທ່ງ-ຄຳແທ່ງ (LAK)</label>
-              <input
+              <NumberInput
                 id="bar-b"
                 className="input input-lg num"
-                inputMode="decimal"
+                decimals={0}
                 placeholder="169,000"
                 value={toBar}
-                onChange={(e) => setToBar(e.target.value)}
+                onValueChange={setToBar}
               />
             </div>
             <button
@@ -590,12 +591,12 @@ function BarPanel({ rows, loading, query, onSaved, onError }: BarPanelProps) {
                 <td className="num text-right font-medium">{formatWeight(row.weightG)}</td>
                 <td className="num text-right">
                   {editing === row.id ? (
-                    <input
+                    <NumberInput
                       className="input num w-32 text-right"
-                      inputMode="decimal"
+                      decimals={0}
                       aria-label={`${formatWeight(row.weightG)} g — ຄຳແທ່ງ-ຮູບປະພັນ (LAK)`}
                       value={toJewelry}
-                      onChange={(e) => setToJewelry(e.target.value)}
+                      onValueChange={setToJewelry}
                       autoFocus
                     />
                   ) : (
@@ -604,12 +605,12 @@ function BarPanel({ rows, loading, query, onSaved, onError }: BarPanelProps) {
                 </td>
                 <td className="num text-right">
                   {editing === row.id ? (
-                    <input
+                    <NumberInput
                       className="input num w-32 text-right"
-                      inputMode="decimal"
+                      decimals={0}
                       aria-label={`${formatWeight(row.weightG)} g — ຄຳແທ່ງ-ຄຳແທ່ງ (LAK)`}
                       value={toBar}
-                      onChange={(e) => setToBar(e.target.value)}
+                      onValueChange={setToBar}
                     />
                   ) : (
                     formatLak(row.barToBar)
