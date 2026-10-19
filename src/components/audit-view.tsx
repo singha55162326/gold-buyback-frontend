@@ -3,6 +3,7 @@
 import { Fragment, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { TableStateRow } from '@/components/query-state';
 import { formatDateTime } from '@/lib/format';
 import { Pagination, usePagination } from './pagination';
 
@@ -63,7 +64,7 @@ export function AuditView({
   const [open, setOpen] = useState(false);
   const [viewing, setViewing] = useState<string | null>(null);
 
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: rows = [], isLoading, isError, error: loadError, refetch } = useQuery({
     queryKey: ['admin', 'audit-log', entity],
     queryFn: () => api.get<AuditRow[]>(`/admin/audit-log/${entity}`),
     enabled: open,
@@ -94,12 +95,15 @@ export function AuditView({
               </tr>
             </thead>
             <tbody>
-              {isLoading && (
-                <tr><td colSpan={4} className="py-6 text-center text-muted">ກຳລັງໂຫຼດ...</td></tr>
-              )}
-              {!isLoading && rows.length === 0 && (
-                <tr><td colSpan={4} className="py-8 text-center text-muted">ຍັງບໍ່ມີການປ່ຽນແປງ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={4}
+                isLoading={isLoading}
+                isError={isError}
+                error={loadError}
+                isEmpty={rows.length === 0}
+                emptyText="ຍັງບໍ່ມີການປ່ຽນແປງ"
+                onRetry={() => void refetch()}
+              />
               {pager.pageItems.map((row) => (
                 <Fragment key={row.id}>
                   <tr>

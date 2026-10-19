@@ -7,6 +7,7 @@ import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
 import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { AuditView } from '@/components/audit-view';
+import { TableStateRow } from '@/components/query-state';
 import { PageHead } from '@/components/page-head';
 
 interface Tier {
@@ -104,6 +105,7 @@ export default function ConversionFeesPage() {
         rows={jewelry}
         tiers={boardQuery.data?.lines ?? []}
         loading={jewelryQuery.isLoading}
+        query={jewelryQuery}
         onSaved={(msg) => {
           toast.success(msg);
           refresh();
@@ -114,6 +116,7 @@ export default function ConversionFeesPage() {
       <BarPanel
         rows={bar}
         loading={barQuery.isLoading}
+        query={barQuery}
         onSaved={(msg) => {
           toast.success(msg);
           refresh();
@@ -126,6 +129,7 @@ export default function ConversionFeesPage() {
         rows={jewelryHistory.data ?? []}
         columns={['SKU / ຫົວໜ່ວຍ', 'ຄ່າປ່ຽນຮູບປະພັນດີ', 'ຄ່າປ່ຽນເສຍຮູບ']}
         loading={jewelryHistory.isLoading}
+        query={jewelryHistory}
         render={(r) => [
           r.tier?.labelLo ?? r.tierCode,
           formatLak(r.feeGoodShape),
@@ -139,6 +143,7 @@ export default function ConversionFeesPage() {
         columns={['ນ້ຳໜັກ / g', 'ຄຳແທ່ງ-ຮູບປະພັນ', 'ຄຳແທ່ງ-ຄຳແທ່ງ']}
         numericFirst
         loading={barHistory.isLoading}
+        query={barHistory}
         render={(r) => [
           formatWeight(r.weightG),
           formatLak(r.barToJewelry),
@@ -159,15 +164,23 @@ export default function ConversionFeesPage() {
 
 /* ------------------------------------------------------------------ jewelry */
 
+/** The slice of a useQuery result the panels need to tell a failed load from an empty one. */
+interface QueryFailure {
+  isError: boolean;
+  error: unknown;
+  refetch: () => unknown;
+}
+
 interface JewelryPanelProps {
   rows: JewelryFee[];
   tiers: BoardLine[];
   loading: boolean;
+  query: QueryFailure;
   onSaved: (msg: string) => void;
   onError: (e: unknown, fallback: string) => void;
 }
 
-function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelProps) {
+function JewelryPanel({ rows, tiers, loading, query, onSaved, onError }: JewelryPanelProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const [good, setGood] = useState('');
   const [damaged, setDamaged] = useState('');
@@ -301,13 +314,15 @@ function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelPr
             </tr>
           </thead>
           <tbody>
-            {!loading && rows.length === 0 && (
-              <tr>
-                <td colSpan={5} className="py-6 text-center text-muted">
-                  ຍັງບໍ່ມີຄ່າປ່ຽນຮູບປະພັນ
-                </td>
-              </tr>
-            )}
+            <TableStateRow
+              colSpan={5}
+              dense
+              isError={query.isError}
+              error={query.error}
+              isEmpty={!loading && rows.length === 0}
+              emptyText="ຍັງບໍ່ມີຄ່າປ່ຽນຮູບປະພັນ"
+              onRetry={() => void query.refetch()}
+            />
             {pager.pageItems.map((row) => (
               <tr key={row.id}>
                 <td className="font-medium">{row.tier.labelLo}</td>
@@ -427,11 +442,12 @@ function JewelryPanel({ rows, tiers, loading, onSaved, onError }: JewelryPanelPr
 interface BarPanelProps {
   rows: BarFee[];
   loading: boolean;
+  query: QueryFailure;
   onSaved: (msg: string) => void;
   onError: (e: unknown, fallback: string) => void;
 }
 
-function BarPanel({ rows, loading, onSaved, onError }: BarPanelProps) {
+function BarPanel({ rows, loading, query, onSaved, onError }: BarPanelProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [weight, setWeight] = useState('');
@@ -560,13 +576,15 @@ function BarPanel({ rows, loading, onSaved, onError }: BarPanelProps) {
             </tr>
           </thead>
           <tbody>
-            {!loading && rows.length === 0 && (
-              <tr>
-                <td colSpan={4} className="py-6 text-center text-muted">
-                  ຍັງບໍ່ມີຄ່າປ່ຽນຄຳແທ່ງ
-                </td>
-              </tr>
-            )}
+            <TableStateRow
+              colSpan={4}
+              dense
+              isError={query.isError}
+              error={query.error}
+              isEmpty={!loading && rows.length === 0}
+              emptyText="ຍັງບໍ່ມີຄ່າປ່ຽນຄຳແທ່ງ"
+              onRetry={() => void query.refetch()}
+            />
             {pager.pageItems.map((row) => (
               <tr key={row.id}>
                 <td className="num text-right font-medium">{formatWeight(row.weightG)}</td>
@@ -687,6 +705,7 @@ interface HistoryPanelProps<T> {
   /** First rendered column is numeric (bar side: weight), so right-align it. */
   numericFirst?: boolean;
   loading?: boolean;
+  query?: QueryFailure;
 }
 
 /**
@@ -700,6 +719,7 @@ function HistoryPanel<T extends { id: string; effectiveAt: string; deletedAt: st
   render,
   numericFirst = false,
   loading = false,
+  query,
 }: HistoryPanelProps<T>) {
   const pager = usePagination(rows, 10);
 
@@ -724,20 +744,16 @@ function HistoryPanel<T extends { id: string; effectiveAt: string; deletedAt: st
             </tr>
           </thead>
           <tbody>
-            {loading && rows.length === 0 && (
-              <tr>
-                <td colSpan={columns.length + 3} className="py-6 text-center text-muted">
-                  ກຳລັງໂຫຼດ...
-                </td>
-              </tr>
-            )}
-            {!loading && rows.length === 0 && (
-              <tr>
-                <td colSpan={columns.length + 3} className="py-6 text-center text-muted">
-                  ຍັງບໍ່ມີປະຫວັດ
-                </td>
-              </tr>
-            )}
+            <TableStateRow
+              colSpan={columns.length + 3}
+              dense
+              isLoading={loading && rows.length === 0}
+              isError={query?.isError}
+              error={query?.error}
+              isEmpty={!loading && rows.length === 0}
+              emptyText="ຍັງບໍ່ມີປະຫວັດ"
+              onRetry={query ? () => void query.refetch() : undefined}
+            />
             {pager.pageItems.map((row) => {
               const cells = render(row);
               return (

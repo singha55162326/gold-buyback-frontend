@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
+import { TableStateRow } from '@/components/query-state';
 import { formatMoney, formatDate } from '@/lib/format';
 import { PageHead } from './page-head';
 import { StatCard } from './stat-card';
@@ -56,11 +57,11 @@ export function ApArCashModule({
     queryKey: ['finance', 'ap-ar', side, 'totals'],
     queryFn: () => api.get<Total[]>(`/finance/ap-ar/${side}/totals`),
   });
-  const { data: partnerRows = [] } = useQuery({
+  const { data: partnerRows = [], isError: partnersFailed, error: partnersError, refetch: refetchPartners } = useQuery({
     queryKey: ['finance', 'ap-ar', side, 'partners'],
     queryFn: () => api.get<PartnerRow[]>(`/finance/ap-ar/${side}/partners`),
   });
-  const { data: history = [] } = useQuery({
+  const { data: history = [], isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['finance', 'ap-ar', side, 'history'],
     queryFn: () => api.get<HistoryRow[]>(`/finance/ap-ar/${side}/history`),
   });
@@ -207,9 +208,14 @@ export function ApArCashModule({
               </tr>
             </thead>
             <tbody>
-              {partnerRows.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-muted">ຍັງບໍ່ມີຍອດຄ້າງ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={7}
+                isError={partnersFailed}
+                error={partnersError}
+                isEmpty={partnerRows.length === 0}
+                emptyText="ຍັງບໍ່ມີຍອດຄ້າງ"
+                onRetry={() => void refetchPartners()}
+              />
               {partnerRows.map((row) => (
                 <tr key={`${row.partnerId}-${row.currency}`}>
                   <td className="font-medium">{row.partnerNameLo}</td>
@@ -277,9 +283,14 @@ export function ApArCashModule({
               </tr>
             </thead>
             <tbody>
-              {history.length === 0 && (
-                <tr><td colSpan={9} className="py-8 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={9}
+                isError={historyFailed}
+                error={historyError}
+                isEmpty={history.length === 0}
+                emptyText="ຍັງບໍ່ມີລາຍການ"
+                onRetry={() => void refetchHistory()}
+              />
               {history.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDate(row.businessDate)}</td>

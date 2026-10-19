@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { TableStateRow } from '@/components/query-state';
 import { formatLak, formatWeight, formatDate } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 
@@ -30,11 +31,11 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
     queryKey: ['ledger', 'ap-ar', 'gold'],
     queryFn: () => api.get<Summary[]>('/ledger/ap-ar/gold'),
   });
-  const { data: partners = [] } = useQuery({
+  const { data: partners = [], isError: partnersFailed, error: partnersError, refetch: refetchPartners } = useQuery({
     queryKey: ['ledger', 'ap-ar', 'gold', 'partners'],
     queryFn: () => api.get<PartnerRow[]>('/ledger/ap-ar/gold/partners'),
   });
-  const { data: history = [] } = useQuery({
+  const { data: history = [], isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['ledger', 'ap-ar', 'gold', 'history'],
     queryFn: () => api.get<HistoryRow[]>('/ledger/ap-ar/gold/history'),
   });
@@ -103,9 +104,15 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
               </tr>
             </thead>
             <tbody>
-              {partners.filter((r) => r.side === side).length === 0 && (
-                <tr><td colSpan={6} className="py-6 text-center text-muted">ຍັງບໍ່ມີຂໍ້ມູນ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={6}
+                dense
+                isError={partnersFailed}
+                error={partnersError}
+                isEmpty={partners.filter((r) => r.side === side).length === 0}
+                emptyText="ຍັງບໍ່ມີຂໍ້ມູນ"
+                onRetry={() => void refetchPartners()}
+              />
               {partners.filter((r) => r.side === side).map((row) => (
                 <tr key={`${row.partnerId}-${row.side}`}>
                   <td className="font-medium">{row.partnerNameLo}</td>
@@ -139,9 +146,15 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
               </tr>
             </thead>
             <tbody>
-              {history.filter((r) => r.side === side).length === 0 && (
-                <tr><td colSpan={9} className="py-6 text-center text-muted">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={9}
+                dense
+                isError={historyFailed}
+                error={historyError}
+                isEmpty={history.filter((r) => r.side === side).length === 0}
+                emptyText="ຍັງບໍ່ມີລາຍການ"
+                onRetry={() => void refetchHistory()}
+              />
               {history.filter((r) => r.side === side).map((row) => (
                 <tr key={row.id}>
                   <td>{formatDate(row.businessDate)}</td>

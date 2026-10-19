@@ -2,7 +2,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
-import { api, getStoredUser } from '@/lib/api';
+import { api, ApiError, getStoredUser } from '@/lib/api';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { PageHead } from '@/components/page-head';
 import { ReadinessPanel } from '@/components/readiness-panel';
 import { formatLak, formatRate, formatMoney, formatWeight, formatDate, gramsToBaht } from '@/lib/format';
@@ -29,34 +30,45 @@ export default function DashboardPage() {
     user?.role === 'ADMIN' || user?.role === 'MANAGER' || user?.role === 'FINANCIAL_CONTROLLER';
   const seesGold = isFinance || user?.role === 'WAREHOUSE';
 
-  const { data: board } = useQuery({
+  const { data: board, isError: boardFailedRaw, error: boardError, refetch: refetchBoard } = useQuery({
     queryKey: ['pricing', 'current'],
     queryFn: () => api.get<PriceBoard>('/pricing/current'),
     retry: false,
   });
-  const { data: rates } = useQuery({
+  const { data: rates, isError: ratesFailedRaw, error: ratesError, refetch: refetchRates } = useQuery({
     queryKey: ['rates', 'current'],
     queryFn: () => api.get<Rates>('/rates/current'),
     retry: false,
   });
-  const { data: wac } = useQuery({
+  const { data: wac, isError: wacFailedRaw, error: wacError, refetch: refetchWac } = useQuery({
     queryKey: ['ledger', 'wac'],
     queryFn: () => api.get<Wac>('/ledger/wac'),
     retry: false,
     enabled: seesGold,
   });
-  const { data: coh } = useQuery({
+  const { data: coh, isError: cohFailedRaw, error: cohError, refetch: refetchCoh } = useQuery({
     queryKey: ['ledger', 'coh'],
     queryFn: () => api.get<Coh>('/ledger/coh'),
     retry: false,
     enabled: isFinance,
   });
-  const { data: advance } = useQuery({
+  const { data: advance, isError: advanceFailedRaw, error: advanceError, refetch: refetchAdvance } = useQuery({
     queryKey: ['finance', 'advance'],
     queryFn: () => api.get<Advance>('/finance/advance'),
     retry: false,
     enabled: isFinance,
   });
+
+  // A 404 means "not configured yet" (e.g. no price set), which the existing
+  // empty text already explains; anything else is a failed fetch.
+  const real = (failed: boolean, e: unknown) => failed && !(e instanceof ApiError && e.status === 404);
+  const boardFailed = real(boardFailedRaw, boardError);
+  const loadFailures = [
+    { failed: real(ratesFailedRaw, ratesError), error: ratesError, retry: refetchRates },
+    { failed: real(wacFailedRaw, wacError), error: wacError, retry: refetchWac },
+    { failed: real(cohFailedRaw, cohError), error: cohError, retry: refetchCoh },
+    { failed: real(advanceFailedRaw, advanceError), error: advanceError, retry: refetchAdvance },
+  ].filter((f) => f.failed);
 
   const cohLak = coh?.cash.find((c) => c.currency === 'LAK');
   const advanceLak = advance?.totals.find((t) => t.currency === 'LAK');
@@ -71,6 +83,10 @@ export default function DashboardPage() {
       {/* Setup gaps fail silently at the counter, so they belong above the
           numbers — and only Admin/Manager can act on them. */}
       {isFinance && <ReadinessPanel />}
+
+      {loadFailures.map((f, i) => (
+        <QueryErrorNotice key={i} error={f.error} onRetry={() => void f.retry()} />
+      ))}
 
       {/* Everyone sees the price of the day — it drives every transaction. */}
       <div className="stat-grid">
@@ -132,13 +148,14 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody>
-              {!board && (
-                <tr>
-                  <td colSpan={3} className="py-8 text-center text-muted">
-                    ຍັງບໍ່ມີການຕັ້ງລາຄາ — ໄປທີ່ ຈັດການ Products ເພື່ອຕັ້ງລາຄາຂາຍ 1 ບາດ
-                  </td>
-                </tr>
-              )}
+              <TableStateRow
+                colSpan={3}
+                isError={boardFailed}
+                error={boardError}
+                isEmpty={!board}
+                emptyText="ຍັງບໍ່ມີການຕັ້ງລາຄາ — ໄປທີ່ ຈັດການ Products ເພື່ອຕັ້ງລາຄາຂາຍ 1 ບາດ"
+                onRetry={() => void refetchBoard()}
+              />
               {(board?.lines ?? []).map((line) => (
                 <tr key={line.tierCode}>
                   <td>{line.labelLo}</td>
