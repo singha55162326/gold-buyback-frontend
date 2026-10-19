@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { TableStateRow } from '@/components/query-state';
 import { formatMoney, formatDate } from '@/lib/format';
+import { NumberInput } from './number-input';
 import { PageHead } from './page-head';
 import { StatCard } from './stat-card';
 
@@ -162,8 +163,8 @@ export function ApArCashModule({
             </div>
             <div>
               <label className="label" htmlFor="amt">ຈຳນວນເງິນ</label>
-              <input id="amt" className="input num" inputMode="decimal" aria-describedby={error ? 'apar-error' : undefined} value={amount}
-                onChange={(e) => setAmount(e.target.value)} />
+              <NumberInput id="amt" className="input num" decimals={currency === 'LAK' ? 0 : 2} aria-describedby={error ? 'apar-error' : undefined} value={amount}
+                onValueChange={setAmount} />
             </div>
             <div>
               <label className="label" htmlFor="note">Note</label>
@@ -239,9 +240,9 @@ export function ApArCashModule({
                             {banks.map((b) => <option key={b.id} value={b.id}>{b.nameLo}</option>)}
                           </select>
                         )}
-                        <input className="input num w-32 text-right" inputMode="decimal" aria-label="ຈຳນວນເງິນ" aria-describedby={error ? 'apar-error' : undefined}
+                        <NumberInput className="input num w-32 text-right" decimals={row.currency === 'LAK' ? 0 : 2} aria-label="ຈຳນວນເງິນ" aria-describedby={error ? 'apar-error' : undefined}
                           placeholder={row.current} value={amount}
-                          onChange={(e) => setAmount(e.target.value)} autoFocus />
+                          onValueChange={setAmount} autoFocus />
                         <button className="btn-ghost"
                           onClick={() => settle.mutate(row)} disabled={settle.isPending || !amount.trim()}>
                           ຢືນຢັນ

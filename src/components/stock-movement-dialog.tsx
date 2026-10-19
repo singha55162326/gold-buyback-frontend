@@ -6,6 +6,7 @@ import { dec, GRAMS_PER_BAHT } from '@kpv/domain';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight } from '@/lib/format';
 import { Dialog } from './dialog';
+import { NumberInput } from './number-input';
 import { QueryErrorNotice } from './query-state';
 
 export type MovementKind = 'IN' | 'OUT' | 'TRANSFER';
@@ -272,8 +273,8 @@ export function StockMovementDialog({
         {isSmithOut && (
           <div>
             <label className="label" htmlFor="pct">%ຄຳ</label>
-            <input id="pct" className="input num" inputMode="decimal" placeholder="96"
-              value={goldPercent} onChange={(e) => setGoldPercent(e.target.value)} />
+            <NumberInput id="pct" className="input num" decimals={2} placeholder="96"
+              value={goldPercent} onValueChange={setGoldPercent} />
           </div>
         )}
       </div>
@@ -309,8 +310,8 @@ export function StockMovementDialog({
                   {goldTypes.map((t) => <option key={t.id} value={t.id}>{t.nameLo}</option>)}
                 </select>
               )}
-              <input className="input num" aria-label="weight_g" inputMode="decimal" placeholder="weight_g"
-                value={line.weightG} onChange={(e) => setLine(i, { weightG: e.target.value })} />
+              <NumberInput className="input num" aria-label="weight_g" decimals={4} placeholder="weight_g"
+                value={line.weightG} onValueChange={(v) => setLine(i, { weightG: v })} />
               <input className="input num" aria-label="ຈຳນວນ" type="number" min={1} value={line.quantity}
                 onChange={(e) => setLine(i, { quantity: Number(e.target.value) || 1 })} />
               <div className="input num flex items-center justify-end text-muted">
@@ -332,14 +333,14 @@ export function StockMovementDialog({
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <div>
             <label className="label" htmlFor="cost">ຕົ້ນທຶນຄໍາ (LAK)</label>
-            <input id="cost" className="input num" inputMode="decimal" value={totalCost}
-              onChange={(e) => setTotalCost(e.target.value)} />
+            <NumberInput id="cost" className="input num" decimals={0} value={totalCost}
+              onValueChange={setTotalCost} />
           </div>
           <div>
             <label className="label" htmlFor="labor">ຄ່າແຮງ (THB)</label>
-            <input id="labor" className="input num" inputMode="decimal" value={laborFeeThb}
+            <NumberInput id="labor" className="input num" decimals={2} value={laborFeeThb}
               aria-describedby="labor-hint"
-              onChange={(e) => setLaborFeeThb(e.target.value)} />
+              onValueChange={setLaborFeeThb} />
             <p id="labor-hint" className="mt-1 text-xs text-muted">ບັນທຶກເປັນ +AP (Cash) ຄ່າແຮງຄ້າງຈ່າຍ</p>
           </div>
         </div>
