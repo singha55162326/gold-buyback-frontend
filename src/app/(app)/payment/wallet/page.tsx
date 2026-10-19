@@ -6,6 +6,7 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
+import { NumberInput } from '@/components/number-input';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
@@ -131,18 +132,18 @@ export default function WalletPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="label" htmlFor="lak">Amount (LAK)</label>
-            <input id="lak" className="input input-lg num" inputMode="decimal" aria-describedby={error ? 'wallet-error' : undefined} value={lak}
-              onChange={(e) => setLak(e.target.value)} />
+            <NumberInput decimals={0} id="lak" className="input input-lg num" aria-describedby={error ? 'wallet-error' : undefined} value={lak}
+              onValueChange={setLak} />
           </div>
           <div>
             <label className="label" htmlFor="thb">Amount (THB)</label>
-            <input id="thb" className="input input-lg num" inputMode="decimal" value={thb}
-              onChange={(e) => setThb(e.target.value)} />
+            <NumberInput decimals={2} id="thb" className="input input-lg num" value={thb}
+              onValueChange={setThb} />
           </div>
           <div>
             <label className="label" htmlFor="usd">Amount (USD)</label>
-            <input id="usd" className="input input-lg num" inputMode="decimal" value={usd}
-              onChange={(e) => setUsd(e.target.value)} />
+            <NumberInput decimals={2} id="usd" className="input input-lg num" value={usd}
+              onValueChange={setUsd} />
           </div>
           <div>
             <label className="label" htmlFor="note">Note</label>

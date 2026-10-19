@@ -5,6 +5,7 @@ import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
+import { NumberInput } from '@/components/number-input';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
@@ -231,13 +232,13 @@ export default function ExchangePage() {
                 <option value="">ລາຍການຄຳ</option>
                 {goldItems.map((it) => <option key={it.id} value={it.id}>{it.nameLo}</option>)}
               </select>
-              <input aria-label={`ລາຍການຄຳເກົ່າ — ນ້ຳໜັກ (g) ${i + 1}`} className="input num" inputMode="decimal" placeholder="ນ້ຳໜັກ (g)"
-                value={line.weightG} onChange={(e) => setOld(i, { weightG: e.target.value })} />
+              <NumberInput decimals={4} aria-label={`ລາຍການຄຳເກົ່າ — ນ້ຳໜັກ (g) ${i + 1}`} className="input num" placeholder="ນ້ຳໜັກ (g)"
+                value={line.weightG} onValueChange={(v) => setOld(i, { weightG: v })} />
               <input aria-label={`ລາຍການຄຳເກົ່າ — ຈຳນວນ ${i + 1}`} className="input num" type="number" min={1} value={line.quantity}
                 onChange={(e) => setOld(i, { quantity: Number(e.target.value) || 1 })} />
-              <input aria-label={`ລາຍການຄຳເກົ່າ — ເກນ standard (g) ${i + 1}`} className="input num" inputMode="decimal" placeholder="ເກນ standard (g)"
+              <NumberInput decimals={4} aria-label={`ລາຍການຄຳເກົ່າ — ເກນ standard (g) ${i + 1}`} className="input num" placeholder="ເກນ standard (g)"
                 value={line.standardWeightG}
-                onChange={(e) => setOld(i, { standardWeightG: e.target.value })} />
+                onValueChange={(v) => setOld(i, { standardWeightG: v })} />
               <button className="btn-danger px-3" disabled={oldLines.length === 1}
                 onClick={() => setOldLines((p) => p.filter((_, idx) => idx !== i))}>
                 ລຶບ
@@ -275,12 +276,12 @@ export default function ExchangePage() {
                 <option value="">ລາຍການ (SKU)</option>
                 {skus.map((s) => <option key={s.id} value={s.id}>{s.fullSkuName}</option>)}
               </select>
-              <input aria-label={`ລາຍການຄຳໃໝ່ — ນ້ຳໜັກ (g) ${i + 1}`} className="input num" inputMode="decimal" placeholder="ນ້ຳໜັກ (g)"
-                value={line.weightG} onChange={(e) => setNew(i, { weightG: e.target.value })} />
+              <NumberInput decimals={4} aria-label={`ລາຍການຄຳໃໝ່ — ນ້ຳໜັກ (g) ${i + 1}`} className="input num" placeholder="ນ້ຳໜັກ (g)"
+                value={line.weightG} onValueChange={(v) => setNew(i, { weightG: v })} />
               <input aria-label={`ລາຍການຄຳໃໝ່ — ຈຳນວນ ${i + 1}`} className="input num" type="number" min={1} value={line.quantity}
                 onChange={(e) => setNew(i, { quantity: Number(e.target.value) || 1 })} />
-              <input aria-label={`ລາຍການຄຳໃໝ່ — ຄ່າລາຍ ${i + 1}`} className="input num" inputMode="decimal" placeholder="ຄ່າລາຍ"
-                value={line.patternFee} onChange={(e) => setNew(i, { patternFee: e.target.value })} />
+              <NumberInput decimals={0} aria-label={`ລາຍການຄຳໃໝ່ — ຄ່າລາຍ ${i + 1}`} className="input num" placeholder="ຄ່າລາຍ"
+                value={line.patternFee} onValueChange={(v) => setNew(i, { patternFee: v })} />
               <select aria-label={`ລາຍການຄຳໃໝ່ — ຕູ້ເຄື່ອງ ${i + 1}`} className="input" value={line.cabinetId}
                 onChange={(e) => setNew(i, { cabinetId: e.target.value })}>
                 <option value="">ຕູ້ເຄື່ອງ</option>
@@ -314,8 +315,8 @@ export default function ExchangePage() {
           )}
           {remainingLines.map((line, i) => (
             <div key={i} className="grid gap-2 rounded-xl border border-line p-3 sm:grid-cols-[1fr_1fr_auto]">
-              <input aria-label={`ຄຳເກົ່າຄົງເຫຼືອ — ນ້ຳໜັກ (g) ${i + 1}`} className="input num" inputMode="decimal" placeholder="ນ້ຳໜັກ (g)"
-                value={line.weightG} onChange={(e) => setRemaining(i, { weightG: e.target.value })} />
+              <NumberInput decimals={4} aria-label={`ຄຳເກົ່າຄົງເຫຼືອ — ນ້ຳໜັກ (g) ${i + 1}`} className="input num" placeholder="ນ້ຳໜັກ (g)"
+                value={line.weightG} onValueChange={(v) => setRemaining(i, { weightG: v })} />
               <input aria-label={`ຄຳເກົ່າຄົງເຫຼືອ — ຈຳນວນ ${i + 1}`} className="input num" type="number" min={1} value={line.quantity}
                 onChange={(e) => setRemaining(i, { quantity: Number(e.target.value) || 1 })} />
               <button className="btn-danger px-3"

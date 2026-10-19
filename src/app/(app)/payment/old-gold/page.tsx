@@ -5,6 +5,7 @@ import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
+import { NumberInput } from '@/components/number-input';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
@@ -138,8 +139,8 @@ export default function OldGoldPage() {
           </div>
           <div>
             <label className="label" htmlFor="weightG">weight_g</label>
-            <input id="weightG" className="input input-lg num" inputMode="decimal" value={weightG}
-              onChange={(e) => setWeightG(e.target.value)} />
+            <NumberInput decimals={4} id="weightG" className="input input-lg num" value={weightG}
+              onValueChange={setWeightG} />
           </div>
           <div className="sm:col-span-2">
             <label className="label" htmlFor="note">Note</label>

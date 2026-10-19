@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dec } from '@kpv/domain';
 import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
+import { NumberInput } from '@/components/number-input';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
@@ -176,8 +177,8 @@ export default function CreditPage() {
           </div>
           <div>
             <label className="label" htmlFor="weightG">ນ້ຳໜັກ (g)</label>
-            <input id="weightG" className="input input-lg num" inputMode="decimal" value={weightG}
-              onChange={(e) => setWeightG(e.target.value)} />
+            <NumberInput decimals={4} id="weightG" className="input input-lg num" value={weightG}
+              onValueChange={setWeightG} />
           </div>
           <div>
             <label className="label" htmlFor="qty">ຈຳນວນ</label>
@@ -186,13 +187,13 @@ export default function CreditPage() {
           </div>
           <div>
             <label className="label" htmlFor="sellPrice">ລາຄາຂາຍ (LAK)</label>
-            <input id="sellPrice" className="input input-lg num" inputMode="decimal" value={sellPrice}
-              onChange={(e) => setSellPrice(e.target.value)} />
+            <NumberInput decimals={0} id="sellPrice" className="input input-lg num" value={sellPrice}
+              onValueChange={setSellPrice} />
           </div>
           <div>
             <label className="label" htmlFor="downPayment">ເງິນວາງດາວ (LAK)</label>
-            <input id="downPayment" className="input input-lg num" inputMode="decimal" value={downPayment}
-              onChange={(e) => setDownPayment(e.target.value)} />
+            <NumberInput decimals={0} id="downPayment" className="input input-lg num" value={downPayment}
+              onValueChange={setDownPayment} />
           </div>
           <div>
             <label className="label" htmlFor="cabinet">ຕູ້ເຄື່ອງ</label>
@@ -245,9 +246,9 @@ export default function CreditPage() {
             </div>
             <div>
               <label className="label" htmlFor="amt">ຈຳນວນເງິນ</label>
-              <input id="amt" className="input input-lg num" inputMode="decimal"
+              <NumberInput decimals={currency === 'LAK' ? 0 : 2} id="amt" className="input input-lg num"
                 placeholder={downPayment || '0'} value={amount}
-                onChange={(e) => setAmount(e.target.value)} />
+                onValueChange={setAmount} />
             </div>
           </div>
           <p className="mt-2 text-xs text-muted">
@@ -299,9 +300,9 @@ export default function CreditPage() {
             </div>
             <div>
               <label className="label" htmlFor="iamt">ຈຳນວນເງິນ</label>
-              <input id="iamt" className="input input-lg num" inputMode="decimal"
+              <NumberInput decimals={currency === 'LAK' ? 0 : 2} id="iamt" className="input input-lg num"
                 placeholder={instalment.outstanding} value={amount}
-                onChange={(e) => setAmount(e.target.value)} />
+                onValueChange={setAmount} />
             </div>
             <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-4">
               <button className="btn-primary min-h-[54px]" disabled={!amount.trim() || receive.isPending}

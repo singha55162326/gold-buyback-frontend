@@ -5,6 +5,7 @@ import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
+import { NumberInput } from '@/components/number-input';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
@@ -235,8 +236,8 @@ export default function BuybackPage() {
 
           <div>
             <label className="label" htmlFor="weightG">ນ້ຳໜັກ (g)</label>
-            <input id="weightG" className="input input-lg num" inputMode="decimal" placeholder="15"
-              value={weightG} onChange={(e) => setWeightG(e.target.value)} />
+            <NumberInput decimals={4} id="weightG" className="input input-lg num" placeholder="15"
+              value={weightG} onValueChange={setWeightG} />
           </div>
 
           <div>
@@ -248,16 +249,16 @@ export default function BuybackPage() {
           {isBoiled && (
             <div>
               <label className="label" htmlFor="goldPercent">%ຄຳ</label>
-              <input id="goldPercent" className="input input-lg num" inputMode="decimal" placeholder="96"
-                value={goldPercent} onChange={(e) => setGoldPercent(e.target.value)} />
+              <NumberInput decimals={2} id="goldPercent" className="input input-lg num" placeholder="96"
+                value={goldPercent} onValueChange={setGoldPercent} />
             </div>
           )}
 
           {!isBoiled && (
             <div>
               <label className="label" htmlFor="deduction">ຄ່າອ່ອນ / ຄ່າຫັກ (ຕໍ່ຊິ້ນ)</label>
-              <input id="deduction" className="input input-lg num" inputMode="decimal" placeholder="0"
-                value={deduction} onChange={(e) => setDeduction(e.target.value)} />
+              <NumberInput decimals={0} id="deduction" className="input input-lg num" placeholder="0"
+                value={deduction} onValueChange={setDeduction} />
             </div>
           )}
         </div>
@@ -308,9 +309,9 @@ export default function BuybackPage() {
 
           <div>
             <label className="label" htmlFor="amount">Amount</label>
-            <input id="amount" className="input input-lg num" inputMode="decimal"
+            <NumberInput decimals={currency === 'LAK' ? 0 : 2} id="amount" className="input input-lg num"
               placeholder={preview?.payableAmount ?? '0'} value={amount}
-              onChange={(e) => setAmount(e.target.value)} />
+              onValueChange={setAmount} />
           </div>
         </div>
 
