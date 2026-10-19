@@ -6,6 +6,10 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
+import { StatCard } from '@/components/stat-card';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
+import { NumberInput } from '@/components/number-input';
 
 interface Balance { currency: 'LAK' | 'THB' | 'USD'; inflow: string; outflow: string; balance: string }
 interface Row {
@@ -30,14 +34,16 @@ export default function FcCashPage() {
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: balances = [] } = useQuery({
+  const balancesQuery = useQuery({
     queryKey: ['cash', 'balances'],
     queryFn: () => api.get<Balance[]>('/cash/balances'),
   });
-  const { data: rows = [] } = useQuery({
+  const balances = balancesQuery.data ?? [];
+  const rowsQuery = useQuery({
     queryKey: ['cash', 'history'],
     queryFn: () => api.get<Row[]>('/cash/history'),
   });
+  const rows = rowsQuery.data ?? [];
 
   const create = useMutation({
     mutationFn: () =>
@@ -62,30 +68,29 @@ export default function FcCashPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Module Cash</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ຍອດເງິນສົດຄົງເຫຼືອ ແລະ ການເຄື່ອນໄຫວເງິນສົດໃນມື້ (TOR §3.7)
-        </p>
-      </div>
+      <PageHead
+        title="Module Cash"
+        subtitle="ຍອດເງິນສົດຄົງເຫຼືອ ແລະ ການເຄື່ອນໄຫວເງິນສົດໃນມື້ (TOR §3.7)"
+      />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      {balancesQuery.isError && (
+        <QueryErrorNotice error={balancesQuery.error} onRetry={() => void balancesQuery.refetch()} />
+      )}
+
+      <div className="stat-grid">
         {balances.map((b) => (
-          <div key={b.currency} className="card p-4">
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              ຍອດຄົງເຫຼືອ {b.currency}
-            </div>
-            <div className="num mt-1 text-xl font-bold text-slate-900">{formatMoney(b.balance)}</div>
-            <div className="mt-0.5 text-xs text-slate-400">
-              (+) {formatMoney(b.inflow)} · (−) {formatMoney(b.outflow)}
-            </div>
-          </div>
+          <StatCard
+            key={b.currency}
+            label={`ຍອດຄົງເຫຼືອ ${b.currency}`}
+            value={formatMoney(b.balance)}
+            sub={`(+) ${formatMoney(b.inflow)} · (−) ${formatMoney(b.outflow)}`}
+          />
         ))}
       </div>
 
-      <div className="card p-5">
+      <div data-fade className="card p-5">
         <h2 className="card-title mb-4">ບັນທຶກເງິນສົດ</h2>
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="label" htmlFor="type">ປະເພດ</label>
             <select id="type" className="input" value={type}
@@ -107,8 +112,8 @@ export default function FcCashPage() {
           </div>
           <div>
             <label className="label" htmlFor="amt">ຈຳນວນເງິນ</label>
-            <input id="amt" className="input num" inputMode="decimal" value={amount}
-              onChange={(e) => setAmount(e.target.value)} />
+            <NumberInput id="amt" className="input num" decimals={currency === 'LAK' ? 0 : 2} aria-describedby={error ? 'cash-error' : undefined} value={amount}
+              onValueChange={setAmount} />
           </div>
           <div>
             <label className="label" htmlFor="note">Note</label>
@@ -116,19 +121,19 @@ export default function FcCashPage() {
           </div>
         </div>
         {error && (
-          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+          <div id="cash-error" role="alert" className="notice status-danger mt-3">{error}</div>
         )}
         <div className="mt-4">
-          <button className="btn-primary" disabled={!amount.trim() || create.isPending}
+          <button className="btn-primary min-h-[54px] w-full sm:w-auto sm:min-w-[240px]" disabled={!amount.trim() || create.isPending}
             onClick={() => create.mutate()}>
             {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
           </button>
         </div>
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ປະຫວັດ Cash</h2></div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Cash">
           <table className="table">
             <thead>
               <tr>
@@ -141,17 +146,23 @@ export default function FcCashPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={6} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={6}
+                isLoading={rowsQuery.isLoading}
+                isError={rowsQuery.isError}
+                error={rowsQuery.error}
+                isEmpty={rows.length === 0}
+                emptyText="ຍັງບໍ່ມີລາຍການ"
+                onRetry={() => void rowsQuery.refetch()}
+              />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDateTime(row.createdAt)}</td>
                   <td>{TYPE_LABEL[row.type] ?? row.type}</td>
                   <td>{row.currency}</td>
                   <td className="num text-right font-medium">{formatMoney(row.amount)}</td>
-                  <td className="text-slate-500">{row.refType ?? '—'}</td>
-                  <td className="text-slate-500">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.refType ?? '—'}</td>
+                  <td className="text-muted">{row.note ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -162,3 +173,4 @@ export default function FcCashPage() {
     </div>
   );
 }
+

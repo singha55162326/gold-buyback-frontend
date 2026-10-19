@@ -6,6 +6,10 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatLak, formatWeight, formatDate } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
+import { TableStateRow } from '@/components/query-state';
+import { NumberInput } from '@/components/number-input';
+import { statusClass } from '@/lib/status';
 
 interface Tracking {
   id: string;
@@ -35,7 +39,7 @@ export default function FactoryTrackingPage() {
   const user = getStoredUser();
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  const { data: rows = [] } = useQuery({
+  const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['stock', 'factory'],
     queryFn: () => api.get<Tracking[]>('/stock/factory'),
   });
@@ -63,25 +67,23 @@ export default function FactoryTrackingPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ຕິດຕາມ Stock Out ໄປ FACTORY</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ລາຍການທີ່ Approve ແລ້ວ ລໍຖ້າ FACTORY ປະເມີນນ້ຳໜັກ (TOR §7.3)
-        </p>
-      </div>
+      <PageHead
+        title="ຕິດຕາມ Stock Out ໄປ FACTORY"
+        subtitle="ລາຍການທີ່ Approve ແລ້ວ ລໍຖ້າ FACTORY ປະເມີນນ້ຳໜັກ (TOR §7.3)"
+      />
 
-      <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+      <div data-fade className="notice status-warning">
         ລະບົບຍັງບໍ່ຕັດຍອດຈົນກວ່າຈະປ້ອນນ້ຳໜັກທີ່ FACTORY ປະເມີນ.
         ເມື່ອບັນທຶກແລ້ວ ສະຖານະຈະເປັນ Completed ແລະ ຕັດຍອດ Stock (OLD) ພ້ອມບັນທຶກ AP-AR (GOLD).
       </div>
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div id="factory-error" role="alert" className="notice status-danger">{error}</div>
       )}
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ລາຍການຕິດຕາມ</h2></div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການຕິດຕາມ">
           <table className="table">
             <thead>
               <tr>
@@ -97,9 +99,7 @@ export default function FactoryTrackingPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={9} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow colSpan={9} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
               {pager.pageItems.map((row) => {
                 const locked = row.status === 'COMPLETED' && !isAdmin;
                 return (
@@ -107,15 +107,17 @@ export default function FactoryTrackingPage() {
                     <td className="font-mono text-xs">{row.movement.code}</td>
                     <td>{formatDate(row.createdAt)}</td>
                     <td>{row.partner.nameLo}</td>
-                    <td className="text-slate-500">{row.movement.transformType ?? '—'}</td>
+                    <td className="text-muted">{row.movement.transformType ?? '—'}</td>
                     <td className="num text-right">{formatWeight(row.goldOutG)}</td>
                     <td className="num text-right">
                       {editing === row.id ? (
-                        <input
-                          className="input num w-32 text-right"
-                          inputMode="decimal"
+                        <NumberInput
+                          className="input num w-36 text-right"
+                          aria-label={`ນໍ້າໜັກg FACTORY ປະເມີນ ${row.movement.code}`}
+                          aria-describedby={error ? 'factory-error' : undefined}
+                          decimals={4}
                           value={weight}
-                          onChange={(e) => setWeight(e.target.value)}
+                          onValueChange={setWeight}
                           autoFocus
                         />
                       ) : (
@@ -124,25 +126,26 @@ export default function FactoryTrackingPage() {
                     </td>
                     <td className="num text-right">{formatLak(row.cost)}</td>
                     <td>
-                      <span className={row.status === 'COMPLETED' ? 'badge bg-emerald-100 text-emerald-800' : 'badge bg-amber-100 text-amber-800'}>
+                      <span className={statusClass(row.status, { AWAITING_ASSESSMENT: 'status-warning' })}>
                         {row.status === 'COMPLETED' ? 'Completed' : 'ລໍຖ້າ FACTORY ປະເມີນ'}
                       </span>
                     </td>
                     <td className="text-right">
                       {editing === row.id ? (
-                        <div className="flex justify-end gap-2">
-                          <button className="text-sm text-gold-700 hover:underline"
+                        <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
+                          <button className="btn-primary"
                             onClick={() => save.mutate(row.id)} disabled={save.isPending || !weight.trim()}>
                             ບັນທຶກ
                           </button>
-                          <button className="text-sm text-slate-500 hover:underline" onClick={() => setEditing(null)}>
+                          <button className="btn-secondary" onClick={() => setEditing(null)}>
                             ຍົກເລີກ
                           </button>
                         </div>
                       ) : locked ? (
-                        <span className="text-xs text-slate-400">ສະເພາະ Admin</span>
+                        <span className="text-xs text-muted">ສະເພາະ Admin</span>
                       ) : (
-                        <button className="text-sm text-gold-700 hover:underline"
+                        <button className="btn-ghost"
+                          aria-label={`${row.status === 'COMPLETED' ? 'ແກ້ໄຂ' : 'ອັບເດດ'} ${row.movement.code}`}
                           onClick={() => { setEditing(row.id); setWeight(row.factoryAssessedG ?? ''); }}>
                           {row.status === 'COMPLETED' ? 'ແກ້ໄຂ' : 'ອັບເດດ'}
                         </button>

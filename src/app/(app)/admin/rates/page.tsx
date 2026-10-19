@@ -14,8 +14,13 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { PageHead } from '@/components/page-head';
+import { NumberInput } from '@/components/number-input';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
+import { useChartTheme } from '@/lib/chart-theme';
 import { api, ApiError } from '@/lib/api';
 import { formatRate, formatDate } from '@/lib/format';
+import { StatCard } from '@/components/stat-card';
 
 interface Rates {
   id: string;
@@ -66,21 +71,24 @@ export default function RatesPage() {
   });
   const [error, setError] = useState<string | null>(null);
 
-  const { data: current } = useQuery({
+  const { data: current, isError: currentFailedRaw, error: currentError, refetch: refetchCurrent } = useQuery({
     queryKey: ['rates', 'current'],
     queryFn: () => api.get<Rates>('/rates/current'),
     retry: false,
   });
 
-  const { data: history = [] } = useQuery({
+  const { data: history = [], isLoading: historyLoading, isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['rates', 'history'],
     queryFn: () => api.get<HistoryRow[]>('/rates/history?limit=30'),
   });
 
-  const { data: series = [] } = useQuery({
+  const { data: series = [], isError: seriesFailed, error: seriesError, refetch: refetchSeries } = useQuery({
     queryKey: ['rates', 'series'],
     queryFn: () => api.get<SeriesPoint[]>('/rates/series?months=12'),
   });
+
+  // 404 on /rates/current means "no rates set yet", not a failure.
+  const currentFailed = currentFailedRaw && !(currentError instanceof ApiError && currentError.status === 404);
 
   const save = useMutation({
     mutationFn: () =>
@@ -129,24 +137,24 @@ export default function RatesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ຈັດການ Price Rate</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ອັດຕາແລກປ່ຽນ Sell ແລະ Buyback ສຳລັບ THB ແລະ USD (TOR §3.3)
-        </p>
+      <PageHead
+        title="ຈັດການ Price Rate"
+        subtitle="ອັດຕາແລກປ່ຽນ Sell ແລະ Buyback ສຳລັບ THB ແລະ USD (TOR §3.3)"
+      />
+
+      {currentFailed && <QueryErrorNotice error={currentError} onRetry={() => void refetchCurrent()} />}
+
+      <div className="stat-grid">
+        <StatCard label="THB Sell" value={current?.thbSellRate ? formatRate(current.thbSellRate) : '—'} sub="THB/LAK" />
+        <StatCard label="USD Sell" value={current?.usdSellRate ? formatRate(current.usdSellRate) : '—'} sub="USD/LAK" />
+        <StatCard label="THB Buyback" value={current?.thbBuybackRate ? formatRate(current.thbBuybackRate) : '—'} sub="LAK/THB" />
+        <StatCard label="USD Buyback" value={current?.usdBuybackRate ? formatRate(current.usdBuybackRate) : '—'} sub="LAK/USD" />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat labelLo="THB Sell" value={current?.thbSellRate} hint="THB/LAK" />
-        <Stat labelLo="USD Sell" value={current?.usdSellRate} hint="USD/LAK" />
-        <Stat labelLo="THB Buyback" value={current?.thbBuybackRate} hint="LAK/THB" />
-        <Stat labelLo="USD Buyback" value={current?.usdBuybackRate} hint="LAK/USD" />
-      </div>
-
-      <div className="card p-5">
-        <div className="mb-4 flex items-center justify-between">
+      <div data-fade className="card p-5">
+        <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="card-title">ອັບເດດ Price Rate</h2>
-          <button className="btn-secondary py-1 text-xs" onClick={prefill} disabled={!current}>
+          <button className="btn-secondary" onClick={prefill} disabled={!current}>
             ໃສ່ຄ່າປັດຈຸບັນ
           </button>
         </div>
@@ -157,19 +165,20 @@ export default function RatesPage() {
               <label className="label" htmlFor={field.key}>
                 {field.labelLo}
               </label>
-              <input
+              <NumberInput
                 id={field.key}
                 className="input num"
-                inputMode="decimal"
+                decimals={2}
                 value={form[field.key]}
-                onChange={(e) => setForm((f) => ({ ...f, [field.key]: e.target.value }))}
+                aria-describedby={error ? 'rates-error' : undefined}
+                onValueChange={(v) => setForm((f) => ({ ...f, [field.key]: v }))}
               />
             </div>
           ))}
         </div>
 
         {error && (
-          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div id="rates-error" role="alert" className="notice status-danger mt-3">
             {error}
           </div>
         )}
@@ -185,31 +194,33 @@ export default function RatesPage() {
         </div>
       </div>
 
+      {seriesFailed && <QueryErrorNotice error={seriesError} onRetry={() => void refetchSeries()} />}
+
       <div className="grid gap-6 lg:grid-cols-2">
         <RateChart
           titleLo="ປະຫວັດອັດຕາ THB/LAK"
           data={chartData}
           series={[
-            { key: 'thbSell', labelLo: 'THB Sell', color: '#b47416' },
-            { key: 'thbBuyback', labelLo: 'THB Buyback', color: '#0ea5e9' },
+            { key: 'thbSell', labelLo: 'THB Sell', idx: 0 },
+            { key: 'thbBuyback', labelLo: 'THB Buyback', idx: 1 },
           ]}
         />
         <RateChart
           titleLo="ປະຫວັດອັດຕາ USD/LAK"
           data={chartData}
           series={[
-            { key: 'usdSell', labelLo: 'USD Sell', color: '#b47416' },
-            { key: 'usdBuyback', labelLo: 'USD Buyback', color: '#0ea5e9' },
+            { key: 'usdSell', labelLo: 'USD Sell', idx: 0 },
+            { key: 'usdBuyback', labelLo: 'USD Buyback', idx: 1 },
           ]}
         />
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ປະຫວັດ Price Rate</h2>
-          <span className="text-xs text-slate-500">30 ແຖວລ່າສຸດ</span>
+          <span className="text-xs text-muted">30 ແຖວລ່າສຸດ</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Price Rate">
           <table className="table">
             <thead>
               <tr>
@@ -222,13 +233,16 @@ export default function RatesPage() {
               </tr>
             </thead>
             <tbody>
-              {history.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="py-6 text-center text-slate-500">
-                    ຍັງບໍ່ມີປະຫວັດ
-                  </td>
-                </tr>
-              )}
+              <TableStateRow
+                colSpan={6}
+                isLoading={historyLoading}
+                isError={historyFailed}
+                error={historyError}
+                isEmpty={history.length === 0}
+                emptyText="ຍັງບໍ່ມີປະຫວັດ"
+                onRetry={() => void refetchHistory()}
+                dense
+              />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDate(row.effectiveAt)}</td>
@@ -252,25 +266,12 @@ function clean(value: string): string {
   return value.replace(/,/g, '').trim();
 }
 
-function Stat({
-  labelLo,
-  value,
-  hint,
-}: {
-  labelLo: string;
-  value: string | undefined;
-  hint: string;
-}) {
-  return (
-    <div className="card p-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{labelLo}</div>
-      <div className="num mt-1 text-xl font-bold text-slate-900">
-        {value ? formatRate(value) : '—'}
-      </div>
-      <div className="mt-0.5 text-xs text-slate-400">{hint}</div>
-    </div>
-  );
-}
+
+/** Distinct dash + marker per series so lines read without relying on colour. */
+const SERIES_STYLE = [
+  { dash: undefined, dot: { r: 3 } },
+  { dash: '6 4', dot: { r: 3, strokeWidth: 2, fill: 'transparent' } },
+] as const;
 
 function RateChart({
   titleLo,
@@ -279,38 +280,48 @@ function RateChart({
 }: {
   titleLo: string;
   data: Array<Record<string, string | number>>;
-  series: Array<{ key: string; labelLo: string; color: string }>;
+  series: Array<{ key: string; labelLo: string; idx: number }>;
 }) {
+  const theme = useChartTheme();
   return (
-    <div className="card">
+    <div data-fade className="card">
       <div className="card-header">
         <h2 className="card-title">{titleLo}</h2>
       </div>
       <div className="p-4">
         {data.length === 0 ? (
-          <div className="py-16 text-center text-sm text-slate-400">
+          <div className="py-16 text-center text-sm text-muted">
             ຍັງບໍ່ມີຂໍ້ມູນພຽງພໍສຳລັບກຼາບ
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={260}>
             <LineChart data={data} margin={{ top: 8, right: 12, bottom: 4, left: 4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="#94a3b8" />
-              <YAxis tick={{ fontSize: 11 }} stroke="#94a3b8" width={70} />
+              <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} />
+              <XAxis dataKey="month" tick={{ fontSize: 11, fill: theme.axis }} stroke={theme.grid} />
+              <YAxis tick={{ fontSize: 11, fill: theme.axis }} stroke={theme.grid} width={70} />
               <Tooltip
                 formatter={(value) => formatRate(value === undefined ? null : String(value))}
-                contentStyle={{ fontSize: 12 }}
+                contentStyle={{
+                  fontSize: 12,
+                  background: theme.tooltipBg,
+                  border: `1px solid ${theme.tooltipBorder}`,
+                  borderRadius: 12,
+                  color: theme.text,
+                }}
+                labelStyle={{ color: theme.text }}
+                itemStyle={{ color: theme.text }}
               />
-              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Legend wrapperStyle={{ fontSize: 12, color: theme.text }} />
               {series.map((s) => (
                 <Line
                   key={s.key}
                   type="monotone"
                   dataKey={s.key}
                   name={s.labelLo}
-                  stroke={s.color}
+                  stroke={theme.series[s.idx]}
                   strokeWidth={2}
-                  dot={{ r: 3 }}
+                  strokeDasharray={SERIES_STYLE[s.idx % SERIES_STYLE.length].dash}
+                  dot={{ fill: theme.series[s.idx], ...SERIES_STYLE[s.idx % SERIES_STYLE.length].dot, stroke: theme.series[s.idx] }}
                 />
               ))}
             </LineChart>

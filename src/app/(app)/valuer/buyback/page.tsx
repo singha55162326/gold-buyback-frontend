@@ -1,10 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
+import { NumberInput } from '@/components/number-input';
+import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
+import { statusClass } from '@/lib/status';
 
 interface GoldType { id: string; code: string; nameLo: string }
 interface GoldItem { id: string; nameLo: string }
@@ -41,12 +45,12 @@ interface BuybackRow {
   goldType: { nameLo: string };
 }
 
-const STATUS_LABEL: Record<BuybackRow['status'], { lo: string; cls: string }> = {
-  PENDING: { lo: 'ລໍຖ້າອະນຸມັດ', cls: 'bg-amber-100 text-amber-800' },
-  APPROVED: { lo: 'ອະນຸມັດແລ້ວ — ລໍຖ້າຢືນຢັນ', cls: 'bg-blue-100 text-blue-800' },
-  REJECTED: { lo: 'ປະຕິເສດ', cls: 'bg-red-100 text-red-800' },
-  COMPLETED: { lo: 'ສຳເລັດ', cls: 'bg-emerald-100 text-emerald-800' },
-  CANCELLED: { lo: 'ຍົກເລີກ', cls: 'bg-slate-100 text-slate-600' },
+const STATUS_LABEL: Record<BuybackRow['status'], { lo: string }> = {
+  PENDING: { lo: 'ລໍຖ້າອະນຸມັດ' },
+  APPROVED: { lo: 'ອະນຸມັດແລ້ວ — ລໍຖ້າຢືນຢັນ' },
+  REJECTED: { lo: 'ປະຕິເສດ' },
+  COMPLETED: { lo: 'ສຳເລັດ' },
+  CANCELLED: { lo: 'ຍົກເລີກ' },
 };
 
 /**
@@ -79,19 +83,19 @@ export default function BuybackPage() {
   const [viewing, setViewing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: goldTypes = [] } = useQuery({
+  const { data: goldTypes = [], isError: goldTypesFailed, error: goldTypesError, refetch: refetchGoldTypes } = useQuery({
     queryKey: ['catalog', 'gold-types'],
     queryFn: () => api.get<GoldType[]>('/catalog/gold-types?stockOnly=true'),
   });
-  const { data: goldItems = [] } = useQuery({
+  const { data: goldItems = [], isError: goldItemsFailed, error: goldItemsError, refetch: refetchGoldItems } = useQuery({
     queryKey: ['catalog', 'gold-items'],
     queryFn: () => api.get<GoldItem[]>('/catalog/gold-items'),
   });
-  const { data: banks = [] } = useQuery({
+  const { data: banks = [], isError: banksFailed, error: banksError, refetch: refetchBanks } = useQuery({
     queryKey: ['catalog', 'bank-accounts'],
     queryFn: () => api.get<BankAccount[]>('/catalog/bank-accounts'),
   });
-  const { data: rows = [] } = useQuery({
+  const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['buyback'],
     queryFn: () => api.get<BuybackRow[]>('/buyback'),
   });
@@ -186,25 +190,26 @@ export default function BuybackPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Buyback — ການຊື້ຄຳຄືນ</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ຄຳຮ້ານ KPV ແລະ ຄຳຮ້ານອື່ນ (ຄຳຕົ້ມ) — ສ້າງລາຍການສົ່ງໃຫ້ payment ອະນຸມັດ (TOR §5.1)
-        </p>
-      </div>
+      <PageHead
+        title="Buyback — ການຊື້ຄຳຄືນ"
+        subtitle="ຄຳຮ້ານ KPV ແລະ ຄຳຮ້ານອື່ນ (ຄຳຕົ້ມ) — ສ້າງລາຍການສົ່ງໃຫ້ payment ອະນຸມັດ (TOR §5.1)"
+      />
+      {goldTypesFailed && <QueryErrorNotice error={goldTypesError} onRetry={() => void refetchGoldTypes()} />}
+      {goldItemsFailed && <QueryErrorNotice error={goldItemsError} onRetry={() => void refetchGoldItems()} />}
+      {banksFailed && <QueryErrorNotice error={banksError} onRetry={() => void refetchBanks()} />}
 
-      <div className="card p-5">
-        <div className="grid gap-4 md:grid-cols-3">
+      <div data-fade className="card p-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <label className="label" htmlFor="phone">ເບີໂທລູກຄ້າ (8 ໂຕ)</label>
-            <input id="phone" className="input num" inputMode="numeric" maxLength={8}
+            <input id="phone" className="input input-lg num" inputMode="numeric" maxLength={8}
               placeholder="20123456" value={phone}
               onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))} />
           </div>
 
           <div>
             <label className="label" htmlFor="source">ແຫຼ່ງທີ່ມາ</label>
-            <select id="source" className="input" value={source}
+            <select id="source" className="input input-lg" value={source}
               onChange={(e) => setSource(e.target.value as 'KPV' | 'OTHER_SHOP')}>
               <option value="KPV">ຄຳຮ້ານ KPV</option>
               <option value="OTHER_SHOP">ຄຳຮ້ານອື່ນ (ຄຳຕົ້ມ)</option>
@@ -213,7 +218,7 @@ export default function BuybackPage() {
 
           <div>
             <label className="label" htmlFor="goldType">ປະເພດຄຳ</label>
-            <select id="goldType" className="input" value={goldTypeId}
+            <select id="goldType" className="input input-lg" value={goldTypeId}
               onChange={(e) => setGoldTypeId(e.target.value)}>
               <option value="">— ເລືອກປະເພດຄຳ —</option>
               {goldTypes.map((t) => <option key={t.id} value={t.id}>{t.nameLo}</option>)}
@@ -222,7 +227,7 @@ export default function BuybackPage() {
 
           <div>
             <label className="label" htmlFor="goldItem">ລາຍການຄຳ</label>
-            <select id="goldItem" className="input" value={goldItemId}
+            <select id="goldItem" className="input input-lg" value={goldItemId}
               onChange={(e) => setGoldItemId(e.target.value)}>
               <option value="">— ເລືອກລາຍການຄຳ —</option>
               {goldItems.map((i) => <option key={i.id} value={i.id}>{i.nameLo}</option>)}
@@ -231,50 +236,50 @@ export default function BuybackPage() {
 
           <div>
             <label className="label" htmlFor="weightG">ນ້ຳໜັກ (g)</label>
-            <input id="weightG" className="input num" inputMode="decimal" placeholder="15"
-              value={weightG} onChange={(e) => setWeightG(e.target.value)} />
+            <NumberInput decimals={4} id="weightG" className="input input-lg num" placeholder="15"
+              value={weightG} onValueChange={setWeightG} />
           </div>
 
           <div>
             <label className="label" htmlFor="quantity">ຈຳນວນ</label>
-            <input id="quantity" className="input num" type="number" min={1}
+            <input id="quantity" className="input input-lg num" type="number" min={1}
               value={quantity} onChange={(e) => setQuantity(Number(e.target.value) || 1)} />
           </div>
 
           {isBoiled && (
             <div>
               <label className="label" htmlFor="goldPercent">%ຄຳ</label>
-              <input id="goldPercent" className="input num" inputMode="decimal" placeholder="96"
-                value={goldPercent} onChange={(e) => setGoldPercent(e.target.value)} />
+              <NumberInput decimals={2} id="goldPercent" className="input input-lg num" placeholder="96"
+                value={goldPercent} onValueChange={setGoldPercent} />
             </div>
           )}
 
           {!isBoiled && (
             <div>
               <label className="label" htmlFor="deduction">ຄ່າອ່ອນ / ຄ່າຫັກ (ຕໍ່ຊິ້ນ)</label>
-              <input id="deduction" className="input num" inputMode="decimal" placeholder="0"
-                value={deduction} onChange={(e) => setDeduction(e.target.value)} />
+              <NumberInput decimals={0} id="deduction" className="input input-lg num" placeholder="0"
+                value={deduction} onValueChange={setDeduction} />
             </div>
           )}
         </div>
 
         {/* Live §5.1 result */}
-        <div className="mt-5 grid gap-3 rounded-md bg-slate-50 p-4 sm:grid-cols-3">
+        <div className="recessed mt-5 grid gap-4 rounded-xl p-4 sm:grid-cols-3 sm:p-5">
           <Field labelLo="ລາຄາຊື້ຄືນໜ້າຮ້ານ" value={preview ? formatLak(preview.shopBuybackPrice) : '—'} />
           <Field labelLo="ຄ່າອ່ອນ / ຄ່າຫັກ" value={preview ? formatLak(preview.deduction) : '—'} />
           <Field labelLo="ລາຄາທີ່ຕ້ອງຈ່າຍ" value={preview ? formatLak(preview.payableAmount) : '—'} strong />
           {preview && (
-            <div className="sm:col-span-3 text-xs text-slate-500">
-              ສູດທີ່ໃຊ້: <span className="font-medium text-slate-700">{preview.branch}</span>
+            <div className="text-xs text-muted sm:col-span-3">
+              ສູດທີ່ໃຊ້: <span className="font-medium text-fg">{preview.branch}</span>
             </div>
           )}
         </div>
 
         {/* Payment */}
-        <div className="mt-5 grid gap-4 md:grid-cols-4">
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="label" htmlFor="method">Payment Method</label>
-            <select id="method" className="input" value={method}
+            <select id="method" className="input input-lg" value={method}
               onChange={(e) => setMethod(e.target.value as 'CASH' | 'BANK')}>
               <option value="CASH">Cash</option>
               <option value="BANK">Bank</option>
@@ -284,7 +289,7 @@ export default function BuybackPage() {
           {method === 'BANK' && (
             <div>
               <label className="label" htmlFor="bank">Select Bank</label>
-              <select id="bank" className="input" value={bankAccountId}
+              <select id="bank" className="input input-lg" value={bankAccountId}
                 onChange={(e) => setBankAccountId(e.target.value)}>
                 <option value="">— ເລືອກທະນາຄານ —</option>
                 {banks.map((b) => <option key={b.id} value={b.id}>{b.nameLo}</option>)}
@@ -294,7 +299,7 @@ export default function BuybackPage() {
 
           <div>
             <label className="label" htmlFor="currency">Currency</label>
-            <select id="currency" className="input" value={currency}
+            <select id="currency" className="input input-lg" value={currency}
               onChange={(e) => setCurrency(e.target.value as 'LAK' | 'THB' | 'USD')}>
               <option value="LAK">LAK</option>
               <option value="THB">THB</option>
@@ -304,32 +309,33 @@ export default function BuybackPage() {
 
           <div>
             <label className="label" htmlFor="amount">Amount</label>
-            <input id="amount" className="input num" inputMode="decimal"
+            <NumberInput decimals={currency === 'LAK' ? 0 : 2} id="amount" className="input input-lg num"
               placeholder={preview?.payableAmount ?? '0'} value={amount}
-              onChange={(e) => setAmount(e.target.value)} />
+              onValueChange={setAmount} />
           </div>
         </div>
 
         {error && (
-          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div id="buyback-error" role="alert" className="notice status-danger mt-3">
             {error}
           </div>
         )}
 
         <div className="mt-4">
-          <button className="btn-primary" disabled={!canSave || create.isPending}
+          <button className="btn-primary min-h-[54px] w-full sm:w-auto sm:min-w-[240px]"
+            aria-describedby={error ? 'buyback-error' : undefined} disabled={!canSave || create.isPending}
             onClick={() => create.mutate()}>
             {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ສ້າງລາຍການ Buyback'}
           </button>
         </div>
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ປະຫວັດ Buyback</h2>
-          <span className="text-xs text-slate-500">{rows.length} ລາຍການ</span>
+          <span className="num text-xs text-muted">{rows.length} ລາຍການ</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Buyback">
           <table className="table">
             <thead>
               <tr>
@@ -349,12 +355,10 @@ export default function BuybackPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={12} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow colSpan={12} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
               {rows.map((row) => (
-                <>
-                <tr key={row.id}>
+                <Fragment key={row.id}>
+                <tr>
                   <td className="font-mono text-xs">{row.code}</td>
                   <td>{formatDateTime(row.createdAt)}</td>
                   <td className="num">{row.customer.phone}</td>
@@ -366,19 +370,19 @@ export default function BuybackPage() {
                   <td className="num text-right font-medium">{formatLak(row.payableAmount)}</td>
                   <td className="num text-right">{formatLak(row.outstandingAmount)}</td>
                   <td>
-                    <span className={`badge ${STATUS_LABEL[row.status].cls}`}>
+                    <span className={statusClass(row.status)}>
                       {STATUS_LABEL[row.status].lo}
                     </span>
                   </td>
-                  <td className="text-slate-500">{row.updatedBy}</td>
+                  <td className="text-muted">{row.updatedBy}</td>
                   <td className="text-right">
-                    <div className="flex justify-end gap-3">
-                      <button className="text-sm text-gold-700 hover:underline"
+                    <div className="flex justify-end gap-2">
+                      <button className="btn-ghost" aria-expanded={viewing === row.id}
                         onClick={() => setViewing(viewing === row.id ? null : row.id)}>
                         View
                       </button>
                       {row.status === 'APPROVED' && canConfirm && (
-                        <button className="text-sm text-emerald-700 hover:underline"
+                        <button className="btn-primary"
                           onClick={() => confirm.mutate(row.id)} disabled={confirm.isPending}>
                           ຢືນຢັນ
                         </button>
@@ -387,15 +391,15 @@ export default function BuybackPage() {
                   </td>
                 </tr>
                 {viewing === row.id && (
-                  <tr key={`${row.id}-d`}>
-                    <td colSpan={12} className="bg-slate-50 p-4">
+                  <tr>
+                    <td colSpan={12} className="bg-recessed p-4">
                       <div className="grid gap-4 sm:grid-cols-4">
                         <Field labelLo="ລາຍການຄຳ" value={row.goldItem?.nameLo ?? '—'} />
                         <Field labelLo="ນ້ຳໜັກ (g)" value={formatWeight(row.weightG)} />
                         <Field labelLo="ຈຳນວນ" value={String(row.quantity)} />
                         <Field labelLo="%ຄຳ" value={row.goldPercent ? `${Number(row.goldPercent)}%` : '—'} />
                       </div>
-                      <div className="mt-4 text-xs font-medium uppercase tracking-wide text-slate-500">
+                      <div className="section-label mt-4">
                         ລາຍລະອຽດ payment
                       </div>
                       <table className="table mt-1">
@@ -409,7 +413,7 @@ export default function BuybackPage() {
                         </thead>
                         <tbody>
                           {row.payments.length === 0 && (
-                            <tr><td colSpan={5} className="py-3 text-center text-slate-400">—</td></tr>
+                            <tr><td colSpan={5} className="py-3 text-center text-muted">—</td></tr>
                           )}
                           {row.payments.map((pmt) => (
                             <tr key={pmt.id}>
@@ -425,7 +429,7 @@ export default function BuybackPage() {
                     </td>
                   </tr>
                 )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -438,8 +442,8 @@ export default function BuybackPage() {
 function Field({ labelLo, value, strong }: { labelLo: string; value: string; strong?: boolean }) {
   return (
     <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{labelLo}</div>
-      <div className={`num mt-0.5 ${strong ? 'text-xl font-bold text-gold-700' : 'text-lg font-semibold text-slate-800'}`}>
+      <div className="section-label">{labelLo}</div>
+      <div className={`num mt-1 font-semibold text-fg-strong ${strong ? 'text-[26px]' : 'text-[20px]'}`}>
         {value}
       </div>
     </div>

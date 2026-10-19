@@ -6,6 +6,9 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dec, GRAMS_PER_BAHT, trimTrailingZeros } from '@kpv/domain';
 import { api, ApiError } from '@/lib/api';
+import { PageHead } from '@/components/page-head';
+import { NumberInput } from '@/components/number-input';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { formatWeight } from '@/lib/format';
 
 interface GoldItem {
@@ -45,12 +48,12 @@ export default function SkusPage() {
   const [weightG, setWeightG] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: goldItems = [] } = useQuery({
+  const { data: goldItems = [], isError: goldItemsFailed, error: goldItemsError, refetch: refetchGoldItems } = useQuery({
     queryKey: ['catalog', 'gold-items'],
     queryFn: () => api.get<GoldItem[]>('/catalog/gold-items'),
   });
 
-  const { data: skus = [] } = useQuery({
+  const { data: skus = [], isLoading: skusLoading, isError: skusFailed, error: skusError, refetch: refetchSkus } = useQuery({
     queryKey: ['skus'],
     queryFn: () => api.get<Sku[]>('/skus'),
   });
@@ -87,17 +90,18 @@ export default function SkusPage() {
 
   const pager = usePagination(skus);
 
-
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ຈັດການ SKU ນ້ຳໜັກຂອງຄຳ</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ປ້ອນຊື່ສິນຄ້າ ແລະ ນ້ຳໜັກ (g) — ລະບົບຄິດໄລ່ບາດຄຳ ແລະ ຕັ້ງຊື່ SKU ອັດຕະໂນມັດ (TOR §3.6)
-        </p>
-      </div>
+      <PageHead
+        title="ຈັດການ SKU ນ້ຳໜັກຂອງຄຳ"
+        subtitle="ປ້ອນຊື່ສິນຄ້າ ແລະ ນ້ຳໜັກ (g) — ລະບົບຄິດໄລ່ບາດຄຳ ແລະ ຕັ້ງຊື່ SKU ອັດຕະໂນມັດ (TOR §3.6)"
+      />
 
-      <div className="card p-5">
+      {goldItemsFailed && (
+        <QueryErrorNotice error={goldItemsError} onRetry={() => void refetchGoldItems()} />
+      )}
+
+      <div data-fade className="card p-5">
         <div className="grid gap-4 md:grid-cols-3">
           <div>
             <label className="label" htmlFor="goldItem">
@@ -106,6 +110,7 @@ export default function SkusPage() {
             <select
               id="goldItem"
               className="input"
+              aria-describedby={error ? 'sku-error' : undefined}
               value={goldItemId}
               onChange={(e) => {
                 const id = e.target.value;
@@ -131,6 +136,7 @@ export default function SkusPage() {
             <input
               id="skuName"
               className="input"
+              aria-describedby={error ? 'sku-error' : undefined}
               placeholder="ສາຍແຂນ"
               value={nameLo}
               onChange={(e) => setNameLo(e.target.value)}
@@ -141,41 +147,39 @@ export default function SkusPage() {
             <label className="label" htmlFor="weightG">
               ນ້ຳໜັກ (g)
             </label>
-            <input
+            <NumberInput
               id="weightG"
               className="input num"
-              inputMode="decimal"
+              aria-describedby={error ? 'sku-error' : undefined}
+              decimals={3}
               placeholder="15"
               value={weightG}
               // TOR 3.6: weight is entered to 3 decimal places.
-              onChange={(e) => {
-                const next = e.target.value;
-                if (next === '' || /^\d*\.?\d{0,3}$/.test(next)) setWeightG(next);
-              }}
+              onValueChange={setWeightG}
             />
           </div>
         </div>
 
         {/* Real-time derivation, exactly as the TOR describes the workflow. */}
-        <div className="mt-4 grid gap-3 rounded-md bg-slate-50 p-4 sm:grid-cols-2">
+        <div className="mt-4 grid gap-3 rounded-xl recessed p-4 sm:grid-cols-2">
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            <div className="label">
               ບາດຄຳ = ນ້ຳໜັກ / 15
             </div>
-            <div className="num mt-0.5 text-lg font-semibold text-slate-800">
+            <div className="num mt-0.5 text-lg font-semibold text-fg-strong">
               {bahtWeight ? formatWeight(bahtWeight) : '—'}
             </div>
           </div>
           <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            <div className="label">
               full_sku_name
             </div>
-            <div className="mt-0.5 text-lg font-semibold text-gold-700">{fullSkuName ?? '—'}</div>
+            <div className="mt-0.5 text-lg font-semibold text-gold">{fullSkuName ?? '—'}</div>
           </div>
         </div>
 
         {error && (
-          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div id="sku-error" role="alert" className="notice status-danger mt-3">
             {error}
           </div>
         )}
@@ -191,12 +195,12 @@ export default function SkusPage() {
         </div>
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ລາຍການ SKU</h2>
-          <span className="text-xs text-slate-500">{skus.length} ລາຍການ</span>
+          <span className="text-xs text-muted">{skus.length} ລາຍການ</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການ SKU">
           <table className="table">
             <thead>
               <tr>
@@ -208,22 +212,25 @@ export default function SkusPage() {
               </tr>
             </thead>
             <tbody>
-              {skus.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-slate-500">
-                    ຍັງບໍ່ມີ SKU
-                  </td>
-                </tr>
-              )}
+              <TableStateRow
+                colSpan={5}
+                isLoading={skusLoading}
+                isError={skusFailed}
+                error={skusError}
+                isEmpty={skus.length === 0}
+                emptyText="ຍັງບໍ່ມີ SKU"
+                onRetry={() => void refetchSkus()}
+                dense
+              />
               {pager.pageItems.map((sku) => (
                 <tr key={sku.id}>
                   <td className="font-medium">{sku.fullSkuName}</td>
-                  <td className="text-slate-500">{sku.goldItem.nameLo}</td>
+                  <td className="text-muted">{sku.goldItem.nameLo}</td>
                   <td className="num text-right">{formatWeight(sku.weightG)}</td>
                   <td className="num text-right">{formatWeight(sku.bahtWeight)}</td>
                   <td className="text-right">
                     <button
-                      className="text-sm text-red-600 hover:underline"
+                      className="btn-danger"
                       onClick={() => remove.mutate(sku.id)}
                       disabled={remove.isPending}
                     >

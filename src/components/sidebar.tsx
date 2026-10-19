@@ -33,7 +33,7 @@ function ChevronIcon({ open }: { open: boolean }) {
     <svg
       viewBox="0 0 20 20"
       aria-hidden="true"
-      className={clsx('h-4 w-4 shrink-0 transition-transform duration-200', open && 'rotate-90')}
+      className={clsx('h-4 w-4 shrink-0 transition-transform duration-[180ms]', open && 'rotate-90')}
     >
       <path d="M7.5 5l5 5-5 5" fill="none" stroke="currentColor" strokeWidth="1.75"
         strokeLinecap="round" strokeLinejoin="round" />
@@ -112,32 +112,40 @@ export function Sidebar({ role }: { role: Role }) {
   const searching = query.trim().length > 0;
 
   return (
-    <nav className="rail flex h-full w-72 shrink-0 flex-col" aria-label="ເມນູຫຼັກ">
+    <nav
+      data-surface="dark"
+      data-fade
+      className="shell-sidebar"
+      aria-label="ເມນູຫຼັກ"
+    >
       <div className="px-5 pb-4 pt-5">
-        <LogoLockup className="h-10 w-10" />
+        <LogoLockup className="h-[46px] w-[46px]" />
 
-        <div className="relative mt-4">
+        <div className="divider-diamond my-4" aria-hidden="true" />
+
+        <div className="relative">
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="ຄົ້ນຫາເມນູ ຫຼື §ຂໍ້"
             aria-label="ຄົ້ນຫາເມນູ"
-            className="w-full rounded-lg border border-white/15 bg-white/10 py-2 pl-9 pr-3
-                       text-sm text-white placeholder:text-white/45
-                       focus:border-white/30 focus:outline-none focus:ring-2 focus:ring-white/20"
+            className="input pl-10"
           />
-          <svg viewBox="0 0 20 20" aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50">
+          <svg
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+            className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--gold-icon)]"
+          >
             <circle cx="9" cy="9" r="5.5" fill="none" stroke="currentColor" strokeWidth="1.75" />
             <path d="M13.5 13.5L17 17" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />
           </svg>
         </div>
       </div>
 
-      <div className="rail-scroll flex-1 overflow-y-auto px-3 pb-6">
+      <div className="nav-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-5">
         {filtered.length === 0 && (
-          <p className="px-3 py-6 text-center text-sm text-white/50">ບໍ່ພົບເມນູ</p>
+          <p className="px-3 py-6 text-center text-sm text-muted">ບໍ່ພົບເມນູ</p>
         )}
 
         {filtered.map((group) => {
@@ -152,21 +160,16 @@ export function Sidebar({ role }: { role: Role }) {
               onOpenChange={() => !searching && toggleGroup(group.labelLo)}
               className="mb-1"
             >
-              <Collapsible.Trigger className="rail-group-label" disabled={searching}>
+              <Collapsible.Trigger className="nav-group-trigger" disabled={searching}>
                 <span className="truncate">{group.labelLo}</span>
                 <span className="flex items-center gap-1.5">
-                  <span className="rounded-full bg-white/10 px-1.5 text-[11px] font-medium text-white/60">
-                    {group.items.length}
-                  </span>
+                  <span className="nav-count">{group.items.length}</span>
                   {!searching && <ChevronIcon open={open} />}
                 </span>
               </Collapsible.Trigger>
 
-              <Collapsible.Content
-                className="overflow-hidden data-[state=closed]:animate-collapsible-up
-                           data-[state=open]:animate-collapsible-down"
-              >
-                <ul className="mb-2 mt-0.5 space-y-0.5 border-l border-white/10 pl-2">
+              <Collapsible.Content className="overflow-hidden">
+                <ul className="nav-children space-y-0.5">
                   {group.items.map((item) => {
                     const active =
                       pathname === item.href || pathname.startsWith(`${item.href}/`);
@@ -175,12 +178,10 @@ export function Sidebar({ role }: { role: Role }) {
                         <Link
                           href={item.href}
                           aria-current={active ? 'page' : undefined}
-                          className={clsx('rail-link', active && 'rail-link-active')}
+                          className={clsx('nav-link', active && 'nav-link-active')}
                         >
                           <span className="truncate">{item.labelLo}</span>
-                          <span className="shrink-0 text-[11px] tabular-nums text-white/35">
-                            {item.section}
-                          </span>
+                          <span className="nav-link-ref">{item.section}</span>
                         </Link>
                       </li>
                     );

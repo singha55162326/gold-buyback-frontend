@@ -1,11 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import Link from 'next/link';
 import { formatMoney, formatWeight, formatDate } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
+import { statusClass } from '@/lib/status';
+import { StatCard } from '@/components/stat-card';
 
 interface Summary {
   totals: Array<{ currency: 'LAK' | 'THB' | 'USD'; net: string }>;
@@ -42,50 +46,45 @@ interface Row {
  */
 export default function AdvancePage() {
   const [viewing, setViewing] = useState<string | null>(null);
-  const { data: summary } = useQuery({
+  const summaryQuery = useQuery({
     queryKey: ['finance', 'advance'],
     queryFn: () => api.get<Summary>('/finance/advance'),
   });
-  const { data: rows = [] } = useQuery({
+  const summary = summaryQuery.data;
+  const rowsQuery = useQuery({
     queryKey: ['finance', 'advance', 'history'],
     queryFn: () => api.get<Row[]>('/finance/advance/history'),
   });
+  const rows = rowsQuery.data ?? [];
 
   const pager = usePagination(rows);
 
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Module Advace</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ເງິນມັດຈໍາ Order ຮັບລ່ວງໜ້າ — ຫັກອອກຈາກ COH Cash ຈົນກວ່າລູກຄ້າຮັບເຄື່ອງ (TOR §7)
-        </p>
-      </div>
+      <PageHead
+        title="Module Advace"
+        subtitle="ເງິນມັດຈໍາ Order ຮັບລ່ວງໜ້າ — ຫັກອອກຈາກ COH Cash ຈົນກວ່າລູກຄ້າຮັບເຄື່ອງ (TOR §7)"
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {summaryQuery.isError && (
+        <QueryErrorNotice error={summaryQuery.error} onRetry={() => void summaryQuery.refetch()} />
+      )}
+
+      <div className="stat-grid">
         {(summary?.totals ?? []).map((t) => (
-          <div key={t.currency} className="card p-4">
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-              ລວມຍອດເງິນ Advace ({t.currency})
-            </div>
-            <div className="num mt-1 text-xl font-bold text-slate-900">{formatMoney(t.net)}</div>
-          </div>
+          <StatCard key={t.currency} label={`ລວມຍອດເງິນ Advace (${t.currency})`} value={formatMoney(t.net)} />
         ))}
-        <div className="card p-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            ລວມຈຳນວນບິນ
-          </div>
-          <div className="num mt-1 text-xl font-bold text-slate-900">
-            {summary?.billCount ?? '—'}
-          </div>
-          <div className="mt-0.5 text-xs text-slate-400">Order ທີ່ຍັງບໍ່ Completed</div>
-        </div>
+        <StatCard
+          label="ລວມຈຳນວນບິນ"
+          value={String(summary?.billCount ?? '—')}
+          sub="Order ທີ່ຍັງບໍ່ Completed"
+        />
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ປະຫວັດ Module Advace</h2></div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Module Advace">
           <table className="table">
             <thead>
               <tr>
@@ -105,32 +104,43 @@ export default function AdvancePage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={13} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow
+                colSpan={13}
+                isLoading={rowsQuery.isLoading}
+                isError={rowsQuery.isError}
+                error={rowsQuery.error}
+                isEmpty={rows.length === 0}
+                emptyText="ຍັງບໍ່ມີລາຍການ"
+                onRetry={() => void rowsQuery.refetch()}
+              />
               {pager.pageItems.map((row) => (
-                <>
-                <tr key={row.id}>
+                <Fragment key={row.id}>
+                <tr>
                   <td className="font-mono text-xs">{row.order.code}</td>
                   <td className="font-mono text-xs">{row.order.billNo}</td>
                   <td>{formatDate(row.businessDate)}</td>
                   <td className="num">{row.order.customer.phone}</td>
                   <td>{row.order.productType}</td>
-                  <td className="num text-right text-emerald-700">{formatMoney(row.amountIn)}</td>
-                  <td className="num text-right text-red-600">{formatMoney(row.amountOut)}</td>
+                  <td className="num text-right text-success">{formatMoney(row.amountIn)}</td>
+                  <td className="num text-right text-danger">{formatMoney(row.amountOut)}</td>
                   <td className="num text-right font-medium">{formatMoney(row.balance)}</td>
                   <td>{row.currency}</td>
-                  <td className="text-slate-500">{row.method ?? '—'}</td>
-                  <td className="text-slate-500">{row.bankAccount?.nameLo ?? '—'}</td>
-                  <td className="text-slate-500">{row.order.status}</td>
+                  <td className="text-muted">{row.method ?? '—'}</td>
+                  <td className="text-muted">{row.bankAccount?.nameLo ?? '—'}</td>
+                  <td>
+                    <span className={
+                      statusClass(row.order.status)
+                    }>{row.order.status}</span>
+                  </td>
                   <td className="text-right">
-                    <div className="flex justify-end gap-3">
+                    <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                       {Number(row.order.balanceAmount) > 0 && (
-                        <Link href="/fc/orders" className="text-sm text-emerald-700 hover:underline">
+                        <Link href="/fc/orders" className="btn-ghost text-success" aria-label={`Payment ${row.order.code}`}>
                           Payment
                         </Link>
                       )}
-                      <button className="text-sm text-gold-700 hover:underline"
+                      <button className="btn-ghost" aria-expanded={viewing === row.id}
+                        aria-label={`View ${row.order.code}`}
                         onClick={() => setViewing(viewing === row.id ? null : row.id)}>
                         View
                       </button>
@@ -138,8 +148,8 @@ export default function AdvancePage() {
                   </td>
                 </tr>
                 {viewing === row.id && (
-                  <tr key={`${row.id}-d`}>
-                    <td colSpan={13} className="bg-slate-50 p-4">
+                  <tr>
+                    <td colSpan={13} className="bg-recessed p-4">
                       <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
                         <F labelLo="ຊື່ພະນັກງານທີ່ຮັບ Order" value={row.order.staffName} />
                         <F labelLo="ລາຍການ" value={row.order.goldItem?.nameLo ?? '—'} />
@@ -153,7 +163,7 @@ export default function AdvancePage() {
                     </td>
                   </tr>
                 )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -167,8 +177,9 @@ export default function AdvancePage() {
 function F({ labelLo, value }: { labelLo: string; value: string }) {
   return (
     <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{labelLo}</div>
-      <div className="num mt-0.5 font-semibold text-slate-800">{value}</div>
+      <div className="section-label">{labelLo}</div>
+      <div className="num mt-0.5 font-semibold text-fg-strong">{value}</div>
     </div>
   );
 }
+

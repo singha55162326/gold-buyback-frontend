@@ -5,6 +5,8 @@ import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice } from '@/components/query-state';
 
 interface PendingBuyback {
   id: string; code: string; weightG: string; quantity: number;
@@ -84,35 +86,38 @@ export default function PaymentApprovalsPage() {
 
   const actions = (path: string, id: string) =>
     rejecting === id ? (
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2">
         <input
-          className="input w-40 py-1 text-xs"
+          className="input w-44"
+          aria-label="ເຫດຜົນ"
+          aria-describedby={error ? 'approvals-error' : undefined}
           placeholder="ເຫດຜົນ"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           autoFocus
         />
         <button
-          className="text-sm text-red-600 hover:underline"
+          className="btn-danger"
           onClick={() => review.mutate({ path, id, decision: 'REJECTED', reason })}
           disabled={review.isPending}
         >
           ຢືນຢັນ Reject
         </button>
-        <button className="text-sm text-slate-500 hover:underline" onClick={() => setRejecting(null)}>
+        <button className="btn-secondary" onClick={() => setRejecting(null)}>
           ຍົກເລີກ
         </button>
       </div>
     ) : (
-      <div className="flex justify-end gap-3">
+      <div className="flex justify-end gap-6">
         <button
-          className="text-sm font-medium text-emerald-700 hover:underline"
+          className="btn-primary"
+          aria-describedby={error ? 'approvals-error' : undefined}
           onClick={() => review.mutate({ path, id, decision: 'APPROVED' })}
           disabled={review.isPending}
         >
           Approve
         </button>
-        <button className="text-sm text-red-600 hover:underline" onClick={() => setRejecting(id)}>
+        <button className="btn-danger" aria-describedby={error ? 'approvals-error' : undefined} onClick={() => setRejecting(id)}>
           Reject
         </button>
       </div>
@@ -123,30 +128,32 @@ export default function PaymentApprovalsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ລາຍການລໍຖ້າ Approve</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Buyback, ປ່ຽນເປັນເງິນ ແລະ ສິນເຊື່ອ ທີ່ຜູ້ປະເມີນສ້າງໄວ້ (TOR §4.2)
-        </p>
-      </div>
+      <PageHead
+        title="ລາຍການລໍຖ້າ Approve"
+        subtitle="Buyback, ປ່ຽນເປັນເງິນ ແລະ ສິນເຊື່ອ ທີ່ຜູ້ປະເມີນສ້າງໄວ້ (TOR §4.2)"
+      />
+
+      {buybacks.isError && <QueryErrorNotice error={buybacks.error} onRetry={() => void buybacks.refetch()} />}
+      {exchanges.isError && <QueryErrorNotice error={exchanges.error} onRetry={() => void exchanges.refetch()} />}
+      {credits.isError && <QueryErrorNotice error={credits.error} onRetry={() => void credits.refetch()} />}
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div id="approvals-error" role="alert" className="notice status-danger">
           {error}
         </div>
       )}
 
-      {total === 0 && (
-        <div className="card p-10 text-center text-slate-400">ບໍ່ມີລາຍການລໍຖ້າອະນຸມັດ</div>
+      {total === 0 && !buybacks.isError && !exchanges.isError && !credits.isError && (
+        <div data-fade className="card p-10 text-center text-muted">ບໍ່ມີລາຍການລໍຖ້າອະນຸມັດ</div>
       )}
 
       {(buybacks.data?.length ?? 0) > 0 && (
-        <div className="card">
+        <div data-fade className="card">
           <div className="card-header">
             <h2 className="card-title">Buyback</h2>
-            <span className="text-xs text-slate-500">{buybacks.data!.length} ລາຍການ</span>
+            <span className="num text-xs text-muted">{buybacks.data!.length} ລາຍການ</span>
           </div>
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0} role="region" aria-label="Buyback">
             <table className="table">
               <thead>
                 <tr>
@@ -180,12 +187,12 @@ export default function PaymentApprovalsPage() {
       )}
 
       {(exchanges.data?.length ?? 0) > 0 && (
-        <div className="card">
+        <div data-fade className="card">
           <div className="card-header">
             <h2 className="card-title">ລາຍການປ່ຽນເປັນເງິນ</h2>
-            <span className="text-xs text-slate-500">{exchanges.data!.length} ລາຍການ</span>
+            <span className="num text-xs text-muted">{exchanges.data!.length} ລາຍການ</span>
           </div>
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການປ່ຽນເປັນເງິນ">
             <table className="table">
               <thead>
                 <tr>
@@ -213,12 +220,12 @@ export default function PaymentApprovalsPage() {
       )}
 
       {(credits.data?.length ?? 0) > 0 && (
-        <div className="card">
+        <div data-fade className="card">
           <div className="card-header">
             <h2 className="card-title">ລາຍການສິນເຊື່ອ</h2>
-            <span className="text-xs text-slate-500">{credits.data!.length} ລາຍການ</span>
+            <span className="num text-xs text-muted">{credits.data!.length} ລາຍການ</span>
           </div>
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການສິນເຊື່ອ">
             <table className="table">
               <thead>
                 <tr>
@@ -237,7 +244,7 @@ export default function PaymentApprovalsPage() {
                     <td className="font-mono text-xs">{row.code}</td>
                     <td>{formatDateTime(row.createdAt)}</td>
                     <td className="num">{row.customer.phone}</td>
-                    <td className="num text-right">{formatLak(row.sellPrice)}</td>
+                    <td className="num sell-price text-right">{formatLak(row.sellPrice)}</td>
                     <td className="num text-right">{formatLak(row.downPayment)}</td>
                     <td className="num text-right font-medium">{formatLak(row.outstanding)}</td>
                     <td className="text-right">{actions('credit', row.id)}</td>

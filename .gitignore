@@ -1,2 +1,13 @@
-".next/" 
 .next/
+.next-e2e/
+next-env.d.ts
+node_modules/
+shared/node_modules/
+shared/dist/
+.env
+.env.*
+*.tsbuildinfo
+.superpowers/
+test-results/
+playwright-report/
+e2e/__screenshots__/

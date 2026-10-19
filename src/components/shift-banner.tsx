@@ -40,14 +40,14 @@ export function ShiftBanner({ role }: { role: Role }) {
       <Banner tone="warn">
         <span>ຍັງບໍ່ໄດ້ເປີດກະ — ບໍ່ສາມາດເຮັດທຸລະກຳໄດ້</span>
         <button
-          className="btn-primary py-1 text-xs"
+          className="btn-primary text-xs"
           onClick={() => open.mutate()}
           disabled={open.isPending}
         >
           {open.isPending ? 'ກຳລັງເປີດ...' : 'ເປີດກະ'}
         </button>
         {open.error instanceof ApiError && (
-          <span className="text-xs text-red-700">{open.error.message}</span>
+          <span className="text-xs text-danger">{open.error.message}</span>
         )}
       </Banner>
     );
@@ -69,13 +69,38 @@ export function ShiftBanner({ role }: { role: Role }) {
 }
 
 function Banner({ tone, children }: { tone: 'ok' | 'warn' | 'muted'; children: React.ReactNode }) {
+  // Each tone leads with an icon so state never rests on colour alone
+  // (the notice's own status dot is hidden: the icon is the marker).
   const styles = {
-    ok: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-    warn: 'border-amber-200 bg-amber-50 text-amber-900',
-    muted: 'border-slate-200 bg-slate-100 text-slate-600',
+    ok: 'status-success',
+    warn: 'status-warning',
+    muted: 'recessed border border-[var(--line)] text-muted',
+  }[tone];
+  const icon = {
+    ok: <path d="M5 10.5l3.2 3.2L15 6.8" />,
+    warn: <path d="M10 6v5M10 14h.01" />,
+    muted: <path d="M10 6.5V10l2.5 1.5" />,
   }[tone];
 
   return (
-    <div className={`flex items-center gap-3 border-b px-6 py-2 text-sm ${styles}`}>{children}</div>
+    <div
+      data-fade
+      className={`notice mb-4 flex-wrap items-center gap-3 before:hidden ${styles}`}
+    >
+      <svg
+        viewBox="0 0 20 20"
+        className="h-[18px] w-[18px] shrink-0"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <circle cx="10" cy="10" r="7.5" />
+        {icon}
+      </svg>
+      {children}
+    </div>
   );
 }

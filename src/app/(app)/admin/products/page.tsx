@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
+import { PageHead } from '@/components/page-head';
+import { NumberInput } from '@/components/number-input';
+import { TableStateRow } from '@/components/query-state';
 import { formatLak, formatWeight, formatDate, formatDateTime } from '@/lib/format';
 
 interface PriceLine {
@@ -45,16 +48,19 @@ export default function ProductsPage() {
   const [showSteps, setShowSteps] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: current } = useQuery({
+  const { data: current, isError: currentFailedRaw, error: currentError, refetch: refetchCurrent } = useQuery({
     queryKey: ['pricing', 'current'],
     queryFn: () => api.get<CurrentBoard>('/pricing/current'),
     retry: false,
   });
 
-  const { data: history = [] } = useQuery({
+  const { data: history = [], isLoading: historyLoading, isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['pricing', 'history'],
     queryFn: () => api.get<HistoryRow[]>('/pricing/history?limit=30'),
   });
+
+  // 404 on /pricing/current means "no price set yet" (empty text), not a failure.
+  const currentFailed = currentFailedRaw && !(currentError instanceof ApiError && currentError.status === 404);
 
   const save = useMutation({
     mutationFn: (price1Baht: string) => api.post('/pricing/set', { price1Baht }),
@@ -78,27 +84,26 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ຈັດການ Products</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ຕັ້ງລາຄາຮູບປະພັນ 1 ບາດ — ລະບົບຄິດໄລ່ລາຄາຂາຍ ແລະ ລາຄາຊື້ຄືນ ທຸກນ້ຳໜັກອັດຕະໂນມັດ (TOR §3.1)
-        </p>
-      </div>
+      <PageHead
+        title="ຈັດການ Products"
+        subtitle="ຕັ້ງລາຄາຮູບປະພັນ 1 ບາດ — ລະບົບຄິດໄລ່ລາຄາຂາຍ ແລະ ລາຄາຊື້ຄືນ ທຸກນ້ຳໜັກອັດຕະໂນມັດ (TOR §3.1)"
+      />
 
       {/* Set Pricing */}
-      <div className="card p-5">
+      <div data-fade className="card p-5">
         <div className="flex flex-wrap items-end gap-4">
           <div className="min-w-64 flex-1">
             <label className="label" htmlFor="price1Baht">
               ລາຄາຂາຍ ຮູບປະພັນ 1 ບາດ (LAK)
             </label>
-            <input
+            <NumberInput
               id="price1Baht"
-              className="input num text-lg"
-              inputMode="decimal"
+              className="input num"
+              decimals={0}
               placeholder={current ? formatLak(current.price1Baht) : '45,859,000'}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              aria-describedby={error ? 'price-error' : undefined}
+              onValueChange={setInput}
             />
           </div>
 
@@ -116,24 +121,24 @@ export default function ProductsPage() {
         </div>
 
         {error && (
-          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div id="price-error" role="alert" className="notice status-danger mt-3">
             {error}
           </div>
         )}
       </div>
 
       {/* Price board */}
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ຕາຕະລາງລາຄາປັດຈຸບັນ</h2>
           {current && (
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-muted">
               ອັບເດດລ່າສຸດ {formatDate(current.effectiveAt)}
             </span>
           )}
         </div>
 
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ຕາຕະລາງລາຄາປັດຈຸບັນ">
           <table className="table">
             <thead>
               <tr>
@@ -153,39 +158,40 @@ export default function ProductsPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr>
-                  <td colSpan={showSteps ? 9 : 5} className="py-8 text-center text-slate-500">
-                    ຍັງບໍ່ມີການຕັ້ງລາຄາ — ປ້ອນລາຄາຂາຍ 1 ບາດ ດ້ານເທິງ ແລ້ວກົດ Set Pricing
-                  </td>
-                </tr>
-              )}
+              <TableStateRow
+                colSpan={showSteps ? 9 : 5}
+                isError={currentFailed}
+                error={currentError}
+                isEmpty={rows.length === 0}
+                emptyText="ຍັງບໍ່ມີການຕັ້ງລາຄາ — ປ້ອນລາຄາຂາຍ 1 ບາດ ດ້ານເທິງ ແລ້ວກົດ Set Pricing"
+                onRetry={() => void refetchCurrent()}
+              />
               {rows.map((line) => (
                 <tr key={line.tierCode}>
                   <td className="font-medium">{line.labelLo}</td>
-                  <td className="num text-right text-slate-500">
+                  <td className="num text-right text-muted">
                     {formatWeight(line.displayWeightG)}
                   </td>
-                  <td className="num text-right text-slate-500">
+                  <td className="num text-right text-muted">
                     {formatWeight(line.exchangeWeightG)}
                   </td>
                   {showSteps && (
                     <>
-                      <td className="num text-right text-xs text-slate-400">
+                      <td className="num text-right text-xs text-muted">
                         {line.steps ? formatLak(line.steps.a) : '—'}
                       </td>
-                      <td className="num text-right text-xs text-slate-400">
+                      <td className="num text-right text-xs text-muted">
                         {line.steps ? formatLak(line.steps.b) : '—'}
                       </td>
-                      <td className="num text-right text-xs text-slate-400">
+                      <td className="num text-right text-xs text-muted">
                         {line.steps ? formatLak(line.steps.c) : '—'}
                       </td>
-                      <td className="num text-right text-xs text-slate-400">
+                      <td className="num text-right text-xs text-muted">
                         {line.steps ? formatLak(line.steps.d) : '—'}
                       </td>
                     </>
                   )}
-                  <td className="num text-right font-semibold">{formatLak(line.sellPrice)}</td>
+                  <td className="num sell-price text-right">{formatLak(line.sellPrice)}</td>
                   <td className="num text-right">{formatLak(line.buybackPrice)}</td>
                 </tr>
               ))}
@@ -195,12 +201,12 @@ export default function ProductsPage() {
       </div>
 
       {/* History Products — 30 rows (TOR §3.1) */}
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ປະຫວັດ Products</h2>
-          <span className="text-xs text-slate-500">30 ແຖວລ່າສຸດ</span>
+          <span className="text-xs text-muted">30 ແຖວລ່າສຸດ</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Products">
           <table className="table">
             <thead>
               <tr>
@@ -211,19 +217,22 @@ export default function ProductsPage() {
               </tr>
             </thead>
             <tbody>
-              {history.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="py-6 text-center text-slate-500">
-                    ຍັງບໍ່ມີປະຫວັດ
-                  </td>
-                </tr>
-              )}
+              <TableStateRow
+                colSpan={4}
+                isLoading={historyLoading}
+                isError={historyFailed}
+                error={historyError}
+                isEmpty={history.length === 0}
+                emptyText="ຍັງບໍ່ມີປະຫວັດ"
+                dense
+                onRetry={() => void refetchHistory()}
+              />
               {history.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDateTime(row.date)}</td>
                   <td className="num text-right">{formatLak(row.price1Baht)}</td>
                   <td>{row.updatedBy}</td>
-                  <td className="text-slate-500">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.note ?? '—'}</td>
                 </tr>
               ))}
             </tbody>

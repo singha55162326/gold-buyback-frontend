@@ -1,8 +1,11 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { PageHead } from '@/components/page-head';
 import { api } from '@/lib/api';
 import { formatLak, formatWeight, gramsToBaht } from '@/lib/format';
+import { StatCard } from '@/components/stat-card';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 
 interface Wac {
   newWeightG: string; newCost: string;
@@ -13,30 +16,28 @@ interface Wac {
 
 /** TOR §3.7 — WAC ປັດຈຸບັນ. Always derived from the newest ledger rows. */
 export default function WacPage() {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['ledger', 'wac'],
     queryFn: () => api.get<Wac>('/ledger/wac'),
   });
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">WAC ປັດຈຸບັນ</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ຕົ້ນທຶນສະເລ່ຍຖ່ວງນ້ຳໜັກຂອງຄຳທັງໝົດໃນສາງ (TOR §3.7)
-        </p>
+      <PageHead
+        title="WAC ປັດຈຸບັນ"
+        subtitle="ຕົ້ນທຶນສະເລ່ຍຖ່ວງນ້ຳໜັກຂອງຄຳທັງໝົດໃນສາງ (TOR §3.7)"
+      />
+
+      <div className="stat-grid">
+        <StatCard label="ລວມ GOLD (g)" value={data ? formatWeight(data.totalWeightG) : '—'} sub={data ? `${gramsToBaht(data.totalWeightG)} ບາດ` : ''} />
+        <StatCard label="ລວມຕົ້ນທຶນ" value={data ? formatLak(data.totalCost) : '—'} sub="LAK" />
+        <StatCard label="ລາຄາ/g" value={data ? formatLak(data.pricePerG) : '—'} sub="LAK / g" />
+        <StatCard label="ລາຄາ/ບາດ" value={data ? formatLak(data.pricePerBaht) : '—'} sub="ລາຄາ/g × 15" />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat labelLo="ລວມ GOLD (g)" value={data ? formatWeight(data.totalWeightG) : '—'} hint={data ? `${gramsToBaht(data.totalWeightG)} ບາດ` : ''} />
-        <Stat labelLo="ລວມຕົ້ນທຶນ" value={data ? formatLak(data.totalCost) : '—'} hint="LAK" />
-        <Stat labelLo="ລາຄາ/g" value={data ? formatLak(data.pricePerG) : '—'} hint="LAK / g" />
-        <Stat labelLo="ລາຄາ/ບາດ" value={data ? formatLak(data.pricePerBaht) : '—'} hint="ລາຄາ/g × 15" />
-      </div>
-
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ແຍກຕາມສາງ</h2></div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ແຍກຕາມສາງ">
           <table className="table">
             <thead>
               <tr>
@@ -47,7 +48,7 @@ export default function WacPage() {
               </tr>
             </thead>
             <tbody>
-              {isLoading && <tr><td colSpan={4} className="py-6 text-center text-slate-400">ກຳລັງໂຫຼດ...</td></tr>}
+              <TableStateRow colSpan={4} isLoading={isLoading} isError={isError} error={error} isEmpty={false} emptyText="" onRetry={() => void refetch()} />
               {data && (
                 <>
                   <tr>
@@ -62,7 +63,7 @@ export default function WacPage() {
                     <td className="num text-right">{gramsToBaht(data.oldWeightG)}</td>
                     <td className="num text-right">{formatLak(data.oldCost)}</td>
                   </tr>
-                  <tr className="bg-slate-50 font-semibold">
+                  <tr className="font-semibold text-fg-strong [&>td]:border-t-2 [&>td]:border-gold">
                     <td>ລວມ</td>
                     <td className="num text-right">{formatWeight(data.totalWeightG)}</td>
                     <td className="num text-right">{gramsToBaht(data.totalWeightG)}</td>
@@ -78,12 +79,3 @@ export default function WacPage() {
   );
 }
 
-function Stat({ labelLo, value, hint }: { labelLo: string; value: string; hint?: string }) {
-  return (
-    <div className="card p-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-slate-500">{labelLo}</div>
-      <div className="num mt-1 text-xl font-bold text-slate-900">{value}</div>
-      {hint && <div className="mt-0.5 text-xs text-slate-400">{hint}</div>}
-    </div>
-  );
-}

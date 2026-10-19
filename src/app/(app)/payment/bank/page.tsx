@@ -3,6 +3,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 
 interface BankBalance {
   bankAccountId: string; bankCode: string; bankNameLo: string;
@@ -23,11 +25,11 @@ interface Row {
  * ສຸດທິ belong to the Financial Controller and Admin respectively.
  */
 export default function PaymentBankPage() {
-  const { data: balances = [] } = useQuery({
+  const { data: balances = [], isError: balancesFailed, error: balancesError, refetch: refetchBalances } = useQuery({
     queryKey: ['cash', 'bank', 'balances'],
     queryFn: () => api.get<BankBalance[]>('/cash/bank/balances'),
   });
-  const { data: rows = [] } = useQuery({
+  const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['cash', 'bank', 'history'],
     queryFn: () => api.get<Row[]>('/cash/bank/history'),
   });
@@ -36,19 +38,17 @@ export default function PaymentBankPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Bank (To Day)</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ຍອດເງິນຕົວຈິງໃນ Bank ແຍກຕາມທະນາຄານ ແລະ ສະກຸນເງິນ (TOR §4.1)
-        </p>
-      </div>
+      <PageHead
+        title="Bank (To Day)"
+        subtitle="ຍອດເງິນຕົວຈິງໃນ Bank ແຍກຕາມທະນາຄານ ແລະ ສະກຸນເງິນ (TOR §4.1)"
+      />
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ຍອດ Bank ຕົວຈິງ</h2>
-          <span className="text-xs text-slate-500">ອ່ານຢ່າງດຽວ</span>
+          <span className="text-xs text-muted">ອ່ານຢ່າງດຽວ</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ຍອດ Bank ຕົວຈິງ">
           <table className="table">
             <thead>
               <tr>
@@ -60,31 +60,29 @@ export default function PaymentBankPage() {
               </tr>
             </thead>
             <tbody>
-              {balances.length === 0 && (
-                <tr><td colSpan={5} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີຂໍ້ມູນ</td></tr>
-              )}
+              <TableStateRow colSpan={5} isError={balancesFailed} error={balancesError} isEmpty={balances.length === 0} emptyText="ຍັງບໍ່ມີຂໍ້ມູນ" onRetry={() => void refetchBalances()} />
               {balances.map((row) => (
                 <tr key={`${row.bankAccountId}-${row.currency}`}>
                   <td className="font-medium">{row.bankNameLo}</td>
                   <td>{row.currency}</td>
-                  <td className="num text-right text-emerald-700">{formatMoney(row.inflow)}</td>
-                  <td className="num text-right text-red-600">{formatMoney(row.outflow)}</td>
-                  <td className="num text-right font-semibold">{formatMoney(row.actual)}</td>
+                  <td className="num text-right text-success">{formatMoney(row.inflow)}</td>
+                  <td className="num text-right text-danger">{formatMoney(row.outflow)}</td>
+                  <td className="num text-right font-semibold text-fg-strong">{formatMoney(row.actual)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         {banks.length > 0 && (
-          <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
+          <p className="border-t border-line px-5 py-3 text-xs text-muted">
             {banks.join(' · ')} — ເງິນ Bank ສຸດທິ ແລະ ຍອດຂາດດຸນ ເບິ່ງໄດ້ທີ່ Module Bank (Admin)
           </p>
         )}
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">History ທຸລະກຳ Bank ໃນມື້</h2></div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="History ທຸລະກຳ Bank ໃນມື້">
           <table className="table">
             <thead>
               <tr>
@@ -98,18 +96,16 @@ export default function PaymentBankPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={7} className="py-8 text-center text-slate-400">ຍັງບໍ່ມີລາຍການ</td></tr>
-              )}
+              <TableStateRow colSpan={7} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
               {rows.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDateTime(row.createdAt)}</td>
                   <td>{row.bankAccount.nameLo}</td>
-                  <td className="text-slate-500">{row.type}</td>
+                  <td className="text-muted">{row.type}</td>
                   <td>{row.currency}</td>
                   <td className="num text-right font-medium">{formatMoney(row.amount)}</td>
-                  <td className="text-slate-500">{row.refType ?? '—'}</td>
-                  <td className="text-slate-500">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.refType ?? '—'}</td>
+                  <td className="text-muted">{row.note ?? '—'}</td>
                 </tr>
               ))}
             </tbody>

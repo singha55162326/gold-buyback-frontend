@@ -38,10 +38,25 @@ const DURATION: Record<ToastTone, number> = {
   error: 8_000,
 };
 
-const TONE_STYLE: Record<ToastTone, { ring: string; dot: string; label: string }> = {
-  success: { ring: 'border-emerald-200', dot: 'bg-emerald-500', label: 'ສຳເລັດ' },
-  error: { ring: 'border-red-200', dot: 'bg-red-500', label: 'ຜິດພາດ' },
-  info: { ring: 'border-slate-200', dot: 'bg-slate-400', label: 'ແຈ້ງເຕືອນ' },
+const TONE_STYLE: Record<ToastTone, { ring: string; icon: string; label: string; path: string }> = {
+  success: {
+    ring: 'border-[var(--success-border)]',
+    icon: 'text-success',
+    label: 'ສຳເລັດ',
+    path: 'M5 10.5l3.2 3.2L15 6.8',
+  },
+  error: {
+    ring: 'border-[var(--danger-border)]',
+    icon: 'text-danger',
+    label: 'ຜິດພາດ',
+    path: 'M10 6v5M10 14h.01',
+  },
+  info: {
+    ring: 'border-[var(--border)]',
+    icon: 'text-gold',
+    label: 'ແຈ້ງເຕືອນ',
+    path: 'M10 9v5M10 6h.01',
+  },
 };
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
@@ -86,20 +101,32 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               }}
               className={`toast ${tone.ring}`}
             >
-              <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${tone.dot}`} aria-hidden="true" />
+              <svg
+                viewBox="0 0 20 20"
+                className={`mt-0.5 h-[18px] w-[18px] shrink-0 ${tone.icon}`}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="10" cy="10" r="7.5" />
+                <path d={tone.path} />
+              </svg>
               <div className="min-w-0 flex-1">
-                <ToastPrimitive.Title className="text-sm font-semibold text-slate-900">
+                <ToastPrimitive.Title className="text-sm font-semibold text-fg-strong">
                   {t.title}
                 </ToastPrimitive.Title>
                 {t.body && (
-                  <ToastPrimitive.Description className="mt-0.5 break-words text-xs text-slate-600">
+                  <ToastPrimitive.Description className="mt-0.5 break-words text-xs text-fg">
                     {t.body}
                   </ToastPrimitive.Description>
                 )}
               </div>
               <ToastPrimitive.Close
                 aria-label="ປິດ"
-                className="shrink-0 rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                className="-my-2 -mr-2 flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg text-muted transition-colors hover:bg-[var(--row-hover)] hover:text-fg"
               >
                 <svg viewBox="0 0 20 20" className="h-4 w-4" aria-hidden="true">
                   <path d="M6 6l8 8M14 6l-8 8" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" />

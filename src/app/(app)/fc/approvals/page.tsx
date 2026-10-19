@@ -5,6 +5,9 @@ import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
+import { PageHead } from '@/components/page-head';
+import { QueryErrorNotice } from '@/components/query-state';
+import { statusClass } from '@/lib/status';
 
 interface CashRequest {
   id: string; direction: 'WITHDRAW' | 'HANDOVER'; status: string;
@@ -27,11 +30,11 @@ export default function FcApprovalsPage() {
   const [reason, setReason] = useState('');
   const [rejecting, setRejecting] = useState<string | null>(null);
 
-  const { data: requests = [] } = useQuery({
+  const { data: requests = [], isError: requestsError, error: requestsErr, refetch: refetchRequests } = useQuery({
     queryKey: ['cash', 'requests', 'PENDING'],
     queryFn: () => api.get<CashRequest[]>('/cash/requests?status=PENDING'),
   });
-  const { data: shifts = [] } = useQuery({
+  const { data: shifts = [], isError: shiftsError, error: shiftsErr, refetch: refetchShifts } = useQuery({
     queryKey: ['shifts', 'pending'],
     queryFn: () => api.get<PendingShift[]>('/shifts/pending'),
   });
@@ -75,28 +78,29 @@ export default function FcApprovalsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">ອະນຸມັດ ເບີກ/ມອບ & ປິດກະ</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          ເງິນຈະເຄື່ອນໄຫວຕໍ່ເມື່ອ payment ກົດຢືນຢັນຮັບເງິນ ຫຼັງຈາກ Approve ແລ້ວ (TOR §6)
-        </p>
-      </div>
+      <PageHead
+        title="ອະນຸມັດ ເບີກ/ມອບ & ປິດກະ"
+        subtitle="ເງິນຈະເຄື່ອນໄຫວຕໍ່ເມື່ອ payment ກົດຢືນຢັນຮັບເງິນ ຫຼັງຈາກ Approve ແລ້ວ (TOR §6)"
+      />
 
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+        <div id="fc-approvals-error" role="alert" className="notice status-danger">{error}</div>
       )}
 
-      {total === 0 && (
-        <div className="card p-10 text-center text-slate-400">ບໍ່ມີລາຍການລໍຖ້າອະນຸມັດ</div>
+      {requestsError && <QueryErrorNotice error={requestsErr} onRetry={() => void refetchRequests()} />}
+      {shiftsError && <QueryErrorNotice error={shiftsErr} onRetry={() => void refetchShifts()} />}
+
+      {total === 0 && !requestsError && !shiftsError && (
+        <div data-fade className="card p-10 text-center text-muted">ບໍ່ມີລາຍການລໍຖ້າອະນຸມັດ</div>
       )}
 
       {requests.length > 0 && (
-        <div className="card">
+        <div data-fade className="card">
           <div className="card-header">
             <h2 className="card-title">ເບີກ / ມອບເງິນ</h2>
-            <span className="text-xs text-slate-500">{requests.length} ລາຍການ</span>
+            <span className="num text-xs text-muted">{requests.length} ລາຍການ</span>
           </div>
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0} role="region" aria-label="ເບີກ / ມອບເງິນ">
             <table className="table">
               <thead>
                 <tr>
@@ -113,9 +117,12 @@ export default function FcApprovalsPage() {
               <tbody>
                 {requests.map((row) => (
                   <tr key={row.id}>
-                    <td>{formatDateTime(row.createdAt)}</td>
                     <td>
-                      <span className={row.direction === 'WITHDRAW' ? 'badge bg-amber-100 text-amber-800' : 'badge bg-blue-100 text-blue-800'}>
+                      {formatDateTime(row.createdAt)}
+                      <div><span className={statusClass(row.status)}>{row.status}</span></div>
+                    </td>
+                    <td>
+                      <span className="badge recessed text-fg">
                         {row.direction === 'WITHDRAW' ? 'ເບີກເງິນ (+)' : 'ມອບເງິນ (−)'}
                       </span>
                     </td>
@@ -123,27 +130,28 @@ export default function FcApprovalsPage() {
                     <td className="num text-right">{amountFor(row.lines, 'LAK')}</td>
                     <td className="num text-right">{amountFor(row.lines, 'THB')}</td>
                     <td className="num text-right">{amountFor(row.lines, 'USD')}</td>
-                    <td className="text-slate-500">{row.note ?? '—'}</td>
+                    <td className="text-muted">{row.note ?? '—'}</td>
                     <td className="text-right">
                       {rejecting === row.id ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <input className="input w-36 py-1 text-xs" placeholder="ເຫດຜົນ"
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <input className="input w-44" aria-label="ເຫດຜົນ" aria-describedby={error ? 'fc-approvals-error' : undefined} placeholder="ເຫດຜົນ"
                             value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
-                          <button className="text-sm text-red-600 hover:underline"
-                            onClick={() => reviewRequest.mutate({ id: row.id, decision: 'REJECTED', reason })}>
+                          <button className="btn-danger" aria-label={`ຢືນຢັນ ${row.shift.user.fullName}`}
+                            onClick={() => reviewRequest.mutate({ id: row.id, decision: 'REJECTED', reason })}
+                            disabled={reviewRequest.isPending}>
                             ຢືນຢັນ
                           </button>
-                          <button className="text-sm text-slate-500 hover:underline"
+                          <button className="btn-secondary" aria-label={`ຍົກເລີກ ${row.shift.user.fullName}`}
                             onClick={() => setRejecting(null)}>ຍົກເລີກ</button>
                         </div>
                       ) : (
-                        <div className="flex justify-end gap-3">
-                          <button className="text-sm font-medium text-emerald-700 hover:underline"
+                        <div className="flex justify-end gap-6">
+                          <button className="btn-primary" aria-label={`Approve ${row.shift.user.fullName}`} aria-describedby={error ? 'fc-approvals-error' : undefined}
                             onClick={() => reviewRequest.mutate({ id: row.id, decision: 'APPROVED' })}
                             disabled={reviewRequest.isPending}>
                             Approve
                           </button>
-                          <button className="text-sm text-red-600 hover:underline"
+                          <button className="btn-danger" aria-label={`Reject ${row.shift.user.fullName}`} aria-describedby={error ? 'fc-approvals-error' : undefined}
                             onClick={() => setRejecting(row.id)}>Reject</button>
                         </div>
                       )}
@@ -157,12 +165,12 @@ export default function FcApprovalsPage() {
       )}
 
       {shifts.length > 0 && (
-        <div className="card">
+        <div data-fade className="card">
           <div className="card-header">
             <h2 className="card-title">ການປິດກະລໍຖ້າອະນຸມັດ</h2>
-            <span className="text-xs text-slate-500">{shifts.length} ລາຍການ</span>
+            <span className="num text-xs text-muted">{shifts.length} ລາຍການ</span>
           </div>
-          <div className="table-wrap">
+          <div className="table-wrap" tabIndex={0} role="region" aria-label="ການປິດກະລໍຖ້າອະນຸມັດ">
             <table className="table">
               <thead>
                 <tr>
@@ -180,7 +188,7 @@ export default function FcApprovalsPage() {
                 {shifts.map((row) => (
                   <tr key={row.id}>
                     <td className="font-medium">{row.user.fullName}</td>
-                    <td className="text-slate-500">{row.user.role}</td>
+                    <td className="text-muted">{row.user.role}</td>
                     <td>{formatDateTime(row.openedAt)}</td>
                     <td>{formatDateTime(row.closedAt)}</td>
                     <td className="num text-right">{amountFor(row.closingBalances, 'LAK')}</td>
@@ -188,24 +196,25 @@ export default function FcApprovalsPage() {
                     <td className="num text-right">{amountFor(row.closingBalances, 'USD')}</td>
                     <td className="text-right">
                       {rejecting === row.id ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <input className="input w-36 py-1 text-xs" placeholder="ເຫດຜົນ"
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <input className="input w-44" aria-label="ເຫດຜົນ" aria-describedby={error ? 'fc-approvals-error' : undefined} placeholder="ເຫດຜົນ"
                             value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
-                          <button className="text-sm text-red-600 hover:underline"
-                            onClick={() => reviewShift.mutate({ id: row.id, decision: 'REJECTED', reason })}>
+                          <button className="btn-danger" aria-label={`ຢືນຢັນ ${row.user.fullName}`}
+                            onClick={() => reviewShift.mutate({ id: row.id, decision: 'REJECTED', reason })}
+                            disabled={reviewShift.isPending}>
                             ຢືນຢັນ
                           </button>
-                          <button className="text-sm text-slate-500 hover:underline"
+                          <button className="btn-secondary" aria-label={`ຍົກເລີກ ${row.user.fullName}`}
                             onClick={() => setRejecting(null)}>ຍົກເລີກ</button>
                         </div>
                       ) : (
-                        <div className="flex justify-end gap-3">
-                          <button className="text-sm font-medium text-emerald-700 hover:underline"
+                        <div className="flex justify-end gap-6">
+                          <button className="btn-primary" aria-label={`Approve ${row.user.fullName}`} aria-describedby={error ? 'fc-approvals-error' : undefined}
                             onClick={() => reviewShift.mutate({ id: row.id, decision: 'APPROVED' })}
                             disabled={reviewShift.isPending}>
                             Approve
                           </button>
-                          <button className="text-sm text-red-600 hover:underline"
+                          <button className="btn-danger" aria-label={`Reject ${row.user.fullName}`} aria-describedby={error ? 'fc-approvals-error' : undefined}
                             onClick={() => setRejecting(row.id)}>Reject</button>
                         </div>
                       )}

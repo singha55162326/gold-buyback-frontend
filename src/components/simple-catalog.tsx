@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pagination, usePagination } from './pagination';
+import { PageHead } from './page-head';
 import { useToast } from './toast';
 import { api, ApiError } from '@/lib/api';
+import { TableStateRow } from '@/components/query-state';
 
 export interface CatalogField {
   key: string;
@@ -55,7 +57,7 @@ export function SimpleCatalog({
   const [form, setForm] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
 
-  const { data: rows = [], isLoading } = useQuery({
+  const { data: rows = [], isLoading, isError, error: loadError, refetch } = useQuery({
     queryKey,
     queryFn: () => api.get<Array<Record<string, unknown>>>(listPath),
   });
@@ -90,27 +92,26 @@ export function SimpleCatalog({
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-bold text-slate-900">{titleLo}</h1>
-          <span className="badge bg-slate-100 text-slate-600">TOR {section}</span>
-        </div>
-        <p className="mt-1 text-sm text-slate-500">{descriptionLo}</p>
-      </div>
+      <PageHead
+        title={titleLo}
+        subtitle={descriptionLo}
+        actions={<span className="badge recessed text-gold">TOR {section}</span>}
+      />
 
-      <div className="card p-5">
+      <div data-fade className="card p-5">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {fields.map((field) => (
             <div key={field.key}>
               <label className="label" htmlFor={field.key}>
                 {field.labelLo}
-                {field.optional && <span className="ml-1 text-xs text-slate-400">(ບໍ່ບັງຄັບ)</span>}
+                {field.optional && <span className="ml-1 text-xs text-muted">(ບໍ່ບັງຄັບ)</span>}
               </label>
               {field.options ? (
                 <select
                   id={field.key}
                   className="input"
                   value={form[field.key] ?? ''}
+                  aria-describedby={error ? 'catalog-error' : undefined}
                   onChange={(e) => setForm((f) => ({ ...f, [field.key]: e.target.value }))}
                 >
                   <option value="">— ເລືອກ —</option>
@@ -125,6 +126,7 @@ export function SimpleCatalog({
                   id={field.key}
                   className="input"
                   placeholder={field.placeholder}
+                  aria-describedby={error ? 'catalog-error' : undefined}
                   value={form[field.key] ?? ''}
                   onChange={(e) => setForm((f) => ({ ...f, [field.key]: e.target.value }))}
                 />
@@ -134,7 +136,7 @@ export function SimpleCatalog({
         </div>
 
         {error && (
-          <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div id="catalog-error" role="alert" className="notice status-danger mt-3">
             {error}
           </div>
         )}
@@ -150,12 +152,12 @@ export function SimpleCatalog({
         </div>
       </div>
 
-      <div className="card">
+      <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ລາຍການທັງໝົດ</h2>
-          <span className="text-xs text-slate-500">{rows.length} ລາຍການ</span>
+          <span className="num text-xs text-muted">{rows.length} ລາຍການ</span>
         </div>
-        <div className="table-wrap">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label={titleLo}>
           <table className="table">
             <thead>
               <tr>
@@ -165,20 +167,15 @@ export function SimpleCatalog({
               </tr>
             </thead>
             <tbody>
-              {isLoading && (
-                <tr>
-                  <td colSpan={columns.length} className="py-6 text-center text-slate-400">
-                    ກຳລັງໂຫຼດ...
-                  </td>
-                </tr>
-              )}
-              {!isLoading && rows.length === 0 && (
-                <tr>
-                  <td colSpan={columns.length} className="py-8 text-center text-slate-400">
-                    ຍັງບໍ່ມີລາຍການ
-                  </td>
-                </tr>
-              )}
+              <TableStateRow
+                colSpan={columns.length}
+                isLoading={isLoading}
+                isError={isError}
+                error={loadError}
+                isEmpty={rows.length === 0}
+                emptyText="ຍັງບໍ່ມີລາຍການ"
+                onRetry={() => void refetch()}
+              />
               {pager.pageItems.map((row, index) => (
                 <tr key={String(row.id ?? index)}>
                   {columns.map((col) => (
