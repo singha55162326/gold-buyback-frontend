@@ -111,9 +111,9 @@ export default function DashboardPage() {
 
         {isFinance && (
           <>
-          <StatCard label="COH Cash (LAK)" value={cohLak ? formatMoney(cohLak.coh) : '—'}
+          <StatCard label="COH Cash (LAK)" value={cohLak ? formatLak(cohLak.coh) : '—'}
             sub="ຫຼັງຫັກ AP, Advance ແລະ ບວກ AR" />
-          <StatCard label="Advance (LAK)" value={advanceLak ? formatMoney(advanceLak.net) : '—'}
+          <StatCard label="Advance (LAK)" value={advanceLak ? formatLak(advanceLak.net) : '—'}
             sub={advance ? `${advance.billCount} ບິນທີ່ຍັງເປີດ` : ''} />
           <StatCard label="COH Gold" value={coh ? `${formatWeight(coh.gold.cohG)} g` : '—'}
             sub={coh ? `${formatWeight(coh.gold.cohBaht)} ບາດ` : ''} />

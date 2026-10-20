@@ -8,6 +8,8 @@ import { formatLak, formatWeight, formatDate, gramsToBaht } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { StatCard } from '@/components/stat-card';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
+import type { PagedResult } from '@/components/date-range';
+import { DateRangeFilter, useHistoryRange, type HistoryRangeState } from '@/components/date-range';
 
 interface Wac { newWeightG: string; newCost: string }
 interface SkuBalance {
@@ -36,10 +38,12 @@ export default function StockNewPage() {
     queryKey: ['stock', 'new', 'balances'],
     queryFn: () => api.get<SkuBalance[]>('/stock/new/balances'),
   });
-  const { data: history = [], isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
-    queryKey: ['stock', 'new', 'history'],
-    queryFn: () => api.get<LedgerRow[]>('/stock/new/history'),
-  });
+  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
+  const historyRange = useHistoryRange<LedgerRow>(['stock', 'new', 'history'], '/stock/new/history');
+  const history = historyRange.rows;
+  const historyFailed = historyRange.isError;
+  const historyError = historyRange.error;
+  const refetchHistory = historyRange.refetch;
 
   return (
     <div className="space-y-6">
@@ -112,6 +116,7 @@ export default function StockNewPage() {
       <LedgerTable
         titleLo="ປະຫວັດ Stock (NEW)"
         rows={history}
+        history={historyRange}
         isError={historyFailed}
         error={historyError}
         onRetry={() => void refetchHistory()}
@@ -124,12 +129,15 @@ export default function StockNewPage() {
 function LedgerTable({
   titleLo,
   rows,
+  history,
   isError,
   error,
   onRetry,
 }: {
   titleLo: string;
   rows: LedgerRow[];
+  /** Owns the ຈາກວັນທີ–ຫາວັນທີ controls and the request behind them. */
+  history: HistoryRangeState<LedgerRow>;
   isError: boolean;
   error: unknown;
   onRetry: () => void;
@@ -137,6 +145,7 @@ function LedgerTable({
   return (
     <div data-fade className="card">
       <div className="card-header"><h2 className="card-title">{titleLo}</h2></div>
+      <DateRangeFilter history={history} />
       <div className="table-wrap" tabIndex={0} role="region" aria-label={titleLo}>
         <table className="table">
           <thead>

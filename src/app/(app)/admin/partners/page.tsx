@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
 import { TableStateRow } from '@/components/query-state';
+import { RowActions } from '@/components/row-actions';
 
 interface Partner {
   id: string;
@@ -26,7 +27,6 @@ const DIRECTION_LABEL: Record<Partner['direction'], string> = {
 export default function PartnersPage() {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [code, setCode] = useState('');
   const [nameLo, setNameLo] = useState('');
   const [direction, setDirection] = useState<Partner['direction']>('BOTH');
   const [tracksGoldApAr, setTracksGoldApAr] = useState(false);
@@ -39,10 +39,10 @@ export default function PartnersPage() {
 
   const create = useMutation({
     mutationFn: () =>
-      api.post('/catalog/partners', { code, nameLo, direction, tracksGoldApAr }),
+      // ລະຫັດອອກອັດຕະໂນມັດຈາກ server.
+      api.post('/catalog/partners', { nameLo, direction, tracksGoldApAr }),
     onSuccess: () => {
       toast.success('ດຳເນີນການສຳເລັດ');
-      setCode('');
       setNameLo('');
       setTracksGoldApAr(false);
       setError(null);
@@ -57,6 +57,36 @@ export default function PartnersPage() {
 
   const pager = usePagination(rows);
 
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  const update = useMutation({
+    mutationFn: ({ id, nameLo: name }: { id: string; nameLo: string }) =>
+      api.patch(`/catalog/partners/${id}`, { nameLo: name }),
+    onSuccess: () => {
+      setEditing(null);
+      toast.success('ແກ້ໄຂແລ້ວ');
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'partners'] });
+    },
+    onError: (e) => toast.error('ບໍ່ສຳເລັດ', e instanceof ApiError ? e.message : 'ແກ້ໄຂບໍ່ສຳເລັດ'),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/catalog/partners/${id}`),
+    onSuccess: () => {
+      setConfirming(null);
+      toast.success('ລຶບແລ້ວ');
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'partners'] });
+    },
+    onError: (e) => {
+      // The server names what still uses it (or the gold still inside).
+      setConfirming(null);
+      toast.error('ລຶບແຫຼ່ງບໍ່ໄດ້', e instanceof ApiError ? e.message : 'ລຶບບໍ່ສຳເລັດ');
+    },
+  });
+
+
 
   return (
     <div className="space-y-6">
@@ -67,11 +97,6 @@ export default function PartnersPage() {
 
       <div data-fade className="card p-5">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <label className="label" htmlFor="p-code">Code</label>
-            <input id="p-code" className="input" aria-describedby={error ? 'partner-error' : undefined} placeholder="FACTORY" value={code}
-              onChange={(e) => setCode(e.target.value)} />
-          </div>
           <div>
             <label className="label" htmlFor="p-name">ຊື່ແຫຼ່ງ</label>
             <input id="p-name" className="input" aria-describedby={error ? 'partner-error' : undefined} placeholder="ຊ່າງນອກ" value={nameLo}
@@ -87,7 +112,7 @@ export default function PartnersPage() {
             </select>
           </div>
           <div className="flex items-end">
-            <button className="btn-primary" disabled={!code || !nameLo || create.isPending}
+            <button className="btn-primary" disabled={!nameLo || create.isPending}
               onClick={() => create.mutate()}>
               {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ເພີ່ມແຫຼ່ງ'}
             </button>
@@ -119,11 +144,12 @@ export default function PartnersPage() {
                 <th>ຊື່ແຫຼ່ງ</th>
                 <th>ທິດທາງ</th>
                 <th>AP/AR (GOLD)</th>
+                <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={4}
+                colSpan={5}
                 isError={rowsFailed}
                 error={rowsError}
                 isEmpty={false}
@@ -133,9 +159,30 @@ export default function PartnersPage() {
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td className="font-mono text-xs text-muted">{row.code}</td>
-                  <td className="font-medium">{row.nameLo}</td>
+                  <td className="font-medium">
+                    {editing === row.id ? (
+                      <input className="input" value={editName} aria-label="ຊື່ແຫຼ່ງ"
+                        onChange={(e) => setEditName(e.target.value)} />
+                    ) : (
+                      row.nameLo
+                    )}
+                  </td>
                   <td>{DIRECTION_LABEL[row.direction]}</td>
                   <td>{row.tracksGoldApAr ? 'ຕິດຕາມ' : '—'}</td>
+                  <td className="text-right">
+                    <RowActions
+                      id={row.id}
+                      editing={editing}
+                      confirming={confirming}
+                      busy={update.isPending || remove.isPending}
+                      canSave={Boolean(editName.trim())}
+                      onEdit={() => { setConfirming(null); setEditing(row.id); setEditName(row.nameLo); }}
+                      onSave={() => update.mutate({ id: row.id, nameLo: editName })}
+                      onCancel={() => { setEditing(null); setConfirming(null); }}
+                      onAskDelete={() => { setEditing(null); setConfirming(row.id); }}
+                      onDelete={() => remove.mutate(row.id)}
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>

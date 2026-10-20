@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
-import { formatMoney, formatDateTime } from '@/lib/format';
+import { formatMoney, formatDateTime, formatByCurrency } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
@@ -72,7 +72,7 @@ export default function FcApprovalsPage() {
   });
 
   const amountFor = (lines: Array<{ currency: string; amount: string }>, currency: string) =>
-    formatMoney(lines.find((l) => l.currency === currency)?.amount ?? '0');
+    formatByCurrency(lines.find((l) => l.currency === currency)?.amount ?? '0', currency);
 
   const total = requests.length + shifts.length;
 

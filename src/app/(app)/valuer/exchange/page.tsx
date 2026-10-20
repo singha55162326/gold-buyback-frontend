@@ -9,6 +9,8 @@ import { NumberInput } from '@/components/number-input';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
+import type { PagedResult } from '@/components/date-range';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 
 interface GoldType { id: string; nameLo: string }
 interface GoldItem { id: string; nameLo: string }
@@ -59,6 +61,8 @@ const emptyNew = (): NewLine => ({
  */
 export default function ExchangePage() {
   const queryClient = useQueryClient();
+  // The history is the landing view; the form opens on demand.
+  const [showForm, setShowForm] = useState(false);
   const toast = useToast();
 
   const [phone, setPhone] = useState('');
@@ -86,10 +90,12 @@ export default function ExchangePage() {
     queryKey: ['catalog', 'cabinets'],
     queryFn: () => api.get<Cabinet[]>('/catalog/cabinets'),
   });
-  const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
-    queryKey: ['exchange'],
-    queryFn: () => api.get<ExchangeRow[]>('/exchange'),
-  });
+  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
+  const history = useHistoryRange<ExchangeRow>(['exchange'], '/exchange');
+  const rows = history.rows;
+  const rowsFailed = history.isError;
+  const rowsError = history.error;
+  const refetchRows = history.refetch;
 
   /** The request body, shared by preview and save so they cannot diverge. */
   const payload = useMemo(
@@ -148,6 +154,7 @@ export default function ExchangePage() {
   const create = useMutation({
     mutationFn: () => api.post('/exchange', { ...payload, phone }),
     onSuccess: () => {
+      setShowForm(false);
       toast.success('ດຳເນີນການສຳເລັດ');
       setPhone(''); setOldLines([emptyOld()]); setNewLines([emptyNew()]);
       setRemainingLines([]); setPreview(null); setError(null);
@@ -174,6 +181,11 @@ export default function ExchangePage() {
       <PageHead
         title="ລາຍການປ່ຽນເປັນເງິນ"
         subtitle="Gold Exchange & Trade-in — ນ້ຳໜັກຕ້ອງສົມດຸນພໍດີຈຶ່ງບັນທຶກໄດ້ (TOR §5.2)"
+        actions={
+          <button className="btn-primary" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? 'ປິດຟອມ' : '+ ສ້າງລາຍການປ່ຽນເປັນເງິນ'}
+          </button>
+        }
       />
       {goldTypesFailed && <QueryErrorNotice error={goldTypesError} onRetry={() => void refetchGoldTypes()} />}
       {goldItemsFailed && <QueryErrorNotice error={goldItemsError} onRetry={() => void refetchGoldItems()} />}
@@ -184,6 +196,7 @@ export default function ExchangePage() {
         <div id="exchange-error" role="alert" className="notice status-danger">{error}</div>
       )}
 
+      {showForm && (
       <div data-fade className="card p-5">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div>
@@ -209,6 +222,7 @@ export default function ExchangePage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* ---- ລາຍການຄຳເກົ່າ ---- */}
       <div data-fade className="card">
@@ -390,6 +404,7 @@ export default function ExchangePage() {
           <h2 className="card-title">History ປ່ຽນເປັນເງິນ</h2>
           <span className="num text-xs text-muted">{rows.length} ລາຍການ</span>
         </div>
+        <DateRangeFilter history={history} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="History ປ່ຽນເປັນເງິນ">
           <table className="table">
             <thead>

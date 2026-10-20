@@ -41,6 +41,8 @@ export function SimpleCatalog({
   fields,
   columns,
   addLabelLo,
+  editPath,
+  editableKeys,
 }: {
   titleLo: string;
   descriptionLo: string;
@@ -51,11 +53,22 @@ export function SimpleCatalog({
   fields: CatalogField[];
   columns: CatalogColumn[];
   addLabelLo: string;
+  /**
+   * Base path for PATCH/DELETE on a single row, when the module supports
+   * them. Defaults to createPath, which is how every current caller is set
+   * up; pass it explicitly when the two differ.
+   */
+  editPath?: string;
+  /** Fields that may be edited in place. Defaults to every non-code field. */
+  editableKeys?: string[];
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
   const [form, setForm] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   const { data: rows = [], isLoading, isError, error: loadError, refetch } = useQuery({
     queryKey,
@@ -81,6 +94,44 @@ export function SimpleCatalog({
       const detail = e instanceof ApiError ? e.message : 'ບັນທຶກບໍ່ສຳເລັດ';
       setError(detail);
       toast.error('ບັນທຶກບໍ່ສຳເລັດ', detail);
+    },
+  });
+
+  const rowPath = editPath ?? createPath;
+  // The code is issued by the server and may already be printed on a
+  // receipt, so it is the one field that never becomes editable.
+  const editable = fields.filter(
+    (f) => f.key !== 'code' && (!editableKeys || editableKeys.includes(f.key)),
+  );
+
+  const update = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, string> }) =>
+      api.patch(`${rowPath}/${id}`, body),
+    onSuccess: () => {
+      setEditing(null);
+      setEditForm({});
+      toast.success('ແກ້ໄຂແລ້ວ');
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (e) => {
+      const detail = e instanceof ApiError ? e.message : 'ແກ້ໄຂບໍ່ສຳເລັດ';
+      toast.error('ບໍ່ສຳເລັດ', detail);
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`${rowPath}/${id}`),
+    onSuccess: () => {
+      setConfirming(null);
+      toast.success('ລຶບແລ້ວ');
+      void queryClient.invalidateQueries({ queryKey });
+    },
+    onError: (e) => {
+      // The in-use guard speaks Lao and names what is using the row, so it
+      // is worth showing in full rather than a generic failure.
+      const detail = e instanceof ApiError ? e.message : 'ລຶບບໍ່ສຳເລັດ';
+      setConfirming(null);
+      toast.error('ລຶບບໍ່ໄດ້', detail);
     },
   });
 
@@ -164,11 +215,12 @@ export function SimpleCatalog({
                 {columns.map((col) => (
                   <th key={col.key}>{col.labelLo}</th>
                 ))}
+                <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={columns.length}
+                colSpan={columns.length + 1}
                 isLoading={isLoading}
                 isError={isError}
                 error={loadError}
@@ -176,15 +228,117 @@ export function SimpleCatalog({
                 emptyText="ຍັງບໍ່ມີລາຍການ"
                 onRetry={() => void refetch()}
               />
-              {pager.pageItems.map((row, index) => (
-                <tr key={String(row.id ?? index)}>
-                  {columns.map((col) => (
-                    <td key={col.key} className={col.key === 'code' ? 'font-mono text-xs' : ''}>
-                      {col.render ? col.render(row) : String(row[col.key] ?? '—')}
+              {pager.pageItems.map((row, index) => {
+                const id = String(row.id ?? '');
+                const isEditing = editing === id;
+                const busy = update.isPending || remove.isPending;
+                return (
+                  <tr key={id || index}>
+                    {columns.map((col) => {
+                      const field = editable.find((f) => f.key === col.key);
+                      if (isEditing && field) {
+                        return (
+                          <td key={col.key}>
+                            {field.options ? (
+                              <select
+                                className="input"
+                                value={editForm[col.key] ?? ''}
+                                aria-label={field.labelLo}
+                                onChange={(e) =>
+                                  setEditForm((f) => ({ ...f, [col.key]: e.target.value }))
+                                }
+                              >
+                                {field.options.map((o) => (
+                                  <option key={o.value} value={o.value}>
+                                    {o.labelLo}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                className="input"
+                                value={editForm[col.key] ?? ''}
+                                aria-label={field.labelLo}
+                                onChange={(e) =>
+                                  setEditForm((f) => ({ ...f, [col.key]: e.target.value }))
+                                }
+                              />
+                            )}
+                          </td>
+                        );
+                      }
+                      return (
+                        <td key={col.key} className={col.key === 'code' ? 'font-mono text-xs' : ''}>
+                          {col.render ? col.render(row) : String(row[col.key] ?? '—')}
+                        </td>
+                      );
+                    })}
+                    <td className="text-right">
+                      {isEditing ? (
+                        <div className="flex justify-end gap-2">
+                          <button
+                            className="btn-ghost"
+                            disabled={busy}
+                            onClick={() => update.mutate({ id, body: editForm })}
+                          >
+                            ບັນທຶກ
+                          </button>
+                          <button
+                            className="btn-secondary"
+                            onClick={() => {
+                              setEditing(null);
+                              setEditForm({});
+                            }}
+                          >
+                            ຍົກເລີກ
+                          </button>
+                        </div>
+                      ) : confirming === id ? (
+                        <div className="flex justify-end gap-2">
+                          <button
+                            className="btn-danger"
+                            disabled={busy}
+                            onClick={() => remove.mutate(id)}
+                          >
+                            ຢືນຢັນລຶບ
+                          </button>
+                          <button className="btn-secondary" onClick={() => setConfirming(null)}>
+                            ຍົກເລີກ
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex justify-end gap-3">
+                          {editable.length > 0 && (
+                            <button
+                              className="btn-ghost"
+                              onClick={() => {
+                                setConfirming(null);
+                                setEditing(id);
+                                setEditForm(
+                                  Object.fromEntries(
+                                    editable.map((f) => [f.key, String(row[f.key] ?? '')]),
+                                  ),
+                                );
+                              }}
+                            >
+                              ແກ້ໄຂ
+                            </button>
+                          )}
+                          <button
+                            className="btn-ghost text-danger"
+                            onClick={() => {
+                              setEditing(null);
+                              setConfirming(id);
+                            }}
+                          >
+                            ລຶບ
+                          </button>
+                        </div>
+                      )}
                     </td>
-                  ))}
-                </tr>
-              ))}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

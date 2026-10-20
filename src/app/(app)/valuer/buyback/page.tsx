@@ -9,6 +9,10 @@ import { NumberInput } from '@/components/number-input';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
+import type { PagedResult } from '@/components/date-range';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
+import { MultiPayment, newPaymentLines, paymentPayload } from '@/components/multi-payment';
+import type { PaymentLine } from '@/components/multi-payment';
 
 interface GoldType { id: string; code: string; nameLo: string }
 interface GoldItem { id: string; nameLo: string }
@@ -23,9 +27,16 @@ interface Preview {
 }
 
 interface BuybackPayment {
-  id: string; method: string; currency: string;
+  id: string; method: 'CASH' | 'BANK'; currency: string;
   amount: string; amountLak: string; changeLak: string;
+  bankAccount: { nameLo: string } | null;
 }
+
+/** ສົດ / ໂອນ ເປັນສອງຊ່ອງທາງແຍກກັນ, ສະນັ້ນ ປະຫວັດກໍບອກແຍກ. */
+const METHOD_LABEL: Record<BuybackPayment['method'], string> = {
+  CASH: 'ເງິນສົດ',
+  BANK: 'ໂອນ',
+};
 
 interface BuybackRow {
   id: string;
@@ -63,6 +74,8 @@ const STATUS_LABEL: Record<BuybackRow['status'], { lo: string }> = {
  */
 export default function BuybackPage() {
   const queryClient = useQueryClient();
+  // The history is the landing view; the form opens on demand.
+  const [showForm, setShowForm] = useState(false);
   const toast = useToast();
   const user = getStoredUser();
   const canConfirm = user?.role === 'VALUER' || user?.role === 'ADMIN' || user?.role === 'MANAGER';
@@ -75,10 +88,9 @@ export default function BuybackPage() {
   const [quantity, setQuantity] = useState(1);
   const [goldPercent, setGoldPercent] = useState('');
   const [deduction, setDeduction] = useState('');
-  const [method, setMethod] = useState<'CASH' | 'BANK'>('CASH');
-  const [bankAccountId, setBankAccountId] = useState('');
-  const [currency, setCurrency] = useState<'LAK' | 'THB' | 'USD'>('LAK');
-  const [amount, setAmount] = useState('');
+  // ສົດ ແລະ ໂອນ ແຍກແຖວກັນ: one buyback may be paid part cash, part transfer,
+  // and each leg carries its own currency and rate.
+  const [payments, setPayments] = useState<PaymentLine[]>(newPaymentLines);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -91,14 +103,16 @@ export default function BuybackPage() {
     queryKey: ['catalog', 'gold-items'],
     queryFn: () => api.get<GoldItem[]>('/catalog/gold-items'),
   });
-  const { data: banks = [], isError: banksFailed, error: banksError, refetch: refetchBanks } = useQuery({
+  const { isError: banksFailed, error: banksError, refetch: refetchBanks } = useQuery({
     queryKey: ['catalog', 'bank-accounts'],
     queryFn: () => api.get<BankAccount[]>('/catalog/bank-accounts'),
   });
-  const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
-    queryKey: ['buyback'],
-    queryFn: () => api.get<BuybackRow[]>('/buyback'),
-  });
+  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
+  const history = useHistoryRange<BuybackRow>(['buyback'], '/buyback');
+  const rows = history.rows;
+  const rowsFailed = history.isError;
+  const rowsError = history.error;
+  const refetchRows = history.refetch;
 
   /* Re-price whenever the inputs change. */
   useEffect(() => {
@@ -148,19 +162,13 @@ export default function BuybackPage() {
         quantity,
         goldPercent: goldPercent.trim() || undefined,
         deduction: deduction.trim() || undefined,
-        payments: [
-          {
-            method,
-            bankAccountId: method === 'BANK' ? bankAccountId : undefined,
-            currency,
-            amount: amount.trim() || preview?.payableAmount || '0',
-          },
-        ],
+        payments: paymentPayload(payments),
       }),
     onSuccess: () => {
+      setShowForm(false);
       toast.success('ດຳເນີນການສຳເລັດ');
       setPhone(''); setWeightG(''); setQuantity(1); setGoldPercent('');
-      setDeduction(''); setAmount(''); setPreview(null); setError(null);
+      setDeduction(''); setPayments(newPaymentLines()); setPreview(null); setError(null);
       void queryClient.invalidateQueries({ queryKey: ['buyback'] });
     },
     onError: (e) => {
@@ -185,19 +193,32 @@ export default function BuybackPage() {
   });
 
   const isBoiled = source === 'OTHER_SHOP';
+  // ແຕ່ລະແຖວຈ່າຍຕ້ອງຄົບ: ແຖວໂອນ ຕ້ອງເລືອກທະນາຄານ ກ່ອນບັນທຶກໄດ້.
+  const paymentLines = paymentPayload(payments);
+  const bankLegReady = paymentLines.every((l) => l.method !== 'BANK' || Boolean(l.bankAccountId));
   const canSave =
-    /^\d{8}$/.test(phone) && preview !== null && Number(preview.payableAmount) > 0;
+    /^\d{8}$/.test(phone) &&
+    preview !== null &&
+    Number(preview.payableAmount) > 0 &&
+    paymentLines.length > 0 &&
+    bankLegReady;
 
   return (
     <div className="space-y-6">
       <PageHead
         title="Buyback — ການຊື້ຄຳຄືນ"
         subtitle="ຄຳຮ້ານ KPV ແລະ ຄຳຮ້ານອື່ນ (ຄຳຕົ້ມ) — ສ້າງລາຍການສົ່ງໃຫ້ payment ອະນຸມັດ (TOR §5.1)"
+        actions={
+          <button className="btn-primary" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? 'ປິດຟອມ' : '+ ສ້າງລາຍການ Buyback'}
+          </button>
+        }
       />
       {goldTypesFailed && <QueryErrorNotice error={goldTypesError} onRetry={() => void refetchGoldTypes()} />}
       {goldItemsFailed && <QueryErrorNotice error={goldItemsError} onRetry={() => void refetchGoldItems()} />}
       {banksFailed && <QueryErrorNotice error={banksError} onRetry={() => void refetchBanks()} />}
 
+      {showForm && (
       <div data-fade className="card p-5">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div>
@@ -275,45 +296,14 @@ export default function BuybackPage() {
           )}
         </div>
 
-        {/* Payment */}
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <label className="label" htmlFor="method">Payment Method</label>
-            <select id="method" className="input input-lg" value={method}
-              onChange={(e) => setMethod(e.target.value as 'CASH' | 'BANK')}>
-              <option value="CASH">Cash</option>
-              <option value="BANK">Bank</option>
-            </select>
-          </div>
-
-          {method === 'BANK' && (
-            <div>
-              <label className="label" htmlFor="bank">Select Bank</label>
-              <select id="bank" className="input input-lg" value={bankAccountId}
-                onChange={(e) => setBankAccountId(e.target.value)}>
-                <option value="">— ເລືອກທະນາຄານ —</option>
-                {banks.map((b) => <option key={b.id} value={b.id}>{b.nameLo}</option>)}
-              </select>
-            </div>
-          )}
-
-          <div>
-            <label className="label" htmlFor="currency">Currency</label>
-            <select id="currency" className="input input-lg" value={currency}
-              onChange={(e) => setCurrency(e.target.value as 'LAK' | 'THB' | 'USD')}>
-              <option value="LAK">LAK</option>
-              <option value="THB">THB</option>
-              <option value="USD">USD</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="label" htmlFor="amount">Amount</label>
-            <NumberInput decimals={currency === 'LAK' ? 0 : 2} id="amount" className="input input-lg num"
-              placeholder={preview?.payableAmount ?? '0'} value={amount}
-              onValueChange={setAmount} />
-          </div>
-        </div>
+        {/* ການຈ່າຍເງິນ — ຮ້ານຈ່າຍອອກ, ສະນັ້ນ ໃຊ້ເຣດຊື້ຄືນ. */}
+        <MultiPayment
+          lines={payments}
+          onChange={setPayments}
+          owedLak={preview?.payableAmount}
+          direction="out"
+          labelLo="ການຈ່າຍເງິນ — ສົດ / ໂອນ (ແຍກແຖວໄດ້)"
+        />
 
         {error && (
           <div id="buyback-error" role="alert" className="notice status-danger mt-3">
@@ -329,12 +319,14 @@ export default function BuybackPage() {
           </button>
         </div>
       </div>
+      )}
 
       <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ປະຫວັດ Buyback</h2>
           <span className="num text-xs text-muted">{rows.length} ລາຍການ</span>
         </div>
+        <DateRangeFilter history={history} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Buyback">
           <table className="table">
             <thead>
@@ -417,7 +409,12 @@ export default function BuybackPage() {
                           )}
                           {row.payments.map((pmt) => (
                             <tr key={pmt.id}>
-                              <td>{pmt.method}</td>
+                              <td>
+                                {METHOD_LABEL[pmt.method] ?? pmt.method}
+                                {pmt.method === 'BANK' && (
+                                  <span className="text-muted"> — {pmt.bankAccount?.nameLo ?? '—'}</span>
+                                )}
+                              </td>
                               <td>{pmt.currency}</td>
                               <td className="num text-right">{formatLak(pmt.amount)}</td>
                               <td className="num text-right">{formatLak(pmt.amountLak)}</td>

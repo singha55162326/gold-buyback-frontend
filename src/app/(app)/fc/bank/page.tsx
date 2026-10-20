@@ -4,10 +4,13 @@ import { useState } from 'react';
 import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser } from '@/lib/api';
-import { formatMoney, formatDateTime } from '@/lib/format';
+import { formatMoney, formatDateTime, formatByCurrency } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
+import { BankBalanceCards } from '@/components/bank-balance-cards';
 import { NumberInput } from '@/components/number-input';
+import type { PagedResult } from '@/components/date-range';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 
 interface BankBalance {
   bankAccountId: string; bankCode: string; bankNameLo: string;
@@ -35,7 +38,10 @@ export default function FcBankPage() {
   const canSetNet = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
   const [bankAccountId, setBankAccountId] = useState('');
-  const [type, setType] = useState<'DEPOSIT' | 'WITHDRAW' | 'INCOME' | 'EXPENSE'>('DEPOSIT');
+  // INCOME / EXPENSE are posted by ຈັດການລາຍຮັບລາຍຈ່າຍ, which files them
+  // against a category; entering them here produced bank rows no report
+  // could account for.
+  const [type, setType] = useState<'DEPOSIT' | 'WITHDRAW'>('DEPOSIT');
   const [currency, setCurrency] = useState<'LAK' | 'THB' | 'USD'>('LAK');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
@@ -53,11 +59,9 @@ export default function FcBankPage() {
     queryFn: () => api.get<Bank[]>('/catalog/bank-accounts'),
   });
   const banks = banksQuery.data ?? [];
-  const rowsQuery = useQuery({
-    queryKey: ['cash', 'bank', 'history'],
-    queryFn: () => api.get<Row[]>('/cash/bank/history'),
-  });
-  const rows = rowsQuery.data ?? [];
+  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
+  const history = useHistoryRange<Row>(['cash', 'bank', 'history'], '/cash/bank/history');
+  const rows = history.rows;
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['cash'] });
@@ -79,7 +83,9 @@ export default function FcBankPage() {
   });
 
   const setNet = useMutation({
-    mutationFn: (row: BankBalance) =>
+    // Only the key matters here, so the parameter asks for the key rather
+    // than a whole balance row — which lets the cards pass theirs straight in.
+    mutationFn: (row: Pick<BankBalance, 'bankAccountId' | 'currency'>) =>
       api.post('/cash/bank/net-balance', {
         bankAccountId: row.bankAccountId,
         currency: row.currency,
@@ -115,74 +121,38 @@ export default function FcBankPage() {
             <span className="text-xs text-muted">ເງິນ Bank ສຸດທິ ແກ້ໄຂໄດ້ສະເພາະ Admin & Manager</span>
           )}
         </div>
-        <div className="table-wrap" tabIndex={0} role="region" aria-label="ຍອດ Bank (To Day)">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>ທະນາຄານ</th>
-                <th>ສະກຸນເງິນ</th>
-                <th className="text-right">(+)</th>
-                <th className="text-right">(−)</th>
-                <th className="text-right">ຍອດຕົວຈິງ</th>
-                <th className="text-right">ເງິນ Bank ສຸດທິ</th>
-                <th className="text-right">ຍອດເງິນຂາດດຸນ</th>
-              </tr>
-            </thead>
-            <tbody>
-              <TableStateRow
-                colSpan={7}
-                isLoading={false}
-                isError={balancesQuery.isError}
-                error={balancesQuery.error}
-                isEmpty={false}
-                emptyText=""
-                onRetry={() => void balancesQuery.refetch()}
-              />
-              {balances.map((row) => {
-                const key = `${row.bankAccountId}-${row.currency}`;
-                const variance = row.variance === null ? null : Number(row.variance);
+        {balancesQuery.isError ? (
+          <QueryErrorNotice error={balancesQuery.error} onRetry={() => void balancesQuery.refetch()} />
+        ) : (
+          <BankBalanceCards
+            rows={balances}
+            renderNet={(row) => {
+              const key = `${row.bankAccountId}-${row.currency}`;
+              if (editingNet === key) {
                 return (
-                  <tr key={key}>
-                    <td className="font-medium">{row.bankNameLo}</td>
-                    <td>{row.currency}</td>
-                    <td className="num text-right text-success">{formatMoney(row.inflow)}</td>
-                    <td className="num text-right text-danger">{formatMoney(row.outflow)}</td>
-                    <td className="num text-right font-semibold">{formatMoney(row.actual)}</td>
-                    <td className="num text-right">
-                      {editingNet === key ? (
-                        <div className="flex flex-wrap items-center justify-end gap-2">
-                          <NumberInput className="input num w-36 text-right" decimals={row.currency === 'LAK' ? 0 : 2}
-                            aria-label={`ເງິນ Bank ສຸດທິ ${row.bankNameLo} ${row.currency}`}
-                            aria-describedby={error ? 'bank-error' : undefined}
-                            value={netAmount} onValueChange={setNetAmount} autoFocus />
-                          <button className="btn-primary"
-                            onClick={() => setNet.mutate(row)} disabled={setNet.isPending}>
-                            ບັນທຶກ
-                          </button>
-                          <button className="btn-secondary"
-                            onClick={() => setEditingNet(null)}>
-                            ຍົກເລີກ
-                          </button>
-                        </div>
-                      ) : canSetNet ? (
-                        <button className="btn-ghost"
-                          aria-label={`${row.net === null ? 'ຕັ້ງຄ່າ' : formatMoney(row.net)} ${row.bankNameLo} ${row.currency}`}
-                          onClick={() => { setEditingNet(key); setNetAmount(row.net ?? ''); }}>
-                          {row.net === null ? 'ຕັ້ງຄ່າ' : formatMoney(row.net)}
-                        </button>
-                      ) : (
-                        formatMoney(row.net)
-                      )}
-                    </td>
-                    <td className={`num text-right ${variance === null ? '' : variance === 0 ? 'text-success' : 'font-semibold text-danger'}`}>
-                      {row.variance === null ? '—' : formatMoney(row.variance)}
-                    </td>
-                  </tr>
+                  <span className="flex flex-wrap items-center justify-end gap-2">
+                    <NumberInput className="input num w-28 text-right" decimals={row.currency === 'LAK' ? 0 : 2}
+                      aria-label={`ເງິນ Bank ສຸດທິ ${row.bankNameLo} ${row.currency}`}
+                      aria-describedby={error ? 'bank-error' : undefined}
+                      value={netAmount} onValueChange={setNetAmount} autoFocus />
+                    <button className="btn-primary" onClick={() => setNet.mutate(row)} disabled={setNet.isPending}>
+                      ບັນທຶກ
+                    </button>
+                    <button className="btn-secondary" onClick={() => setEditingNet(null)}>ຍົກເລີກ</button>
+                  </span>
                 );
-              })}
-            </tbody>
-          </table>
-        </div>
+              }
+              if (!canSetNet) return formatByCurrency(row.net, row.currency);
+              return (
+                <button className="btn-ghost"
+                  aria-label={`${row.net === null ? 'ຕັ້ງຄ່າ' : formatByCurrency(row.net, row.currency)} ${row.bankNameLo} ${row.currency}`}
+                  onClick={() => { setEditingNet(key); setNetAmount(row.net ?? ''); }}>
+                  {row.net === null ? 'ຕັ້ງຄ່າ' : formatByCurrency(row.net, row.currency)}
+                </button>
+              );
+            }}
+          />
+        )}
       </div>
 
       <div data-fade className="card p-5">
@@ -200,10 +170,8 @@ export default function FcBankPage() {
             <label className="label" htmlFor="type">ປະເພດ</label>
             <select id="type" className="input" value={type}
               onChange={(e) => setType(e.target.value as typeof type)}>
-              <option value="DEPOSIT">Deposit</option>
-              <option value="WITHDRAW">Withdraw</option>
-              <option value="INCOME">Income</option>
-              <option value="EXPENSE">Expense</option>
+              <option value="DEPOSIT">ຝາກ (Deposit)</option>
+              <option value="WITHDRAW">ຖອນ (Withdraw)</option>
             </select>
           </div>
           <div>
@@ -235,6 +203,7 @@ export default function FcBankPage() {
 
       <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ປະຫວັດ Bank</h2></div>
+        <DateRangeFilter history={history} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Bank">
           <table className="table">
             <thead>
@@ -250,12 +219,12 @@ export default function FcBankPage() {
             <tbody>
               <TableStateRow
                 colSpan={6}
-                isLoading={rowsQuery.isLoading}
-                isError={rowsQuery.isError}
-                error={rowsQuery.error}
+                isLoading={history.isLoading}
+                isError={history.isError}
+                error={history.error}
                 isEmpty={rows.length === 0}
                 emptyText="ຍັງບໍ່ມີລາຍການ"
-                onRetry={() => void rowsQuery.refetch()}
+                onRetry={() => history.refetch()}
               />
               {rows.map((row) => (
                 <tr key={row.id}>
@@ -263,7 +232,7 @@ export default function FcBankPage() {
                   <td>{row.bankAccount.nameLo}</td>
                   <td className="text-muted">{row.type}</td>
                   <td>{row.currency}</td>
-                  <td className="num text-right font-medium">{formatMoney(row.amount)}</td>
+                  <td className="num text-right font-medium">{formatByCurrency(row.amount, row.currency)}</td>
                   <td className="text-muted">{row.note ?? '—'}</td>
                 </tr>
               ))}

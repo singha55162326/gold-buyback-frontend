@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatLak, formatWeight, formatDate } from '@/lib/format';
@@ -19,6 +20,10 @@ interface Tracking {
   status: 'AWAITING_ASSESSMENT' | 'COMPLETED';
   createdAt: string;
   completedAt: string | null;
+  /** ປະເພດຄຳ ຂອງລາຍການນີ້ — ແຖວໜຶ່ງອາດມີຫຼາຍປະເພດ, server ລວມໃຫ້ແລ້ວ. */
+  goldTypesLo: string;
+  /** ຜູ້ອັບເດດລ່າສຸດ (ຜູ້ປ້ອນນ້ຳໜັກ FACTORY). */
+  updatedBy: string;
   partner: { nameLo: string };
   movement: { code: string; transformType: string | null };
 }
@@ -39,10 +44,12 @@ export default function FactoryTrackingPage() {
   const user = getStoredUser();
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
-    queryKey: ['stock', 'factory'],
-    queryFn: () => api.get<Tracking[]>('/stock/factory'),
-  });
+  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; ກວ້າງອອກໄດ້ຈາກແຖບ filter.
+  const history = useHistoryRange<Tracking>(['stock', 'factory'], '/stock/factory');
+  const rows = history.rows;
+  const rowsFailed = history.isError;
+  const rowsError = history.error;
+  const refetchRows = history.refetch;
 
   const save = useMutation({
     mutationFn: (id: string) =>
@@ -83,6 +90,7 @@ export default function FactoryTrackingPage() {
 
       <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ລາຍການຕິດຕາມ</h2></div>
+        <DateRangeFilter history={history} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການຕິດຕາມ">
           <table className="table">
             <thead>
@@ -90,16 +98,18 @@ export default function FactoryTrackingPage() {
                 <th>ລະຫັດລາຍການ</th>
                 <th>ວັນທີ</th>
                 <th>ແຫຼ່ງສົ່ງອອກ</th>
+                <th>ປະເພດຄຳ</th>
                 <th>ແປງສະພາບ</th>
-                <th className="text-right">ຄຳອອກ (g) (−)</th>
-                <th className="text-right">ນໍ້າໜັກg FACTORY ປະເມີນ</th>
+                <th className="text-right">ຄຳເກົ່າອອກ (g)</th>
+                <th className="text-right">ນ້ຳໜັກ (g) FACTORY ປະເມີນ</th>
                 <th className="text-right">ຕົ້ນທຶນຄຳ</th>
+                <th>Updated By</th>
                 <th>ສະຖານະ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
-              <TableStateRow colSpan={9} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
+              <TableStateRow colSpan={11} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
               {pager.pageItems.map((row) => {
                 const locked = row.status === 'COMPLETED' && !isAdmin;
                 return (
@@ -107,6 +117,7 @@ export default function FactoryTrackingPage() {
                     <td className="font-mono text-xs">{row.movement.code}</td>
                     <td>{formatDate(row.createdAt)}</td>
                     <td>{row.partner.nameLo}</td>
+                    <td>{row.goldTypesLo || '—'}</td>
                     <td className="text-muted">{row.movement.transformType ?? '—'}</td>
                     <td className="num text-right">{formatWeight(row.goldOutG)}</td>
                     <td className="num text-right">
@@ -125,6 +136,7 @@ export default function FactoryTrackingPage() {
                       )}
                     </td>
                     <td className="num text-right">{formatLak(row.cost)}</td>
+                    <td className="text-muted">{row.updatedBy}</td>
                     <td>
                       <span className={statusClass(row.status, { AWAITING_ASSESSMENT: 'status-warning' })}>
                         {row.status === 'COMPLETED' ? 'Completed' : 'ລໍຖ້າ FACTORY ປະເມີນ'}

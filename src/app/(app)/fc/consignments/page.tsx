@@ -6,10 +6,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatWeight, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import { StatCard } from '@/components/stat-card';
 import { NumberInput } from '@/components/number-input';
+import type { PagedResult } from '@/components/date-range';
 
 interface Line { nameLo: string; weightG: string; quantity: number }
 interface Row {
@@ -17,7 +19,9 @@ interface Row {
   totalWeightG: string; totalQuantity: number; status: 'HELD' | 'RETURNED';
   createdAt: string; customer: { phone: string }; lines: Array<Line & { id: string }>;
 }
-interface Payload { rows: Row[]; totals: { totalWeightG: string; totalQuantity: number; billCount: number } }
+interface Payload extends PagedResult<Row> {
+  totals: { totalWeightG: string; totalQuantity: number; billCount: number };
+}
 
 /**
  * TOR §3.7 — Module ຝາກສິນຄ້າ.
@@ -27,6 +31,8 @@ interface Payload { rows: Row[]; totals: { totalWeightG: string; totalQuantity: 
  */
 export default function ConsignmentsPage() {
   const queryClient = useQueryClient();
+  // The history is the landing view; the form opens on demand.
+  const [showForm, setShowForm] = useState(false);
   const toast = useToast();
   const [billId, setBillId] = useState('');
   const [phone, setPhone] = useState('');
@@ -36,11 +42,11 @@ export default function ConsignmentsPage() {
   const [viewing, setViewing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const query = useQuery({
-    queryKey: ['finance', 'consignments'],
-    queryFn: () => api.get<Payload>('/finance/consignments'),
-  });
-  const data = query.data;
+  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
+  // The totals describe the RANGE, not the page, so they come off the
+  // envelope rather than being summed from the rows on screen.
+  const history = useHistoryRange<Row>(['finance', 'consignments'], '/finance/consignments');
+  const data = history.data as Payload | undefined;
 
   const create = useMutation({
     mutationFn: () =>
@@ -49,6 +55,7 @@ export default function ConsignmentsPage() {
         lines: lines.filter((l) => l.nameLo.trim() && Number(l.weightG) > 0),
       }),
     onSuccess: () => {
+      setShowForm(false);
       toast.success('ດຳເນີນການສຳເລັດ');
       setBillId(''); setPhone(''); setCustomerName(''); setStaffName('');
       setLines([{ nameLo: '', weightG: '', quantity: 1 }]); setError(null);
@@ -82,10 +89,15 @@ export default function ConsignmentsPage() {
     <div className="space-y-6">
       <PageHead
         title="ຝາກສິນຄ້າ"
-        subtitle="ຄຳທີ່ລູກຄ້າຝາກໄວ້ກັບຮ້ານ — ບໍ່ນັບເຂົ້າ Stock ຫຼື COH Gold (TOR §3.7)"
+        subtitle="ຄຳທີ່ລູກຄ້າຝາກໄວ້ກັບຮ້ານ — ບໍ່ນັບເຂົ້າ Stock ຫຼື COH Gold (TOR §3.7)"
+        actions={
+          <button className="btn-primary" onClick={() => setShowForm((v) => !v)}>
+            {showForm ? 'ປິດຟອມ' : '+ ສ້າງລາຍການຝາກ'}
+          </button>
+        }
       />
 
-      {query.isError && <QueryErrorNotice error={query.error} onRetry={() => void query.refetch()} />}
+      {history.isError && <QueryErrorNotice error={history.error} onRetry={history.refetch} />}
 
       <div className="stat-grid">
         <StatCard label="ນໍ້າໜັກລວມ (ຝາກຢູ່)" value={data ? `${formatWeight(data.totals.totalWeightG)} g` : '—'} />
@@ -93,6 +105,7 @@ export default function ConsignmentsPage() {
         <StatCard label="ຈຳນວນບິນ" value={data ? String(data.totals.billCount) : '—'} />
       </div>
 
+      {showForm && (
       <div data-fade className="card p-5">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
@@ -151,9 +164,11 @@ export default function ConsignmentsPage() {
           </button>
         </div>
       </div>
+      )}
 
       <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">History ຝາກສິນຄ້າ</h2></div>
+        <DateRangeFilter history={history} labelLo="ວັນທີຝາກ" />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="History ຝາກສິນຄ້າ">
           <table className="table">
             <thead>
@@ -173,12 +188,12 @@ export default function ConsignmentsPage() {
             <tbody>
               <TableStateRow
                 colSpan={10}
-                isLoading={query.isLoading}
-                isError={query.isError}
-                error={query.error}
+                isLoading={history.isLoading}
+                isError={history.isError}
+                error={history.error}
                 isEmpty={(data?.rows ?? []).length === 0}
                 emptyText="ຍັງບໍ່ມີລາຍການ"
-                onRetry={() => void query.refetch()}
+                onRetry={history.refetch}
               />
               {(data?.rows ?? []).map((row) => (
                 <Fragment key={row.id}>

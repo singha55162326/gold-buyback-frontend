@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
 import { TableStateRow } from '@/components/query-state';
+import { RowActions } from '@/components/row-actions';
 
 interface GoldType {
   id: string;
@@ -42,7 +43,6 @@ export default function GoldTypesPage() {
 function GoldTypePanel() {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [code, setCode] = useState('');
   const [nameLo, setNameLo] = useState('');
   const [isStockType, setIsStockType] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,11 +54,41 @@ function GoldTypePanel() {
 
   const pager = usePagination(rows);
 
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  const update = useMutation({
+    mutationFn: ({ id, nameLo: name }: { id: string; nameLo: string }) =>
+      api.patch(`/catalog/gold-types/${id}`, { nameLo: name }),
+    onSuccess: () => {
+      setEditing(null);
+      toast.success('ແກ້ໄຂແລ້ວ');
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'gold-types'] });
+    },
+    onError: (e) => toast.error('ບໍ່ສຳເລັດ', e instanceof ApiError ? e.message : 'ແກ້ໄຂບໍ່ສຳເລັດ'),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/catalog/gold-types/${id}`),
+    onSuccess: () => {
+      setConfirming(null);
+      toast.success('ລຶບແລ້ວ');
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'gold-types'] });
+    },
+    onError: (e) => {
+      // The server names what is still using the row; show it in full.
+      setConfirming(null);
+      toast.error('ລຶບປະເພດຄຳບໍ່ໄດ້', e instanceof ApiError ? e.message : 'ລຶບບໍ່ສຳເລັດ');
+    },
+  });
+
+
   const create = useMutation({
-    mutationFn: () => api.post('/catalog/gold-types', { code, nameLo, isStockType }),
+    // ລະຫັດອອກອັດຕະໂນມັດຈາກ server.
+    mutationFn: () => api.post('/catalog/gold-types', { nameLo, isStockType }),
     onSuccess: () => {
       toast.success('ດຳເນີນການສຳເລັດ');
-      setCode('');
       setNameLo('');
       setIsStockType(false);
       setError(null);
@@ -78,12 +108,7 @@ function GoldTypePanel() {
       </div>
 
       <div className="space-y-3 border-b border-line p-5">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="gt-code">Code</label>
-            <input id="gt-code" className="input" aria-describedby={error ? 'gt-error' : undefined} placeholder="GOOD" value={code}
-              onChange={(e) => setCode(e.target.value)} />
-          </div>
+        <div className="grid gap-3">
           <div>
             <label className="label" htmlFor="gt-name">ຊື່ປະເພດຄຳ</label>
             <input id="gt-name" className="input" aria-describedby={error ? 'gt-error' : undefined} placeholder="ຄຳດີ" value={nameLo}
@@ -96,7 +121,7 @@ function GoldTypePanel() {
           ໃຊ້ເປັນໝວດຂອງ Stock (OLD)
         </label>
         {error && <div id="gt-error" role="alert" className="notice status-danger">{error}</div>}
-        <button className="btn-primary" disabled={!code || !nameLo || create.isPending}
+        <button className="btn-primary" disabled={!nameLo || create.isPending}
           onClick={() => create.mutate()}>
           {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ເພີ່ມປະເພດຄຳ'}
         </button>
@@ -109,11 +134,12 @@ function GoldTypePanel() {
               <th>ລະຫັດ</th>
               <th>ຊື່ປະເພດຄຳ</th>
               <th>ສາງຄຳເກົ່າ</th>
+              <th className="text-right">ຈັດການ</th>
             </tr>
           </thead>
           <tbody>
             <TableStateRow
-              colSpan={3}
+              colSpan={4}
               isError={rowsFailed}
               error={rowsError}
               isEmpty={false}
@@ -123,8 +149,29 @@ function GoldTypePanel() {
             {pager.pageItems.map((row) => (
               <tr key={row.id}>
                 <td className="font-mono text-xs text-muted">{row.code}</td>
-                <td className="font-medium">{row.nameLo}</td>
+                <td className="font-medium">
+                  {editing === row.id ? (
+                    <input className="input" value={editName} aria-label="ຊື່ປະເພດຄຳ"
+                      onChange={(e) => setEditName(e.target.value)} />
+                  ) : (
+                    row.nameLo
+                  )}
+                </td>
                 <td>{row.isStockType ? 'ແມ່ນ' : '—'}</td>
+                <td className="text-right">
+                  <RowActions
+                    id={row.id}
+                    editing={editing}
+                    confirming={confirming}
+                    busy={update.isPending || remove.isPending}
+                    canSave={Boolean(editName.trim())}
+                    onEdit={() => { setConfirming(null); setEditing(row.id); setEditName(row.nameLo); }}
+                    onSave={() => update.mutate({ id: row.id, nameLo: editName })}
+                    onCancel={() => { setEditing(null); setConfirming(null); }}
+                    onAskDelete={() => { setEditing(null); setConfirming(row.id); }}
+                    onDelete={() => remove.mutate(row.id)}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -138,7 +185,6 @@ function GoldTypePanel() {
 function GoldItemPanel() {
   const queryClient = useQueryClient();
   const toast = useToast();
-  const [code, setCode] = useState('');
   const [nameLo, setNameLo] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -149,11 +195,41 @@ function GoldItemPanel() {
 
   const itemPager = usePagination(rows);
 
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  const update = useMutation({
+    mutationFn: ({ id, nameLo: name }: { id: string; nameLo: string }) =>
+      api.patch(`/catalog/gold-items/${id}`, { nameLo: name }),
+    onSuccess: () => {
+      setEditing(null);
+      toast.success('ແກ້ໄຂແລ້ວ');
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'gold-items'] });
+    },
+    onError: (e) => toast.error('ບໍ່ສຳເລັດ', e instanceof ApiError ? e.message : 'ແກ້ໄຂບໍ່ສຳເລັດ'),
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/catalog/gold-items/${id}`),
+    onSuccess: () => {
+      setConfirming(null);
+      toast.success('ລຶບແລ້ວ');
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'gold-items'] });
+    },
+    onError: (e) => {
+      // The server names what is still using the row; show it in full.
+      setConfirming(null);
+      toast.error('ລຶບລາຍການຄຳບໍ່ໄດ້', e instanceof ApiError ? e.message : 'ລຶບບໍ່ສຳເລັດ');
+    },
+  });
+
+
   const create = useMutation({
-    mutationFn: () => api.post('/catalog/gold-items', { code, nameLo }),
+    // ລະຫັດອອກອັດຕະໂນມັດຈາກ server.
+    mutationFn: () => api.post('/catalog/gold-items', { nameLo }),
     onSuccess: () => {
       toast.success('ດຳເນີນການສຳເລັດ');
-      setCode('');
       setNameLo('');
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ['catalog', 'gold-items'] });
@@ -172,12 +248,7 @@ function GoldItemPanel() {
       </div>
 
       <div className="space-y-3 border-b border-line p-5">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="gi-code">Code</label>
-            <input id="gi-code" className="input" aria-describedby={error ? 'gi-error' : undefined} placeholder="BRACELET" value={code}
-              onChange={(e) => setCode(e.target.value)} />
-          </div>
+        <div className="grid gap-3">
           <div>
             <label className="label" htmlFor="gi-name">ຊື່ລາຍການຄຳ</label>
             <input id="gi-name" className="input" aria-describedby={error ? 'gi-error' : undefined} placeholder="ສາຍແຂນ" value={nameLo}
@@ -185,7 +256,7 @@ function GoldItemPanel() {
           </div>
         </div>
         {error && <div id="gi-error" role="alert" className="notice status-danger">{error}</div>}
-        <button className="btn-primary" disabled={!code || !nameLo || create.isPending}
+        <button className="btn-primary" disabled={!nameLo || create.isPending}
           onClick={() => create.mutate()}>
           {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ເພີ່ມລາຍການຄຳ'}
         </button>
@@ -197,11 +268,12 @@ function GoldItemPanel() {
             <tr>
               <th>ລະຫັດ</th>
               <th>ຊື່ລາຍການຄຳ</th>
+              <th className="text-right">ຈັດການ</th>
             </tr>
           </thead>
           <tbody>
             <TableStateRow
-              colSpan={2}
+              colSpan={3}
               isError={rowsFailed}
               error={rowsError}
               isEmpty={false}
@@ -211,7 +283,28 @@ function GoldItemPanel() {
             {itemPager.pageItems.map((row) => (
               <tr key={row.id}>
                 <td className="font-mono text-xs text-muted">{row.code}</td>
-                <td className="font-medium">{row.nameLo}</td>
+                <td className="font-medium">
+                  {editing === row.id ? (
+                    <input className="input" value={editName} aria-label="ຊື່ລາຍການຄຳ"
+                      onChange={(e) => setEditName(e.target.value)} />
+                  ) : (
+                    row.nameLo
+                  )}
+                </td>
+                <td className="text-right">
+                  <RowActions
+                    id={row.id}
+                    editing={editing}
+                    confirming={confirming}
+                    busy={update.isPending || remove.isPending}
+                    canSave={Boolean(editName.trim())}
+                    onEdit={() => { setConfirming(null); setEditing(row.id); setEditName(row.nameLo); }}
+                    onSave={() => update.mutate({ id: row.id, nameLo: editName })}
+                    onCancel={() => { setEditing(null); setConfirming(null); }}
+                    onAskDelete={() => { setEditing(null); setConfirming(row.id); }}
+                    onDelete={() => remove.mutate(row.id)}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>

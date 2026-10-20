@@ -5,10 +5,13 @@ import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
-import { formatMoney, formatDateTime } from '@/lib/format';
+import { formatMoney, formatDateTime, formatByCurrency } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { NumberInput } from '@/components/number-input';
+import { MultiPayment, newPaymentLines, paymentPayload, type PaymentLine } from '@/components/multi-payment';
+import type { PagedResult } from '@/components/date-range';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 
 interface Category { id: string; code: string; nameLo: string; kind: 'INCOME' | 'EXPENSE' }
 interface Bank { id: string; nameLo: string }
@@ -24,10 +27,8 @@ export default function IncomeExpensePage() {
   const toast = useToast();
   const [kind, setKind] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [categoryId, setCategoryId] = useState('');
-  const [method, setMethod] = useState<'CASH' | 'BANK'>('CASH');
-  const [bankAccountId, setBankAccountId] = useState('');
-  const [currency, setCurrency] = useState<'LAK' | 'THB' | 'USD'>('LAK');
-  const [amount, setAmount] = useState('');
+  // One expense may be settled part ສົດ and part ໂອນ, across currencies.
+  const [payments, setPayments] = useState<PaymentLine[]>(newPaymentLines());
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -41,23 +42,21 @@ export default function IncomeExpensePage() {
     queryFn: () => api.get<Bank[]>('/catalog/bank-accounts'),
   });
   const banks = banksQuery.data ?? [];
-  const rowsQuery = useQuery({
-    queryKey: ['finance', 'income-expense'],
-    queryFn: () => api.get<Row[]>('/finance/income-expense'),
-  });
-  const rows = rowsQuery.data ?? [];
+  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
+  const history = useHistoryRange<Row>(['finance', 'income-expense'], '/finance/income-expense');
+  const rows = history.rows;
   const formQuery = [categoriesQuery, banksQuery].find((q) => q.isError);
 
   const create = useMutation({
     mutationFn: () =>
       api.post('/finance/income-expense', {
-        categoryId, method,
-        bankAccountId: method === 'BANK' ? bankAccountId : undefined,
-        currency, amount: amount.replace(/,/g, '').trim(), note: note || undefined,
+        categoryId,
+        payments: paymentPayload(payments),
+        note: note || undefined,
       }),
     onSuccess: () => {
       toast.success('ດຳເນີນການສຳເລັດ');
-      setAmount(''); setNote(''); setError(null);
+      setPayments(newPaymentLines()); setNote(''); setError(null);
       void queryClient.invalidateQueries({ queryKey: ['finance'] });
       void queryClient.invalidateQueries({ queryKey: ['cash'] });
       void queryClient.invalidateQueries({ queryKey: ['ledger'] });
@@ -69,7 +68,12 @@ export default function IncomeExpensePage() {
     },
   });
 
-  const canSave = Boolean(categoryId && amount.trim() && (method === 'CASH' || bankAccountId));
+  // Every leg must name a bank when it is a transfer, and carry an amount.
+  const canSave = Boolean(
+    categoryId &&
+      paymentPayload(payments).length > 0 &&
+      payments.every((l) => l.method === 'CASH' || !l.amount.trim() || Boolean(l.bankAccountId)),
+  );
 
   const pager = usePagination(rows);
 
@@ -110,43 +114,20 @@ export default function IncomeExpensePage() {
               {categories.map((c) => <option key={c.id} value={c.id}>{c.nameLo}</option>)}
             </select>
           </div>
-          <div>
-            <label className="label" htmlFor="method">Cash / Bank</label>
-            <select id="method" className="input" value={method}
-              onChange={(e) => setMethod(e.target.value as 'CASH' | 'BANK')}>
-              <option value="CASH">Cash</option>
-              <option value="BANK">Bank</option>
-            </select>
-          </div>
-          {method === 'BANK' && (
-            <div>
-              <label className="label" htmlFor="bank">ທະນາຄານ</label>
-              <select id="bank" className="input" value={bankAccountId}
-                onChange={(e) => setBankAccountId(e.target.value)}>
-                <option value="">— ເລືອກທະນາຄານ —</option>
-                {banks.map((b) => <option key={b.id} value={b.id}>{b.nameLo}</option>)}
-              </select>
-            </div>
-          )}
-          <div>
-            <label className="label" htmlFor="cur">ສະກຸນເງິນ</label>
-            <select id="cur" className="input" value={currency}
-              onChange={(e) => setCurrency(e.target.value as 'LAK' | 'THB' | 'USD')}>
-              <option value="LAK">LAK</option>
-              <option value="THB">THB</option>
-              <option value="USD">USD</option>
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="amt">ຈຳນວນເງິນ</label>
-            <NumberInput id="amt" className="input num" decimals={currency === 'LAK' ? 0 : 2} aria-describedby={error ? 'ie-error' : undefined} value={amount}
-              onValueChange={setAmount} />
-          </div>
           <div className="sm:col-span-2">
             <label className="label" htmlFor="note">Note</label>
             <input id="note" className="input" value={note}
               onChange={(e) => setNote(e.target.value)} />
           </div>
+        </div>
+
+        <div className="mt-5 border-t border-line pt-5">
+          <MultiPayment
+            lines={payments}
+            onChange={setPayments}
+            direction={kind === 'INCOME' ? 'in' : 'out'}
+            labelLo={kind === 'INCOME' ? 'ຮັບເງິນ (ສົດ / ໂອນ)' : 'ຈ່າຍເງິນ (ສົດ / ໂອນ)'}
+          />
         </div>
 
         {error && (
@@ -163,6 +144,7 @@ export default function IncomeExpensePage() {
 
       <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ປະຫວັດ</h2></div>
+        <DateRangeFilter history={history} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ">
           <table className="table">
             <thead>
@@ -181,12 +163,12 @@ export default function IncomeExpensePage() {
             <tbody>
               <TableStateRow
                 colSpan={9}
-                isLoading={rowsQuery.isLoading}
-                isError={rowsQuery.isError}
-                error={rowsQuery.error}
+                isLoading={history.isLoading}
+                isError={history.isError}
+                error={history.error}
                 isEmpty={rows.length === 0}
                 emptyText="ຍັງບໍ່ມີລາຍການ"
-                onRetry={() => void rowsQuery.refetch()}
+                onRetry={() => history.refetch()}
               />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
@@ -201,7 +183,7 @@ export default function IncomeExpensePage() {
                   <td className="text-muted">{row.method}</td>
                   <td className="text-muted">{row.bankAccount?.nameLo ?? '—'}</td>
                   <td>{row.currency}</td>
-                  <td className="num text-right font-medium">{formatMoney(row.amount)}</td>
+                  <td className="num text-right font-medium">{formatByCurrency(row.amount, row.currency)}</td>
                   <td className="text-muted">{row.note ?? '—'}</td>
                 </tr>
               ))}

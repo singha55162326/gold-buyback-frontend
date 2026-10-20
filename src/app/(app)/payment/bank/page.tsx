@@ -2,9 +2,11 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { formatMoney, formatDateTime } from '@/lib/format';
+import { formatMoney, formatDateTime, formatByCurrency } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
+import { BankBalanceCards } from '@/components/bank-balance-cards';
+import type { PagedResult } from '@/components/date-range';
 
 interface BankBalance {
   bankAccountId: string; bankCode: string; bankNameLo: string;
@@ -31,7 +33,7 @@ export default function PaymentBankPage() {
   });
   const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
     queryKey: ['cash', 'bank', 'history'],
-    queryFn: () => api.get<Row[]>('/cash/bank/history'),
+    queryFn: () => api.get<PagedResult<Row>>('/cash/bank/history?all=true').then((r) => r.rows),
   });
 
   const banks = [...new Set(balances.map((b) => b.bankNameLo))];
@@ -48,31 +50,14 @@ export default function PaymentBankPage() {
           <h2 className="card-title">ຍອດ Bank ຕົວຈິງ</h2>
           <span className="text-xs text-muted">ອ່ານຢ່າງດຽວ</span>
         </div>
-        <div className="table-wrap" tabIndex={0} role="region" aria-label="ຍອດ Bank ຕົວຈິງ">
-          <table className="table">
-            <thead>
-              <tr>
-                <th>ທະນາຄານ</th>
-                <th>ສະກຸນເງິນ</th>
-                <th className="text-right">ຮັບເຂົ້າ (+)</th>
-                <th className="text-right">ຈ່າຍອອກ (−)</th>
-                <th className="text-right">ຍອດຕົວຈິງ</th>
-              </tr>
-            </thead>
-            <tbody>
-              <TableStateRow colSpan={5} isError={balancesFailed} error={balancesError} isEmpty={balances.length === 0} emptyText="ຍັງບໍ່ມີຂໍ້ມູນ" onRetry={() => void refetchBalances()} />
-              {balances.map((row) => (
-                <tr key={`${row.bankAccountId}-${row.currency}`}>
-                  <td className="font-medium">{row.bankNameLo}</td>
-                  <td>{row.currency}</td>
-                  <td className="num text-right text-success">{formatMoney(row.inflow)}</td>
-                  <td className="num text-right text-danger">{formatMoney(row.outflow)}</td>
-                  <td className="num text-right font-semibold text-fg-strong">{formatMoney(row.actual)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {balancesFailed ? (
+          <QueryErrorNotice error={balancesError} onRetry={() => void refetchBalances()} />
+        ) : (
+          /* The same cards as Module Bank. Read-only, and without the
+             variance — that is the Financial Controller's reconciliation,
+             not something the cashier acts on. */
+          <BankBalanceCards rows={balances} showVariance={false} />
+        )}
         {banks.length > 0 && (
           <p className="border-t border-line px-5 py-3 text-xs text-muted">
             {banks.join(' · ')} — ເງິນ Bank ສຸດທິ ແລະ ຍອດຂາດດຸນ ເບິ່ງໄດ້ທີ່ Module Bank (Admin)
@@ -103,7 +88,7 @@ export default function PaymentBankPage() {
                   <td>{row.bankAccount.nameLo}</td>
                   <td className="text-muted">{row.type}</td>
                   <td>{row.currency}</td>
-                  <td className="num text-right font-medium">{formatMoney(row.amount)}</td>
+                  <td className="num text-right font-medium">{formatByCurrency(row.amount, row.currency)}</td>
                   <td className="text-muted">{row.refType ?? '—'}</td>
                   <td className="text-muted">{row.note ?? '—'}</td>
                 </tr>

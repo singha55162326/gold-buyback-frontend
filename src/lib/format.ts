@@ -16,6 +16,20 @@ export function formatLak(value: string | number | Decimal | null | undefined): 
   return addThousands(d.toDecimalPlaces(0).toFixed());
 }
 
+/**
+ * Money formatted for the currency it is in.
+ *
+ * ກີບ has no subunit in practice — the shop does not deal in att — so a LAK
+ * figure shown as "50,000.00" is two digits of noise on every row. THB and
+ * USD keep their two places.
+ */
+export function formatByCurrency(
+  value: string | number | Decimal | null | undefined,
+  currency: string | null | undefined,
+): string {
+  return currency === 'LAK' ? formatLak(value) : formatMoney(value);
+}
+
 /** Money with decimals kept, for foreign currency. */
 export function formatMoney(
   value: string | number | Decimal | null | undefined,
@@ -45,6 +59,20 @@ export function formatWeight(value: string | number | Decimal | null | undefined
   const d = dec(value as never);
   if (!d.isFinite()) return '—';
   return trimZeros(d.toDecimalPlaces(4).toFixed(4));
+}
+
+/**
+ * ນ້ຳໜັກ ຫຼັງຈຸດ 3 ຕົວ — three places, zeros kept.
+ *
+ * For SKU weights, where a column is read down and 1.870 has to line up with
+ * 1.875. Everywhere else formatWeight trims, which suits a single figure
+ * in a sentence.
+ */
+export function formatGrams(value: string | number | Decimal | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const d = dec(value as never);
+  if (!d.isFinite()) return '—';
+  return d.toDecimalPlaces(3).toFixed(3);
 }
 
 /** ບາດຄຳ = g / 15, trimmed. */

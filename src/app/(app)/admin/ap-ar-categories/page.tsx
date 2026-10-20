@@ -14,7 +14,6 @@ export default function ApArCategoriesPage() {
       queryKey={['finance', 'ap-ar-categories', 'all']}
       addLabelLo="ເພີ່ມປະເພດລາຍການ"
       fields={[
-        { key: 'code', labelLo: 'Code', placeholder: 'LABOR_FEE' },
         { key: 'nameLo', labelLo: 'ຊື່ປະເພດລາຍການ', placeholder: 'ຄ່າແຮງຊ່າງ' },
         {
           key: 'side',
@@ -23,6 +22,7 @@ export default function ApArCategoriesPage() {
           options: [
             { value: 'AP', labelLo: 'AP ເທົ່ານັ້ນ' },
             { value: 'AR', labelLo: 'AR ເທົ່ານັ້ນ' },
+            { value: 'AP_AR', labelLo: 'AP-AR (ທັງສອງ)' },
           ],
         },
       ]}

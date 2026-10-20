@@ -5,6 +5,7 @@ import { api } from '@/lib/api';
 import { TableStateRow } from '@/components/query-state';
 import { formatLak, formatWeight, formatDate } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import type { PagedResult } from '@/components/date-range';
 
 interface Summary { side: 'AP' | 'AR'; startG: string; netMovementG: string; totalG: string; totalBaht: string }
 interface PartnerRow {
@@ -37,7 +38,7 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
   });
   const { data: history = [], isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['ledger', 'ap-ar', 'gold', 'history'],
-    queryFn: () => api.get<HistoryRow[]>('/ledger/ap-ar/gold/history'),
+    queryFn: () => api.get<PagedResult<HistoryRow>>('/ledger/ap-ar/gold/history?all=true').then((r) => r.rows),
   });
 
   return (

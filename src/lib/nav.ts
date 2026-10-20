@@ -28,6 +28,8 @@ export interface NavGroup {
 }
 
 const ADMIN: Role[] = ['ADMIN', 'MANAGER'];
+/** Admin plus the Financial Controller, who owns the ຮັບ/ຈ່າຍ modules. */
+const ADMIN_FC: Role[] = ['ADMIN', 'MANAGER', 'FINANCIAL_CONTROLLER'];
 const ALL: Role[] = ['ADMIN', 'MANAGER', 'PAYMENT', 'VALUER', 'FINANCIAL_CONTROLLER', 'WAREHOUSE'];
 
 export const NAV: NavGroup[] = [
@@ -52,7 +54,7 @@ export const NAV: NavGroup[] = [
       { href: '/admin/skus', labelLo: 'ຈັດການ SKU ນ້ຳໜັກຂອງຄຳ', section: '§3.6', roles: ADMIN, status: 'live' },
       { href: '/admin/cabinets', labelLo: 'ຕູ້ເຄື່ອງ', section: '§3.7', roles: ADMIN, status: 'live' },
       { href: '/admin/banks', labelLo: 'ລາຍການ Bank', section: '§3.7', roles: ADMIN, status: 'live' },
-      { href: '/admin/income-expense-categories', labelLo: 'ເພີ້ມລາຍການຮັບຈ່າຍ', section: '§3.7', roles: ADMIN, status: 'live' },
+      { href: '/admin/income-expense-categories', labelLo: 'ເພີ້ມລາຍການຮັບຈ່າຍ', section: '§3.7', roles: ADMIN_FC, status: 'live' },
       { href: '/admin/ap-ar-categories', labelLo: 'ລາຍການ AP-AR (Cash)', section: '§9.1', roles: ADMIN, status: 'live' },
       { href: '/admin/partners', labelLo: 'Supplier — ແຫຼ່ງຮັບເຂົ້າ / ສົ່ງອອກ', section: '§3.7', roles: ADMIN, status: 'live' },
       { href: '/admin/users', labelLo: 'User Setting', section: '§3.7', roles: ADMIN, status: 'live' },

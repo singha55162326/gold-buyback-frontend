@@ -8,6 +8,7 @@ import { formatMoney, formatDate } from '@/lib/format';
 import { NumberInput } from './number-input';
 import { PageHead } from './page-head';
 import { StatCard } from './stat-card';
+import type { PagedResult } from '@/components/date-range';
 
 interface Total { currency: 'LAK' | 'THB' | 'USD'; opening: string; increases: string; decreases: string; net: string }
 interface PartnerRow {
@@ -64,7 +65,7 @@ export function ApArCashModule({
   });
   const { data: history = [], isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
     queryKey: ['finance', 'ap-ar', side, 'history'],
-    queryFn: () => api.get<HistoryRow[]>(`/finance/ap-ar/${side}/history`),
+    queryFn: () => api.get<PagedResult<HistoryRow>>(`/finance/ap-ar/${side}/history?all=true`).then((r) => r.rows),
   });
   const { data: partners = [] } = useQuery({
     queryKey: ['catalog', 'partners'],

@@ -6,6 +6,8 @@ import { PageHead } from '@/components/page-head';
 import { api } from '@/lib/api';
 import { TableStateRow } from '@/components/query-state';
 import { formatMoney, formatDate } from '@/lib/format';
+import type { PagedResult } from '@/components/date-range';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 
 interface ApArRow {
   side: 'AP' | 'AR';
@@ -30,10 +32,12 @@ export default function ApArCashPage() {
     queryFn: () => api.get<ApArRow[]>('/ledger/ap-ar/cash'),
   });
 
-  const { data: history = [], isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
-    queryKey: ['ledger', 'ap-ar', 'cash', 'history'],
-    queryFn: () => api.get<HistoryRow[]>('/ledger/ap-ar/cash/history'),
-  });
+  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
+  const historyRange = useHistoryRange<HistoryRow>(['ledger', 'ap-ar', 'cash', 'history'], '/ledger/ap-ar/cash/history');
+  const history = historyRange.rows;
+  const historyFailed = historyRange.isError;
+  const historyError = historyRange.error;
+  const refetchHistory = historyRange.refetch;
 
   const pager = usePagination(history);
 
@@ -80,6 +84,7 @@ export default function ApArCashPage() {
         <div className="card-header">
           <h2 className="card-title">ປະຫວັດ AP-AR (Cash)</h2>
         </div>
+        <DateRangeFilter history={historyRange} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ AP-AR (Cash)">
           <table className="table">
             <thead>

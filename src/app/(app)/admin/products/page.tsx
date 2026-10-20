@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
@@ -33,6 +33,15 @@ interface HistoryRow {
   price1Baht: string;
   updatedBy: string;
   note: string | null;
+  /** ລາຄາຂອງແຕ່ລະນ້ຳໜັກ ຢູ່ເວລານັ້ນ — ເກັບທຸກຄັ້ງທີ່ລາຄາປ່ຽນ. */
+  lines: Array<{
+    tierCode: string;
+    labelLo: string;
+    category: 'JEWELRY' | 'BAR';
+    displayWeightG: string;
+    sellPrice: string;
+    buybackPrice: string;
+  }>;
 }
 
 /**
@@ -46,6 +55,8 @@ export default function ProductsPage() {
   const toast = useToast();
   const [input, setInput] = useState('');
   const [showSteps, setShowSteps] = useState(false);
+  // ແຖວປະຫວັດທີ່ກຳລັງກາງອອກເບິ່ງລາຄາຕໍ່ນ້ຳໜັກ.
+  const [viewing, setViewing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const { data: current, isError: currentFailedRaw, error: currentError, refetch: refetchCurrent } = useQuery({
@@ -206,19 +217,26 @@ export default function ProductsPage() {
           <h2 className="card-title">ປະຫວັດ Products</h2>
           <span className="text-xs text-muted">30 ແຖວລ່າສຸດ</span>
         </div>
+        <p className="border-b border-line px-5 py-3 text-xs text-muted">
+          ທຸກຄັ້ງທີ່ລາຄາປ່ຽນ — ທັງຈາກການຕັ້ງ ລາຄາຂາຍ 1 ບາດ ແລະ ຈາກການແກ້ ຫັກອອກ (%) /
+          ລາຄາລົບອອກ ຢູ່ໜ້າ ຈັດການ ຄ່າຫັກ — ຈະບັນທຶກເປັນແຖວໃໝ່ພ້ອມລາຄາຊື້ຄືນຂອງທຸກນ້ຳໜັກ.
+          ກົດ View ເພື່ອເບິ່ງລາຄາຂອງເວລານັ້ນ.
+        </p>
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Products">
           <table className="table">
             <thead>
               <tr>
                 <th>ວັນທີ ແລະ ເວລາ</th>
-                <th className="text-right">ລາຄາ 1 ບາດ</th>
+                <th className="text-right">ລາຄາຂາຍ 1 ບາດ</th>
+                <th className="text-right">ລາຄາຊື້ຄືນ 1 ບາດ</th>
                 <th>ຜູ້ແກ້ໄຂ</th>
                 <th>ໝາຍເຫດ</th>
+                <th className="text-right">ລາຄາທຸກນ້ຳໜັກ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={4}
+                colSpan={6}
                 isLoading={historyLoading}
                 isError={historyFailed}
                 error={historyError}
@@ -227,14 +245,61 @@ export default function ProductsPage() {
                 dense
                 onRetry={() => void refetchHistory()}
               />
-              {history.map((row) => (
-                <tr key={row.id}>
-                  <td>{formatDateTime(row.date)}</td>
-                  <td className="num text-right">{formatLak(row.price1Baht)}</td>
-                  <td>{row.updatedBy}</td>
-                  <td className="text-muted">{row.note ?? '—'}</td>
-                </tr>
-              ))}
+              {history.map((row) => {
+                // ລາຄາຊື້ຄືນ 1 ບາດ = ແຖວ 1 ບາດ ຂອງ snapshot ນັ້ນ; ເປັນຕົວເລກ
+                // ທີ່ພະນັກງານເບິ່ງຫຼາຍທີ່ສຸດ ຈຶ່ງເອົາຂຶ້ນມາເປັນຖັນ.
+                const oneBaht = row.lines?.find((l) => Number(l.displayWeightG) === 15);
+                return (
+                <Fragment key={row.id}>
+                  <tr>
+                    <td>{formatDateTime(row.date)}</td>
+                    <td className="num text-right">{formatLak(row.price1Baht)}</td>
+                    <td className="num text-right font-medium">
+                      {oneBaht ? formatLak(oneBaht.buybackPrice) : '—'}
+                    </td>
+                    <td>{row.updatedBy}</td>
+                    <td className="text-muted">{row.note ?? '—'}</td>
+                    <td className="text-right">
+                      <button className="btn-ghost" aria-expanded={viewing === row.id}
+                        aria-label={`ລາຄາທຸກນ້ຳໜັກ ${formatDateTime(row.date)}`}
+                        disabled={(row.lines?.length ?? 0) === 0}
+                        onClick={() => setViewing(viewing === row.id ? null : row.id)}>
+                        {viewing === row.id ? 'ປິດ' : 'View'}
+                      </button>
+                    </td>
+                  </tr>
+                  {viewing === row.id && (
+                    <tr>
+                      <td colSpan={6} className="bg-recessed p-4">
+                        <div className="table-wrap" tabIndex={0} role="region"
+                          aria-label={`ລາຄາທຸກນ້ຳໜັກ ${formatDateTime(row.date)}`}>
+                          <table className="table">
+                            <thead>
+                              <tr>
+                                <th>ໝວດ / ລາຍການ</th>
+                                <th className="text-right">ນ້ຳໜັກ (g)</th>
+                                <th className="text-right">ລາຄາຂາຍ (LAK)</th>
+                                <th className="text-right">ລາຄາຊື້ຄືນ (LAK)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {row.lines.map((line) => (
+                                <tr key={line.tierCode}>
+                                  <td>{line.labelLo}</td>
+                                  <td className="num text-right">{formatWeight(line.displayWeightG)}</td>
+                                  <td className="num text-right">{formatLak(line.sellPrice)}</td>
+                                  <td className="num text-right font-medium">{formatLak(line.buybackPrice)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -9,7 +9,10 @@ import { formatLak, formatWeight, formatDate, formatDateTime } from '@/lib/forma
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { NumberInput } from '@/components/number-input';
+import { MultiPayment, newPaymentLines, paymentPayload, type PaymentLine } from '@/components/multi-payment';
 import { statusClass } from '@/lib/status';
+import type { PagedResult } from '@/components/date-range';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 
 interface GoldItem { id: string; nameLo: string }
 interface Partner { id: string; nameLo: string }
@@ -81,10 +84,8 @@ export default function OrdersPage() {
   const [note, setNote] = useState('');
 
   // shared receipt fields
-  const [method, setMethod] = useState<'CASH' | 'BANK'>('CASH');
-  const [bankAccountId, setBankAccountId] = useState('');
-  const [currency, setCurrency] = useState<'LAK' | 'THB' | 'USD'>('LAK');
-  const [amount, setAmount] = useState('');
+  const [payments, setPayments] = useState<PaymentLine[]>(newPaymentLines());
+  const [payPayments, setPayPayments] = useState<PaymentLine[]>(newPaymentLines());
 
   // transition fields
   const [supplierId, setSupplierId] = useState('');
@@ -105,11 +106,9 @@ export default function OrdersPage() {
     queryFn: () => api.get<Bank[]>('/catalog/bank-accounts'),
   });
   const banks = banksQuery.data ?? [];
-  const ordersQuery = useQuery({
-    queryKey: ['orders'],
-    queryFn: () => api.get<Order[]>('/orders'),
-  });
-  const orders = ordersQuery.data ?? [];
+  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
+  const history = useHistoryRange<Order>(['orders'], '/orders');
+  const orders = history.rows;
   const catalogQuery = [goldItemsQuery, partnersQuery, banksQuery].find((q) => q.isError);
 
   const invalidate = () => {
@@ -126,18 +125,13 @@ export default function OrdersPage() {
         weightG: weightG.trim(), quantity,
         totalAmount: totalAmount.replace(/,/g, '').trim(),
         note: note || undefined,
-        receipt: {
-          method,
-          bankAccountId: method === 'BANK' ? bankAccountId : undefined,
-          currency,
-          amount: amount.replace(/,/g, '').trim(),
-        },
+        receipts: paymentPayload(payments),
       }),
     onSuccess: () => {
       toast.success('ດຳເນີນການສຳເລັດ');
       setShowAdd(false);
       setPhone(''); setBillNo(''); setStaffName(''); setWeightG('');
-      setQuantity(1); setTotalAmount(''); setAmount(''); setNote('');
+      setQuantity(1); setTotalAmount(''); setPayments(newPaymentLines()); setNote('');
       setError(null); invalidate();
     },
     onError: (e) => {
@@ -171,14 +165,11 @@ export default function OrdersPage() {
   const pay = useMutation({
     mutationFn: (order: Order) =>
       api.post(`/orders/${order.id}/receipts`, {
-        method,
-        bankAccountId: method === 'BANK' ? bankAccountId : undefined,
-        currency,
-        amount: amount.replace(/,/g, '').trim(),
+        receipts: paymentPayload(payPayments),
       }),
     onSuccess: () => {
       toast.success('ດຳເນີນການສຳເລັດ');
-      setPaying(null); setAmount(''); setError(null); invalidate();
+      setPaying(null); setPayPayments(newPaymentLines()); setError(null); invalidate();
     },
     onError: (e) => {
       const detail = e instanceof ApiError ? e.message : 'ຮັບເງິນບໍ່ສຳເລັດ';
@@ -187,10 +178,15 @@ export default function OrdersPage() {
     },
   });
 
+  // Every leg must name a bank when it is a transfer, and carry an amount.
+  const legsReady = (lines: PaymentLine[]) =>
+    paymentPayload(lines).length > 0 &&
+    lines.every((l) => l.method === 'CASH' || !l.amount.trim() || Boolean(l.bankAccountId));
+
   const canSave =
     /^\d{8}$/.test(phone) && /^\d{4}$/.test(billNo) && staffName.trim() &&
     goldItemId && Number(weightG) > 0 && Number(totalAmount.replace(/,/g, '')) > 0 &&
-    Number(amount.replace(/,/g, '')) > 0 && (method === 'CASH' || bankAccountId);
+    legsReady(payments);
 
   const pager = usePagination(orders);
 
@@ -269,43 +265,16 @@ export default function OrdersPage() {
 
           <div className="mt-5 border-t border-line pt-5">
             <h3 className="section-label mb-3">Receive — ເງິນຮັບຈາກລູກຄ້າ</h3>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <label className="label" htmlFor="method">Cash / Bank</label>
-                <select id="method" className="input" value={method}
-                  onChange={(e) => setMethod(e.target.value as 'CASH' | 'BANK')}>
-                  <option value="CASH">Cash</option>
-                  <option value="BANK">Bank</option>
-                </select>
-              </div>
-              {method === 'BANK' && (
-                <div>
-                  <label className="label" htmlFor="bank">ທະນາຄານ</label>
-                  <select id="bank" className="input" value={bankAccountId}
-                    onChange={(e) => setBankAccountId(e.target.value)}>
-                    <option value="">— ເລືອກ —</option>
-                    {banks.map((b) => <option key={b.id} value={b.id}>{b.nameLo}</option>)}
-                  </select>
-                </div>
-              )}
-              <div>
-                <label className="label" htmlFor="cur">Currency (Price Rate Sell)</label>
-                <select id="cur" className="input" value={currency}
-                  onChange={(e) => setCurrency(e.target.value as 'LAK' | 'THB' | 'USD')}>
-                  <option value="LAK">LAK</option>
-                  <option value="THB">THB</option>
-                  <option value="USD">USD</option>
-                </select>
-              </div>
-              <div>
-                <label className="label" htmlFor="amt">ຈຳນວນເງິນ</label>
-                <NumberInput id="amt" className="input num" decimals={currency === 'LAK' ? 0 : 2} value={amount}
-                  onValueChange={setAmount} />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="label" htmlFor="note">Note</label>
-                <input id="note" className="input" value={note} onChange={(e) => setNote(e.target.value)} />
-              </div>
+            <MultiPayment
+              lines={payments}
+              onChange={setPayments}
+              owedLak={totalAmount.replace(/,/g, '')}
+              direction="in"
+              labelLo="ຮັບເງິນ (ສົດ / ໂອນ, ຫຼາຍສະກຸນເງິນ)"
+            />
+            <div className="mt-4">
+              <label className="label" htmlFor="note">Note</label>
+              <input id="note" className="input" value={note} onChange={(e) => setNote(e.target.value)} />
             </div>
           </div>
 
@@ -371,41 +340,16 @@ export default function OrdersPage() {
           <h2 className="card-title mb-4">
             ຊຳຣະເພີ່ມ — {paying.code} (ຄົງເຫຼືອ {formatLak(paying.balanceAmount)} LAK)
           </h2>
-          <div className="flex flex-wrap items-end gap-4">
-            <div>
-              <label className="label" htmlFor="pmethod">Cash / Bank</label>
-              <select id="pmethod" className="input" value={method}
-                onChange={(e) => setMethod(e.target.value as 'CASH' | 'BANK')}>
-                <option value="CASH">Cash</option>
-                <option value="BANK">Bank</option>
-              </select>
-            </div>
-            {method === 'BANK' && (
-              <div>
-                <label className="label" htmlFor="pbank">ທະນາຄານ</label>
-                <select id="pbank" className="input" value={bankAccountId}
-                  onChange={(e) => setBankAccountId(e.target.value)}>
-                  <option value="">— ເລືອກ —</option>
-                  {banks.map((b) => <option key={b.id} value={b.id}>{b.nameLo}</option>)}
-                </select>
-              </div>
-            )}
-            <div>
-              <label className="label" htmlFor="pcur">Currency</label>
-              <select id="pcur" className="input" value={currency}
-                onChange={(e) => setCurrency(e.target.value as 'LAK' | 'THB' | 'USD')}>
-                <option value="LAK">LAK</option>
-                <option value="THB">THB</option>
-                <option value="USD">USD</option>
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="pamt">ຈຳນວນເງິນ</label>
-              <NumberInput id="pamt" className="input num" decimals={currency === 'LAK' ? 0 : 2}
-                placeholder={paying.balanceAmount} value={amount}
-                onValueChange={setAmount} />
-            </div>
-            <button className="btn-primary" aria-describedby={error ? 'orders-error' : undefined} disabled={!amount.trim() || pay.isPending}
+          <MultiPayment
+            lines={payPayments}
+            onChange={setPayPayments}
+            owedLak={paying.balanceAmount}
+            direction="in"
+            labelLo="ຮັບເງິນ (ສົດ / ໂອນ, ຫຼາຍສະກຸນເງິນ)"
+          />
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button className="btn-primary" aria-describedby={error ? 'orders-error' : undefined}
+              disabled={!legsReady(payPayments) || pay.isPending}
               onClick={() => pay.mutate(paying)}>
               {pay.isPending ? 'ກຳລັງບັນທຶກ...' : 'ຮັບເງິນ'}
             </button>
@@ -419,48 +363,50 @@ export default function OrdersPage() {
           <h2 className="card-title">ລາຍການ Order</h2>
           <span className="num text-xs text-muted">{orders.length} ລາຍການ</span>
         </div>
+        <DateRangeFilter history={history} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການ Order">
           <table className="table">
             <thead>
               <tr>
                 <th>ລະຫັດ Order</th>
-                <th>ບິນ</th>
                 <th>ວັນທີ</th>
                 <th>ເບີໂທ</th>
-                <th>ປະເພດ</th>
-                <th>ລາຍການ</th>
-                <th className="text-right">ນ້ຳໜັກ</th>
-                <th className="text-right">ລວມ</th>
-                <th className="text-right">ຮັບແລ້ວ</th>
-                <th className="text-right">ຄົງເຫຼືອ</th>
-                <th>ແຫຼ່ງທີ່ມາ</th>
+                <th>ເລກບິນ</th>
+                <th>ປະເພດສິນຄ້າ</th>
+                <th className="text-right">ນ້ຳໜັກລວມ (g)</th>
+                <th className="text-right">ຈຳນວນລວມ</th>
+                <th className="text-right">ຍອດເງິນທີ່ໄດ້ຮັບ</th>
+                <th className="text-right">ຍອດຄົງເຫຼືອ</th>
                 <th>ສະຖານະ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={13}
-                isLoading={ordersQuery.isLoading}
-                isError={ordersQuery.isError}
-                error={ordersQuery.error}
+                colSpan={11}
+                isLoading={history.isLoading}
+                isError={history.isError}
+                error={history.error}
                 isEmpty={orders.length === 0}
                 emptyText="ຍັງບໍ່ມີ Order"
-                onRetry={() => void ordersQuery.refetch()}
+                onRetry={() => history.refetch()}
               />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
-                  <td className="font-mono text-xs">{row.code}</td>
-                  <td className="font-mono text-xs">{row.billNo}</td>
+                  {/* ລາຍການ / Supplier / ຍອດລວມ ບໍ່ຢູ່ໃນຖັນທີ່ລູກຄ້າຂໍ ແຕ່ຍັງ
+                      ຕ້ອງເຂົ້າເຖິງໄດ້ — ວາງໄວ້ເປັນ tooltip ຂອງລະຫັດ Order. */}
+                  <td className="font-mono text-xs"
+                    title={`ລາຍການ: ${row.goldItem.nameLo} · ແຫຼ່ງທີ່ມາ: ${row.supplier?.nameLo ?? '—'} · ຍອດ Order: ${formatLak(row.totalAmount)}`}>
+                    {row.code}
+                  </td>
                   <td>{formatDate(row.createdAt)}</td>
                   <td className="num">{row.customer.phone}</td>
+                  <td className="font-mono text-xs">{row.billNo}</td>
                   <td>{row.productType}</td>
-                  <td>{row.goldItem.nameLo}</td>
                   <td className="num text-right">{formatWeight(row.weightG)}</td>
-                  <td className="num text-right">{formatLak(row.totalAmount)}</td>
+                  <td className="num text-right">{row.quantity}</td>
                   <td className="num text-right text-success">{formatLak(row.receivedAmount)}</td>
                   <td className="num text-right font-medium">{formatLak(row.balanceAmount)}</td>
-                  <td className="text-muted">{row.supplier?.nameLo ?? '—'}</td>
                   <td>
                     <span className={statusClass(row.status)}>{STATUS[row.status].lo}</span>
                   </td>
@@ -480,7 +426,7 @@ export default function OrdersPage() {
                         <button className="btn-ghost text-success"
                           aria-label={`ຊຳຣະເພີ່ມ ${row.code}`}
                           onClick={() => {
-                            setPaying(row); setAdvancing(null); setShowAdd(false); setAmount('');
+                            setPaying(row); setAdvancing(null); setShowAdd(false); setPayPayments(newPaymentLines());
                           }}>
                           ຊຳຣະເພີ່ມ
                         </button>

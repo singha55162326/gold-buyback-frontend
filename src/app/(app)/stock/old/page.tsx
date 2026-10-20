@@ -8,6 +8,8 @@ import { formatLak, formatWeight, formatDate, gramsToBaht } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { StatCard } from '@/components/stat-card';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
+import type { PagedResult } from '@/components/date-range';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 
 interface Wac { oldWeightG: string; oldCost: string }
 interface TypeBalance {
@@ -38,10 +40,12 @@ export default function StockOldPage() {
     queryKey: ['stock', 'old', 'balances'],
     queryFn: () => api.get<TypeBalance[]>('/stock/old/balances'),
   });
-  const { data: history = [], isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
-    queryKey: ['stock', 'old', 'history'],
-    queryFn: () => api.get<LedgerRow[]>('/stock/old/history'),
-  });
+  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
+  const historyRange = useHistoryRange<LedgerRow>(['stock', 'old', 'history'], '/stock/old/history');
+  const history = historyRange.rows;
+  const historyFailed = historyRange.isError;
+  const historyError = historyRange.error;
+  const refetchHistory = historyRange.refetch;
 
   return (
     <div className="space-y-6">
@@ -118,6 +122,7 @@ export default function StockOldPage() {
 
       <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ປະຫວັດ Stock (OLD)</h2></div>
+        <DateRangeFilter history={historyRange} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Stock (OLD)">
           <table className="table">
             <thead>

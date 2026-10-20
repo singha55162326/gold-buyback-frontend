@@ -9,7 +9,7 @@ import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
 import { NumberInput } from '@/components/number-input';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
-import { formatWeight } from '@/lib/format';
+import { formatGrams, formatWeight } from '@/lib/format';
 
 interface GoldItem {
   id: string;
@@ -226,7 +226,7 @@ export default function SkusPage() {
                 <tr key={sku.id}>
                   <td className="font-medium">{sku.fullSkuName}</td>
                   <td className="text-muted">{sku.goldItem.nameLo}</td>
-                  <td className="num text-right">{formatWeight(sku.weightG)}</td>
+                  <td className="num text-right">{formatGrams(sku.weightG)}</td>
                   <td className="num text-right">{formatWeight(sku.bahtWeight)}</td>
                   <td className="text-right">
                     <button

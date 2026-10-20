@@ -13,10 +13,7 @@ export default function BanksPage() {
       createPath="/finance/banks"
       queryKey={['catalog', 'bank-accounts']}
       addLabelLo="ເພີ່ມທະນາຄານ"
-      fields={[
-        { key: 'code', labelLo: 'Code', placeholder: 'BCEL' },
-        { key: 'nameLo', labelLo: 'ຊື່ທະນາຄານ', placeholder: 'BCEL' },
-      ]}
+      fields={[{ key: 'nameLo', labelLo: 'ຊື່ທະນາຄານ', placeholder: 'BCEL' }]}
       columns={[
         { key: 'code', labelLo: 'Code' },
         { key: 'nameLo', labelLo: 'ຊື່ທະນາຄານ' },

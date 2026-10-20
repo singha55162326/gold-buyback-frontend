@@ -1,15 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError } from '@/lib/api';
-import { formatMoney, formatDateTime } from '@/lib/format';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { formatMoney, formatDateTime, formatByCurrency } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { StatCard } from '@/components/stat-card';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
-import { NumberInput } from '@/components/number-input';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 
 interface Balance { currency: 'LAK' | 'THB' | 'USD'; inflow: string; outflow: string; balance: string }
 interface Row {
@@ -26,42 +24,13 @@ const TYPE_LABEL: Record<string, string> = {
 
 /** TOR §3.7 — Module Cash. */
 export default function FcCashPage() {
-  const queryClient = useQueryClient();
-  const toast = useToast();
-  const [type, setType] = useState<'IN' | 'OUT' | 'OTHER_INCOME' | 'OTHER_EXPENSE'>('IN');
-  const [currency, setCurrency] = useState<'LAK' | 'THB' | 'USD'>('LAK');
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
-  const [error, setError] = useState<string | null>(null);
-
   const balancesQuery = useQuery({
     queryKey: ['cash', 'balances'],
     queryFn: () => api.get<Balance[]>('/cash/balances'),
   });
   const balances = balancesQuery.data ?? [];
-  const rowsQuery = useQuery({
-    queryKey: ['cash', 'history'],
-    queryFn: () => api.get<Row[]>('/cash/history'),
-  });
-  const rows = rowsQuery.data ?? [];
-
-  const create = useMutation({
-    mutationFn: () =>
-      api.post('/cash/transactions', {
-        type, currency, amount: amount.replace(/,/g, '').trim(), note: note || undefined,
-      }),
-    onSuccess: () => {
-      toast.success('ດຳເນີນການສຳເລັດ');
-      setAmount(''); setNote(''); setError(null);
-      void queryClient.invalidateQueries({ queryKey: ['cash'] });
-      void queryClient.invalidateQueries({ queryKey: ['ledger'] });
-    },
-    onError: (e) => {
-      const detail = e instanceof ApiError ? e.message : 'ບັນທຶກບໍ່ສຳເລັດ';
-      setError(detail);
-      toast.error('ບໍ່ສຳເລັດ', detail);
-    },
-  });
+  const history = useHistoryRange<Row>(['cash', 'history'], '/cash/history');
+  const rows = history.rows;
 
   const pager = usePagination(rows);
 
@@ -82,57 +51,19 @@ export default function FcCashPage() {
           <StatCard
             key={b.currency}
             label={`ຍອດຄົງເຫຼືອ ${b.currency}`}
-            value={formatMoney(b.balance)}
-            sub={`(+) ${formatMoney(b.inflow)} · (−) ${formatMoney(b.outflow)}`}
+            value={formatByCurrency(b.balance, b.currency)}
+            sub={`(+) ${formatByCurrency(b.inflow, b.currency)} · (−) ${formatByCurrency(b.outflow, b.currency)}`}
           />
         ))}
       </div>
 
-      <div data-fade className="card p-5">
-        <h2 className="card-title mb-4">ບັນທຶກເງິນສົດ</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <label className="label" htmlFor="type">ປະເພດ</label>
-            <select id="type" className="input" value={type}
-              onChange={(e) => setType(e.target.value as typeof type)}>
-              <option value="IN">Cash In</option>
-              <option value="OUT">Cash Out</option>
-              <option value="OTHER_INCOME">Other Income</option>
-              <option value="OTHER_EXPENSE">Other Expense</option>
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="cur">ສະກຸນເງິນ</label>
-            <select id="cur" className="input" value={currency}
-              onChange={(e) => setCurrency(e.target.value as 'LAK' | 'THB' | 'USD')}>
-              <option value="LAK">LAK</option>
-              <option value="THB">THB</option>
-              <option value="USD">USD</option>
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="amt">ຈຳນວນເງິນ</label>
-            <NumberInput id="amt" className="input num" decimals={currency === 'LAK' ? 0 : 2} aria-describedby={error ? 'cash-error' : undefined} value={amount}
-              onValueChange={setAmount} />
-          </div>
-          <div>
-            <label className="label" htmlFor="note">Note</label>
-            <input id="note" className="input" value={note} onChange={(e) => setNote(e.target.value)} />
-          </div>
-        </div>
-        {error && (
-          <div id="cash-error" role="alert" className="notice status-danger mt-3">{error}</div>
-        )}
-        <div className="mt-4">
-          <button className="btn-primary min-h-[54px] w-full sm:w-auto sm:min-w-[240px]" disabled={!amount.trim() || create.isPending}
-            onClick={() => create.mutate()}>
-            {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
-          </button>
-        </div>
-      </div>
+      {/* ຕັດຫ້ອງບັນທຶກເງິນສົດອອກ: cash now only moves as a side effect of a
+          real transaction — buyback, exchange, ລາຍຮັບລາຍຈ່າຍ, ເບີກ/ມອບເງິນ —
+          so every row here can be traced back to what caused it. */}
 
       <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ປະຫວັດ Cash</h2></div>
+        <DateRangeFilter history={history} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Cash">
           <table className="table">
             <thead>
@@ -148,19 +79,19 @@ export default function FcCashPage() {
             <tbody>
               <TableStateRow
                 colSpan={6}
-                isLoading={rowsQuery.isLoading}
-                isError={rowsQuery.isError}
-                error={rowsQuery.error}
+                isLoading={history.isLoading}
+                isError={history.isError}
+                error={history.error}
                 isEmpty={rows.length === 0}
                 emptyText="ຍັງບໍ່ມີລາຍການ"
-                onRetry={() => void rowsQuery.refetch()}
+                onRetry={history.refetch}
               />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDateTime(row.createdAt)}</td>
                   <td>{TYPE_LABEL[row.type] ?? row.type}</td>
                   <td>{row.currency}</td>
-                  <td className="num text-right font-medium">{formatMoney(row.amount)}</td>
+                  <td className="num text-right font-medium">{formatByCurrency(row.amount, row.currency)}</td>
                   <td className="text-muted">{row.refType ?? '—'}</td>
                   <td className="text-muted">{row.note ?? '—'}</td>
                 </tr>

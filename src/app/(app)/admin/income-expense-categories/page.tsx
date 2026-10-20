@@ -22,7 +22,6 @@ export default function IncomeExpenseCategoriesPage() {
             { value: 'EXPENSE', labelLo: 'ລາຍຈ່າຍ' },
           ],
         },
-        { key: 'code', labelLo: 'Code', placeholder: 'SALARY' },
         { key: 'nameLo', labelLo: 'ຊື່ລາຍການ', placeholder: 'ເງິນເດືອນ' },
       ]}
       columns={[

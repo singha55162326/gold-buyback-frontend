@@ -5,11 +5,12 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import Link from 'next/link';
-import { formatMoney, formatWeight, formatDate } from '@/lib/format';
+import { formatMoney, formatWeight, formatDate, formatByCurrency, formatLak } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import { StatCard } from '@/components/stat-card';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 
 interface Summary {
   totals: Array<{ currency: 'LAK' | 'THB' | 'USD'; net: string }>;
@@ -23,6 +24,10 @@ interface Row {
   amountIn: string;
   amountOut: string;
   balance: string;
+  /** ຍອດຄົງເຫຼືອຮັບ ຂອງ Order ທີ່ແຖວນີ້ຜູກຢູ່. */
+  outstandingAmount: string;
+  /** ຍອດເງິນສຸດທິ = ໄດ້ຮັບ − ຄົງເຫຼືອຮັບ − ຕັດຊຳລະ (ຄຳນວນຢູ່ server). */
+  netAmount: string;
   method: string | null;
   note: string | null;
   order: {
@@ -51,11 +56,9 @@ export default function AdvancePage() {
     queryFn: () => api.get<Summary>('/finance/advance'),
   });
   const summary = summaryQuery.data;
-  const rowsQuery = useQuery({
-    queryKey: ['finance', 'advance', 'history'],
-    queryFn: () => api.get<Row[]>('/finance/advance/history'),
-  });
-  const rows = rowsQuery.data ?? [];
+  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; ກວ້າງອອກໄດ້ຈາກແຖບ filter.
+  const history = useHistoryRange<Row>(['finance', 'advance', 'history'], '/finance/advance/history');
+  const rows = history.rows;
 
   const pager = usePagination(rows);
 
@@ -73,7 +76,7 @@ export default function AdvancePage() {
 
       <div className="stat-grid">
         {(summary?.totals ?? []).map((t) => (
-          <StatCard key={t.currency} label={`ລວມຍອດເງິນ Advace (${t.currency})`} value={formatMoney(t.net)} />
+          <StatCard key={t.currency} label={`ລວມຍອດເງິນ Advace (${t.currency})`} value={formatByCurrency(t.net, t.currency)} />
         ))}
         <StatCard
           label="ລວມຈຳນວນບິນ"
@@ -84,49 +87,46 @@ export default function AdvancePage() {
 
       <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ປະຫວັດ Module Advace</h2></div>
+        <DateRangeFilter history={history} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Module Advace">
           <table className="table">
             <thead>
               <tr>
-                <th>ລະຫັດລາຍການ</th>
-                <th>ລະຫັດບິນ</th>
+                <th>ລະຫັດ Order</th>
                 <th>ວັນທີ</th>
                 <th>ເບີໂທ</th>
+                <th>ເລກບິນ</th>
                 <th>ປະເພດສິນຄ້າ</th>
-                <th className="text-right">ຮັບຈາກລູກຄ້າ (+)</th>
-                <th className="text-right">ຕັດຊຳຣະ (−)</th>
-                <th className="text-right">ຍອດສະສົມ</th>
-                <th>ສະກຸນເງິນ</th>
-                <th>ຮູບແບບຈ່າຍ</th>
-                <th>ທະນາຄານ</th>
+                <th className="text-right">ຍອດເງິນທີ່ໄດ້ຮັບ</th>
+                <th className="text-right">ຍອດຄົງເຫຼືອຮັບ</th>
+                <th className="text-right">ຍອດເງິນຕັດຊຳລະ</th>
+                <th className="text-right">ຍອດເງິນສຸດທິ</th>
                 <th>ສະຖານະ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={13}
-                isLoading={rowsQuery.isLoading}
-                isError={rowsQuery.isError}
-                error={rowsQuery.error}
+                colSpan={11}
+                isLoading={history.isLoading}
+                isError={history.isError}
+                error={history.error}
                 isEmpty={rows.length === 0}
                 emptyText="ຍັງບໍ່ມີລາຍການ"
-                onRetry={() => void rowsQuery.refetch()}
+                onRetry={() => void history.refetch()}
               />
               {pager.pageItems.map((row) => (
                 <Fragment key={row.id}>
                 <tr>
                   <td className="font-mono text-xs">{row.order.code}</td>
-                  <td className="font-mono text-xs">{row.order.billNo}</td>
                   <td>{formatDate(row.businessDate)}</td>
                   <td className="num">{row.order.customer.phone}</td>
+                  <td className="font-mono text-xs">{row.order.billNo}</td>
                   <td>{row.order.productType}</td>
-                  <td className="num text-right text-success">{formatMoney(row.amountIn)}</td>
-                  <td className="num text-right text-danger">{formatMoney(row.amountOut)}</td>
-                  <td className="num text-right font-medium">{formatMoney(row.balance)}</td>
-                  <td>{row.currency}</td>
-                  <td className="text-muted">{row.method ?? '—'}</td>
-                  <td className="text-muted">{row.bankAccount?.nameLo ?? '—'}</td>
+                  <td className="num text-right text-success">{formatByCurrency(row.amountIn, row.currency)}</td>
+                  <td className="num text-right">{formatLak(row.outstandingAmount)}</td>
+                  <td className="num text-right text-danger">{formatByCurrency(row.amountOut, row.currency)}</td>
+                  <td className="num text-right font-medium">{formatLak(row.netAmount)}</td>
                   <td>
                     <span className={
                       statusClass(row.order.status)
@@ -149,16 +149,20 @@ export default function AdvancePage() {
                 </tr>
                 {viewing === row.id && (
                   <tr>
-                    <td colSpan={13} className="bg-recessed p-4">
+                    <td colSpan={11} className="bg-recessed p-4">
                       <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
                         <F labelLo="ຊື່ພະນັກງານທີ່ຮັບ Order" value={row.order.staffName} />
+                        <F labelLo="ສະກຸນເງິນ" value={row.currency} />
+                        <F labelLo="ຮູບແບບຈ່າຍ" value={row.method ?? '—'} />
+                        <F labelLo="ທະນາຄານ" value={row.bankAccount?.nameLo ?? '—'} />
+                        <F labelLo="ຍອດສະສົມ Advance" value={formatByCurrency(row.balance, row.currency)} />
                         <F labelLo="ລາຍການ" value={row.order.goldItem?.nameLo ?? '—'} />
                         <F labelLo="ນ້ຳໜັກ (g)" value={formatWeight(row.order.weightG)} />
                         <F labelLo="ຈຳນວນ" value={String(row.order.quantity)} />
                         <F labelLo="Supplier" value={row.order.supplier?.nameLo ?? '—'} />
                         <F labelLo="ວັນທີຮັບເຄື່ອງຈາກຊ່າງ" value={formatDate(row.order.receivedFromSmithAt)} />
                         <F labelLo="ວັນທີລູກຄ້າມາຮັບເຄື່ອງ" value={formatDate(row.order.customerPickupAt)} />
-                        <F labelLo="ຍອດຄົງເຫຼືອ" value={`${formatMoney(row.order.balanceAmount)} LAK`} />
+                        <F labelLo="ຍອດຄົງເຫຼືອ" value={`${formatLak(row.order.balanceAmount)} LAK`} />
                       </div>
                     </td>
                   </tr>

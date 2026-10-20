@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { TableStateRow } from '@/components/query-state';
@@ -73,6 +73,23 @@ export default function UsersPage() {
       const detail = e instanceof ApiError ? e.message : 'ບັນທຶກບໍ່ສຳເລັດ';
       setError(detail);
       toast.error('ບໍ່ສຳເລັດ', detail);
+    },
+  });
+
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const me = getStoredUser();
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/admin/users/${id}`),
+    onSuccess: () => {
+      setDeleting(null);
+      toast.success('ລຶບແລ້ວ');
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+    },
+    onError: (e) => {
+      // "ລຶບຕົນເອງບໍ່ໄດ້" and "Admin ຄົນສຸດທ້າຍ" both come back from the API.
+      setDeleting(null);
+      toast.error('ລຶບບໍ່ໄດ້', e instanceof ApiError ? e.message : 'ລຶບບໍ່ສຳເລັດ');
     },
   });
 
@@ -252,6 +269,16 @@ export default function UsersPage() {
                           ຍົກເລີກ
                         </button>
                       </div>
+                    ) : deleting === user.id ? (
+                      <div className="flex justify-end gap-2">
+                        <button className="btn-danger" disabled={remove.isPending}
+                          onClick={() => remove.mutate(user.id)}>
+                          ຢືນຢັນລຶບ
+                        </button>
+                        <button className="btn-secondary" onClick={() => setDeleting(null)}>
+                          ຍົກເລີກ
+                        </button>
+                      </div>
                     ) : (
                       <div className="flex justify-end gap-2">
                         <button className="btn-ghost"
@@ -259,13 +286,20 @@ export default function UsersPage() {
                           ປ່ຽນລະຫັດຜ່ານ
                         </button>
                         <button
-                          className={user.isActive ? 'btn-danger' : 'btn-ghost text-success'}
+                          className={user.isActive ? 'btn-ghost text-danger' : 'btn-ghost text-success'}
                           onClick={() =>
                             update.mutate({ id: user.id, patch: { isActive: !user.isActive } })
                           }
                         >
                           {user.isActive ? 'ປິດການນຳໃຊ້' : 'ເປີດໃຊ້ງານ'}
                         </button>
+                        {/* Deleting your own account would sign you out mid-click,
+                            so the button is simply not offered for yourself. */}
+                        {user.id !== me?.id && (
+                          <button className="btn-danger" onClick={() => setDeleting(user.id)}>
+                            ລຶບ
+                          </button>
+                        )}
                       </div>
                     )}
                   </td>

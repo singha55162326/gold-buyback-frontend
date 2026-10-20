@@ -36,6 +36,25 @@ export default function DeductionsPage() {
     queryFn: () => api.get<Deduction[]>('/fees/buyback-deductions'),
   });
 
+  /**
+   * Editing a deduction does not move any price on its own — the board is a
+   * snapshot. This re-runs the calculation against the current gold price so
+   * the new rule actually takes effect, without anyone retyping the price.
+   */
+  const refresh = useMutation({
+    mutationFn: () => api.post<{ price1Baht: string }>('/pricing/recalculate'),
+    onSuccess: (board) => {
+      toast.success('ຄຳນວນລາຄາຄືນແລ້ວ', `ລາຄາຂາຍ 1 ບາດ ${formatLak(board.price1Baht)}`);
+      setError(null);
+      void queryClient.invalidateQueries({ queryKey: ['pricing'] });
+    },
+    onError: (e) => {
+      const detail = e instanceof ApiError ? e.message : 'ຄຳນວນຄືນບໍ່ສຳເລັດ';
+      setError(detail);
+      toast.error('ບໍ່ສຳເລັດ', detail);
+    },
+  });
+
   const save = useMutation({
     mutationFn: (row: Deduction) =>
       api.post('/fees/buyback-deductions', {
@@ -44,11 +63,13 @@ export default function DeductionsPage() {
         value: value.replace(/,/g, '').trim(),
       }),
     onSuccess: () => {
-      toast.success('ດຳເນີນການສຳເລັດ');
+      toast.success('ບັນທຶກແລ້ວ', 'ລາຄາຊື້ຄືນຖືກຄຳນວນຄືນໃຫ້ອັດຕະໂນມັດ');
       setEditing(null);
       setValue('');
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ['fees', 'deductions'] });
+      // The server wrote a new price snapshot, so ຈັດການ Products has to
+      // re-read rather than show the board from before the edit.
       void queryClient.invalidateQueries({ queryKey: ['pricing'] });
     },
     onError: (e) => {
@@ -74,7 +95,16 @@ export default function DeductionsPage() {
       <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ຄ່າຫັກປັດຈຸບັນ</h2>
+          <button className="btn-secondary" disabled={refresh.isPending}
+            onClick={() => refresh.mutate()}>
+            {refresh.isPending ? 'ກຳລັງຄຳນວນ...' : '↻ Refresh ລາຄາ'}
+          </button>
         </div>
+        <p className="border-b border-line px-5 py-3 text-xs text-muted">
+          ແກ້ຄ່າຫັກແລ້ວ <strong>ລາຄາຊື້ຄືນຢູ່ ຈັດການ Products ຈະປ່ຽນໃຫ້ທັນທີ</strong> —
+          ທັງຄ່າຫັກ ແລະ ລາຄາ ເກັບເປັນປະຫວັດແຍກແຖວ ບໍ່ມີການທັບແຖວເກົ່າ.
+          ປຸ່ມ Refresh ໃຊ້ເມື່ອຢາກຄຳນວນຄືນໂດຍບໍ່ໄດ້ແກ້ຫຍັງ.
+        </p>
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ຄ່າຫັກປັດຈຸບັນ">
           <table className="table">
             <thead>
