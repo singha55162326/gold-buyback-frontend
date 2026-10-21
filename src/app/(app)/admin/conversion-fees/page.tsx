@@ -10,6 +10,7 @@ import { AuditView } from '@/components/audit-view';
 import { TableStateRow } from '@/components/query-state';
 import { PageHead } from '@/components/page-head';
 import { NumberInput } from '@/components/number-input';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 
 interface Tier {
   labelLo: string;
@@ -66,14 +67,15 @@ export default function ConversionFeesPage() {
     queryKey: ['fees', 'conversion', 'bar'],
     queryFn: () => api.get<BarFee[]>('/fees/conversion/bar'),
   });
-  const jewelryHistory = useQuery({
-    queryKey: ['fees', 'conversion', 'jewelry', 'history'],
-    queryFn: () => api.get<JewelryHistory[]>('/fees/conversion/jewelry/history?limit=200'),
-  });
-  const barHistory = useQuery({
-    queryKey: ['fees', 'conversion', 'bar', 'history'],
-    queryFn: () => api.get<BarHistory[]>('/fees/conversion/bar/history?limit=200'),
-  });
+  // ປະຫວັດ: ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້ ແລະ ກວ້າງອອກໄດ້ຈາກແຖບ ຈາກວັນທີ–ຫາວັນທີ.
+  const jewelryHistory = useHistoryRange<JewelryHistory>(
+    ['fees', 'conversion', 'jewelry', 'history'],
+    '/fees/conversion/jewelry/history',
+  );
+  const barHistory = useHistoryRange<BarHistory>(
+    ['fees', 'conversion', 'bar', 'history'],
+    '/fees/conversion/bar/history',
+  );
   const boardQuery = useQuery({
     queryKey: ['pricing', 'current'],
     queryFn: () => api.get<PriceBoard>('/pricing/current'),
@@ -127,10 +129,11 @@ export default function ConversionFeesPage() {
 
       <HistoryPanel
         titleLo="ປະຫວັດ ຄ່າປ່ຽນຮູບປະພັນ"
-        rows={jewelryHistory.data ?? []}
+        rows={jewelryHistory.rows}
         columns={['SKU / ຫົວໜ່ວຍ', 'ຄ່າປ່ຽນຮູບປະພັນດີ', 'ຄ່າປ່ຽນເສຍຮູບ']}
         loading={jewelryHistory.isLoading}
         query={jewelryHistory}
+        filter={<DateRangeFilter history={jewelryHistory} />}
         render={(r) => [
           r.tier?.labelLo ?? r.tierCode,
           formatLak(r.feeGoodShape),
@@ -140,11 +143,12 @@ export default function ConversionFeesPage() {
 
       <HistoryPanel
         titleLo="ປະຫວັດ ຄ່າປ່ຽນຄຳແທ່ງ"
-        rows={barHistory.data ?? []}
+        rows={barHistory.rows}
         columns={['ນ້ຳໜັກ / g', 'ຄຳແທ່ງ-ຮູບປະພັນ', 'ຄຳແທ່ງ-ຄຳແທ່ງ']}
         numericFirst
         loading={barHistory.isLoading}
         query={barHistory}
+        filter={<DateRangeFilter history={barHistory} />}
         render={(r) => [
           formatWeight(r.weightG),
           formatLak(r.barToJewelry),
@@ -707,6 +711,8 @@ interface HistoryPanelProps<T> {
   numericFirst?: boolean;
   loading?: boolean;
   query?: QueryFailure;
+  /** ແຖບ ຈາກວັນທີ–ຫາວັນທີ, ວາງໃຕ້ຫົວບັດ ຄືກັນກັບໜ້າປະຫວັດອື່ນ. */
+  filter?: React.ReactNode;
 }
 
 /**
@@ -721,6 +727,7 @@ function HistoryPanel<T extends { id: string; effectiveAt: string; deletedAt: st
   numericFirst = false,
   loading = false,
   query,
+  filter,
 }: HistoryPanelProps<T>) {
   const pager = usePagination(rows, 10);
 
@@ -730,6 +737,7 @@ function HistoryPanel<T extends { id: string; effectiveAt: string; deletedAt: st
         <h2 className="card-title">{titleLo}</h2>
         <span className="text-xs text-muted">ທຸກລຸ້ນ ລ່າສຸດກ່ອນ</span>
       </div>
+      {filter}
       <div className="table-wrap" tabIndex={0} role="region" aria-label={titleLo}>
         <table className="table">
           <thead>

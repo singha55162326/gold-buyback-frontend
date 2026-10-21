@@ -40,6 +40,12 @@ export default function UsersPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [resetting, setResetting] = useState<string | null>(null);
   const [password, setPassword] = useState('');
+  // ແກ້ໄຂຊື່ / ເບີໂທ / ເບີ WhatsApp ຢູ່ໃນແຖວ. ສິດຜູ້ໃຊ້ ປ່ຽນໄດ້ຈາກ dropdown
+  // ຢູ່ແລ້ວ ຈຶ່ງບໍ່ເອົາມາໄວ້ໃນໂໝດນີ້ຊ້ຳ.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editWhats, setEditWhats] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const [username, setUsername] = useState('');
@@ -96,7 +102,7 @@ export default function UsersPage() {
   const update = useMutation({
     mutationFn: (input: { id: string; patch: Partial<User> }) =>
       api.patch(`/admin/users/${input.id}`, input.patch),
-    onSuccess: () => { setError(null); invalidate(); },
+    onSuccess: () => { setError(null); setEditing(null); invalidate(); },
     onError: (e) => {
       const detail = e instanceof ApiError ? e.message : 'ອັບເດດບໍ່ສຳເລັດ';
       setError(detail);
@@ -214,7 +220,15 @@ export default function UsersPage() {
               {pager.pageItems.map((user) => (
                 <tr key={user.id}>
                   <td className="font-mono text-xs">{user.username}</td>
-                  <td className="font-medium">{user.fullName}</td>
+                  <td className="font-medium">
+                    {editing === user.id ? (
+                      <input className="input w-48" value={editName}
+                        aria-label={`ຊື່ ແລະ ນາມສະກຸນ — ${user.username}`}
+                        onChange={(e) => setEditName(e.target.value)} autoFocus />
+                    ) : (
+                      user.fullName
+                    )}
+                  </td>
                   <td>
                     <select
                       aria-label={`ສິດຜູ້ໃຊ້ — ${user.username}`}
@@ -227,7 +241,15 @@ export default function UsersPage() {
                       {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
                     </select>
                   </td>
-                  <td className="num">{user.phone ?? '—'}</td>
+                  <td className="num">
+                    {editing === user.id ? (
+                      <input className="input w-36" value={editPhone}
+                        aria-label={`ເບີໂທ — ${user.username}`}
+                        onChange={(e) => setEditPhone(e.target.value)} />
+                    ) : (
+                      (user.phone ?? '—')
+                    )}
+                  </td>
                   <td>
                     {/* TOR §10 — opt-in. Off by default: staff are never
                         messaged without being added deliberately. */}
@@ -243,7 +265,13 @@ export default function UsersPage() {
                           })
                         }
                       />
-                      <span className="num">{user.whatsappNumber ?? user.phone ?? 'ບໍ່ມີເບີ'}</span>
+                      {editing === user.id ? (
+                        <input className="input w-36" value={editWhats}
+                          aria-label={`ເບີ WhatsApp — ${user.username}`}
+                          onChange={(e) => setEditWhats(e.target.value)} />
+                      ) : (
+                        <span className="num">{user.whatsappNumber ?? user.phone ?? 'ບໍ່ມີເບີ'}</span>
+                      )}
                     </label>
                   </td>
                   <td>
@@ -253,7 +281,26 @@ export default function UsersPage() {
                   </td>
                   <td className="num text-muted">{formatDateTime(user.lastLoginAt)}</td>
                   <td className="text-right">
-                    {resetting === user.id ? (
+                    {editing === user.id ? (
+                      <div className="flex justify-end gap-2">
+                        <button className="btn-primary" disabled={!editName.trim() || update.isPending}
+                          onClick={() =>
+                            update.mutate({
+                              id: user.id,
+                              patch: {
+                                fullName: editName.trim(),
+                                phone: editPhone.trim(),
+                                whatsappNumber: editWhats.trim(),
+                              },
+                            })
+                          }>
+                          ບັນທຶກ
+                        </button>
+                        <button className="btn-secondary" onClick={() => setEditing(null)}>
+                          ຍົກເລີກ
+                        </button>
+                      </div>
+                    ) : resetting === user.id ? (
                       <div className="flex items-center justify-end gap-2">
                         <input type="password" className="input w-40"
                           aria-label={`ລະຫັດຜ່ານໃໝ່ — ${user.username}`}
@@ -282,7 +329,17 @@ export default function UsersPage() {
                     ) : (
                       <div className="flex justify-end gap-2">
                         <button className="btn-ghost"
-                          onClick={() => { setResetting(user.id); setPassword(''); }}>
+                          onClick={() => {
+                            setResetting(null); setDeleting(null);
+                            setEditing(user.id);
+                            setEditName(user.fullName);
+                            setEditPhone(user.phone ?? '');
+                            setEditWhats(user.whatsappNumber ?? '');
+                          }}>
+                          ແກ້ໄຂ
+                        </button>
+                        <button className="btn-ghost"
+                          onClick={() => { setEditing(null); setResetting(user.id); setPassword(''); }}>
                           ປ່ຽນລະຫັດຜ່ານ
                         </button>
                         <button

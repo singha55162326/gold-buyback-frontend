@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { TableStateRow } from '@/components/query-state';
 import { formatLak, formatWeight, formatDate } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
-import type { PagedResult } from '@/components/date-range';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 
 interface Summary { side: 'AP' | 'AR'; startG: string; netMovementG: string; totalG: string; totalBaht: string }
 interface PartnerRow {
@@ -36,10 +36,18 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
     queryKey: ['ledger', 'ap-ar', 'gold', 'partners'],
     queryFn: () => api.get<PartnerRow[]>('/ledger/ap-ar/gold/partners'),
   });
-  const { data: history = [], isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
-    queryKey: ['ledger', 'ap-ar', 'gold', 'history'],
-    queryFn: () => api.get<PagedResult<HistoryRow>>('/ledger/ap-ar/gold/history?all=true').then((r) => r.rows),
-  });
+  /*
+   * ປະຫວັດ: ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້ ແລະ ກວ້າງອອກໄດ້ຈາກແຖບ filter (ທີ່ລູກຄ້າຂໍ).
+   * ແຕ່ກ່ອນດຶງ `all=true` ທັງໝົດ ຊຶ່ງຍິ່ງນານຍິ່ງໜັກ ແລະ ບໍ່ມີວິທີເລືອກວັນ.
+   */
+  const historyRange = useHistoryRange<HistoryRow>(
+    ['ledger', 'ap-ar', 'gold', 'history'],
+    '/ledger/ap-ar/gold/history',
+  );
+  const history = historyRange.rows;
+  const historyFailed = historyRange.isError;
+  const historyError = historyRange.error;
+  const refetchHistory = historyRange.refetch;
 
   return (
     <div className="space-y-6">
@@ -131,6 +139,7 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
 
       <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ປະຫວັດ AP-AR (GOLD)</h2></div>
+        <DateRangeFilter history={historyRange} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label={`ປະຫວັດ AP-AR (GOLD)`}>
           <table className="table">
             <thead>

@@ -11,6 +11,8 @@ import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import type { PagedResult } from '@/components/date-range';
 import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
+import { MultiPayment, newPaymentLines, paymentPayload } from '@/components/multi-payment';
+import type { PaymentLine } from '@/components/multi-payment';
 
 interface GoldType { id: string; nameLo: string }
 interface GoldItem { id: string; nameLo: string }
@@ -72,6 +74,8 @@ export default function ExchangePage() {
   const [newLines, setNewLines] = useState<NewLine[]>([emptyNew()]);
   const [remainingLines, setRemainingLines] = useState<RemainingLine[]>([]);
   const [preview, setPreview] = useState<Preview | null>(null);
+  // ຈ່າຍເງິນໃຫ້ລູກຄ້າ: ສົດ ແລະ ໂອນ ແຍກແຖວກັນ, ຫຼາຍສະກຸນເງິນໃນລາຍການດຽວ.
+  const [payments, setPayments] = useState<PaymentLine[]>(newPaymentLines);
   const [error, setError] = useState<string | null>(null);
 
   const { data: goldTypes = [], isError: goldTypesFailed, error: goldTypesError, refetch: refetchGoldTypes } = useQuery({
@@ -152,12 +156,14 @@ export default function ExchangePage() {
   }, [payload]);
 
   const create = useMutation({
-    mutationFn: () => api.post('/exchange', { ...payload, phone }),
+    mutationFn: () =>
+      api.post('/exchange', { ...payload, phone, payments: paymentPayload(payments) }),
     onSuccess: () => {
       setShowForm(false);
       toast.success('ດຳເນີນການສຳເລັດ');
       setPhone(''); setOldLines([emptyOld()]); setNewLines([emptyNew()]);
       setRemainingLines([]); setPreview(null); setError(null);
+      setPayments(newPaymentLines());
       void queryClient.invalidateQueries({ queryKey: ['exchange'] });
     },
     onError: (e) => {
@@ -174,7 +180,11 @@ export default function ExchangePage() {
   const setRemaining = (i: number, patch: Partial<RemainingLine>) =>
     setRemainingLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
 
-  const canSave = /^\d{8}$/.test(phone) && preview?.isBalanced === true;
+  // ແຖວໂອນ ຕ້ອງເລືອກທະນາຄານ ກ່ອນບັນທຶກໄດ້ (server ກວດຊ້ຳອີກຮອບ).
+  const paymentLines = paymentPayload(payments);
+  const bankLegReady = paymentLines.every((l) => l.method !== 'BANK' || Boolean(l.bankAccountId));
+  const canSave =
+    /^\d{8}$/.test(phone) && preview?.isBalanced === true && bankLegReady;
 
   return (
     <div className="space-y-6">
@@ -359,6 +369,15 @@ export default function ExchangePage() {
                 value={preview ? formatLak(preview.totalPayable) : '—'} strong />
             </div>
           </div>
+
+          {/* ຮ້ານຈ່າຍອອກໃຫ້ລູກຄ້າ ສະນັ້ນໃຊ້ເຣດຊື້ຄືນ ຄືກັນກັບ Buyback. */}
+          <MultiPayment
+            lines={payments}
+            onChange={setPayments}
+            owedLak={preview?.totalPayable}
+            direction="out"
+            labelLo="ການຈ່າຍເງິນ — ສົດ / ໂອນ (ແຍກແຖວໄດ້)"
+          />
         </div>
 
         <div className="p-5">

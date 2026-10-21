@@ -47,6 +47,10 @@ export default function SkusPage() {
   const [nameLo, setNameLo] = useState('');
   const [weightG, setWeightG] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // ຕົວກອງຂອງ "ລາຍການ SKU" ຂ້າງລຸ່ມ — ແຍກຈາກ goldItemId ຂອງຟອມສ້າງ,
+  // ບໍ່ດັ່ງນັ້ນການເລືອກກອງຈະໄປປ່ຽນສິ່ງທີ່ກຳລັງຈະບັນທຶກ.
+  const [filterItemId, setFilterItemId] = useState('');
+  const [search, setSearch] = useState('');
 
   const { data: goldItems = [], isError: goldItemsFailed, error: goldItemsError, refetch: refetchGoldItems } = useQuery({
     queryKey: ['catalog', 'gold-items'],
@@ -88,7 +92,12 @@ export default function SkusPage() {
 
   const canSave = Boolean(goldItemId && fullSkuName);
 
-  const pager = usePagination(skus);
+  const visibleSkus = skus.filter(
+    (s) =>
+      (!filterItemId || s.goldItem.id === filterItemId) &&
+      (!search.trim() || s.fullSkuName.toLowerCase().includes(search.trim().toLowerCase())),
+  );
+  const pager = usePagination(visibleSkus);
 
   return (
     <div className="space-y-6">
@@ -198,7 +207,30 @@ export default function SkusPage() {
       <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ລາຍການ SKU</h2>
-          <span className="text-xs text-muted">{skus.length} ລາຍການ</span>
+          <span className="text-xs text-muted">
+            {visibleSkus.length === skus.length
+              ? `${skus.length} ລາຍການ`
+              : `${visibleSkus.length} / ${skus.length} ລາຍການ`}
+          </span>
+        </div>
+        <div className="filter-bar">
+          <div className="filter-dates">
+            <span className="filter-select-label">ລາຍການຄຳ</span>
+            <select className="filter-date" aria-label="ກອງຕາມລາຍການຄຳ"
+              value={filterItemId} onChange={(e) => setFilterItemId(e.target.value)}>
+              <option value="">— ທັງໝົດ —</option>
+              {goldItems.map((i) => <option key={i.id} value={i.id}>{i.nameLo}</option>)}
+            </select>
+            <input className="filter-date" type="search" aria-label="ຄົ້ນຫາຊື່ SKU"
+              placeholder="ຄົ້ນຫາຊື່ SKU" value={search}
+              onChange={(e) => setSearch(e.target.value)} />
+            {(filterItemId || search) && (
+              <button type="button" className="filter-clear"
+                onClick={() => { setFilterItemId(''); setSearch(''); }}>
+                ລ້າງ
+              </button>
+            )}
+          </div>
         </div>
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການ SKU">
           <table className="table">
@@ -217,8 +249,8 @@ export default function SkusPage() {
                 isLoading={skusLoading}
                 isError={skusFailed}
                 error={skusError}
-                isEmpty={skus.length === 0}
-                emptyText="ຍັງບໍ່ມີ SKU"
+                isEmpty={visibleSkus.length === 0}
+                emptyText={skus.length === 0 ? 'ຍັງບໍ່ມີ SKU' : 'ບໍ່ພົບ SKU ຕາມທີ່ກອງ'}
                 onRetry={() => void refetchSkus()}
                 dense
               />

@@ -8,7 +8,7 @@ import { formatMoney, formatDate } from '@/lib/format';
 import { NumberInput } from './number-input';
 import { PageHead } from './page-head';
 import { StatCard } from './stat-card';
-import type { PagedResult } from '@/components/date-range';
+import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 
 interface Total { currency: 'LAK' | 'THB' | 'USD'; opening: string; increases: string; decreases: string; net: string }
 interface PartnerRow {
@@ -63,10 +63,15 @@ export function ApArCashModule({
     queryKey: ['finance', 'ap-ar', side, 'partners'],
     queryFn: () => api.get<PartnerRow[]>(`/finance/ap-ar/${side}/partners`),
   });
-  const { data: history = [], isError: historyFailed, error: historyError, refetch: refetchHistory } = useQuery({
-    queryKey: ['finance', 'ap-ar', side, 'history'],
-    queryFn: () => api.get<PagedResult<HistoryRow>>(`/finance/ap-ar/${side}/history?all=true`).then((r) => r.rows),
-  });
+  // ປະຫວັດ: ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້, ກວ້າງອອກໄດ້ຈາກແຖບ filter.
+  const historyRange = useHistoryRange<HistoryRow>(
+    ['finance', 'ap-ar', side, 'history'],
+    `/finance/ap-ar/${side}/history`,
+  );
+  const history = historyRange.rows;
+  const historyFailed = historyRange.isError;
+  const historyError = historyRange.error;
+  const refetchHistory = historyRange.refetch;
   const { data: partners = [] } = useQuery({
     queryKey: ['catalog', 'partners'],
     queryFn: () => api.get<Partner[]>('/catalog/partners'),
@@ -269,6 +274,7 @@ export function ApArCashModule({
 
       <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">History {side} (Cash)</h2></div>
+        <DateRangeFilter history={historyRange} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label={`History ${side} (Cash)`}>
           <table className="table">
             <thead>
