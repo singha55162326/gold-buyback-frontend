@@ -1,8 +1,14 @@
 'use client';
 
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import type { Role } from '@/lib/nav';
+import { Dialog } from './dialog';
+import { NumberInput } from './number-input';
+
+type Currency = 'LAK' | 'THB' | 'USD';
+const CURRENCIES: Currency[] = ['LAK', 'THB', 'USD'];
 
 interface Shift {
   id: string;
@@ -11,7 +17,8 @@ interface Shift {
   closedAt: string | null;
 }
 
-const SHIFT_ROLES: Role[] = ['PAYMENT', 'VALUER'];
+// Admin/Manager ບໍ່ຖືກບັງຄັບໃຫ້ເປີດກະ ແຕ່ຕ້ອງເປີດໄດ້ ຖ້າຢາກເຮັດທຸລະກຳເອງ.
+const SHIFT_ROLES: Role[] = ['PAYMENT', 'VALUER', 'ADMIN', 'MANAGER'];
 
 /**
  * TOR §4 / §5: PAYMENT and VALUER must open a shift before transacting, and
@@ -31,6 +38,34 @@ export function ShiftBanner({ role }: { role: Role }) {
   const open = useMutation({
     mutationFn: () => api.post<Shift>('/shifts/open'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['shift', 'me'] }),
+  });
+
+  /*
+   * ປິດກະ ຕ້ອງຢູ່ບ່ອນດຽວກັນກັບ ເປີດກະ.
+   *
+   * ແຕ່ກ່ອນມີແຕ່ປຸ່ມເປີດ ສ່ວນການປິດຢູ່ຝັ່ງ API ຢ່າງດຽວ — ພະນັກງານຈຶ່ງປິດກະ
+   * ບໍ່ໄດ້ ແລະ ເງິນທ້າຍກະບໍ່ເຄີຍຖືກສົ່ງໃຫ້ Financial Controller ອະນຸມັດ.
+   */
+  const [closing, setClosing] = useState(false);
+  const [counts, setCounts] = useState<Record<Currency, string>>({ LAK: '', THB: '', USD: '' });
+  const [note, setNote] = useState('');
+
+  const close = useMutation({
+    mutationFn: () =>
+      api.post('/shifts/close', {
+        balances: CURRENCIES.filter((c) => counts[c].trim() !== '').map((currency) => ({
+          currency,
+          amount: counts[currency].replace(/,/g, '').trim(),
+        })),
+        note: note || undefined,
+      }),
+    onSuccess: () => {
+      setClosing(false);
+      setCounts({ LAK: '', THB: '', USD: '' });
+      setNote('');
+      void queryClient.invalidateQueries({ queryKey: ['shift', 'me'] });
+      void queryClient.invalidateQueries({ queryKey: ['cash'] });
+    },
   });
 
   if (!enabled || isLoading) return null;
@@ -55,9 +90,53 @@ export function ShiftBanner({ role }: { role: Role }) {
 
   if (shift.status === 'OPEN') {
     return (
-      <Banner tone="ok">
-        <span>ກະເປີດຢູ່ — ສາມາດເຮັດທຸລະກຳໄດ້</span>
-      </Banner>
+      <>
+        <Banner tone="ok">
+          <span>ກະເປີດຢູ່ — ສາມາດເຮັດທຸລະກຳໄດ້</span>
+          <button className="btn-secondary text-xs" onClick={() => setClosing(true)}>
+            ປິດກະ
+          </button>
+        </Banner>
+
+        <Dialog
+          open={closing}
+          onClose={() => setClosing(false)}
+          title="ປິດກະ — ນັບເງິນທ້າຍກະ"
+          footer={
+            <>
+              <button className="btn-secondary" onClick={() => setClosing(false)}>ຍົກເລີກ</button>
+              <button className="btn-primary" disabled={close.isPending}
+                onClick={() => close.mutate()}>
+                {close.isPending ? 'ກຳລັງສົ່ງ...' : 'ສົ່ງໃຫ້ FC ອະນຸມັດ'}
+              </button>
+            </>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-3">
+            {CURRENCIES.map((currency) => (
+              <div key={currency}>
+                <label className="label" htmlFor={`close-${currency}`}>ຍອດນັບໄດ້ ({currency})</label>
+                <NumberInput id={`close-${currency}`} className="input num"
+                  decimals={currency === 'LAK' ? 0 : 2}
+                  value={counts[currency]}
+                  onValueChange={(v) => setCounts((p) => ({ ...p, [currency]: v }))} />
+              </div>
+            ))}
+          </div>
+          <div className="mt-4">
+            <label className="label" htmlFor="close-note">ໝາຍເຫດ</label>
+            <input id="close-note" className="input" value={note}
+              onChange={(e) => setNote(e.target.value)} />
+          </div>
+          {close.error instanceof ApiError && (
+            <div role="alert" className="notice status-danger mt-3">{close.error.message}</div>
+          )}
+          <p className="mt-2 text-xs text-muted">
+            ປິດກະແລ້ວ ເຮັດທຸລະກຳຕໍ່ບໍ່ໄດ້ຈົນກວ່າມື້ໃໝ່ · ຍອດເງິນທີ່ນັບໄດ້ຈະສົ່ງໃຫ້
+            Financial Controller ກວດ ແລະ ອະນຸມັດ
+          </p>
+        </Dialog>
+      </>
     );
   }
 

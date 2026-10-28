@@ -18,13 +18,45 @@ interface GoldType { id: string; code: string; nameLo: string }
 interface GoldItem { id: string; nameLo: string }
 interface BankAccount { id: string; code: string; nameLo: string }
 
-interface Preview {
-  kind: string;
+interface PreviewLine {
+  goldTypeId: string;
+  goldTypeNameLo: string;
+  weightG: string;
+  quantity: number;
   shopBuybackPrice: string;
   deduction: string;
   payableAmount: string;
   branch: string;
 }
+
+interface Preview {
+  kind: string;
+  shopBuybackPrice: string;
+  deduction: string;
+  /** ຍອດລວມທັງບິນ. */
+  payableAmount: string;
+  branch: string;
+  totalWeightG: string;
+  totalQuantity: number;
+  lines: PreviewLine[];
+}
+
+/** ແຖວລາຍການຄຳໃນຟອມ. */
+interface FormLine {
+  goldTypeId: string;
+  goldItemId: string;
+  weightG: string;
+  quantity: string;
+  goldPercent: string;
+  deduction: string;
+}
+
+const emptyLine = (): FormLine => ({
+  goldTypeId: '', goldItemId: '', weightG: '', quantity: '1', goldPercent: '', deduction: '',
+});
+
+/** ຈຳນວນທີ່ພິມຍັງບໍ່ຄົບ ນັບເປັນ 1. */
+const qty = (value: string) => Math.max(1, Math.trunc(Number(value) || 0) || 1);
 
 interface BuybackPayment {
   id: string; method: 'CASH' | 'BANK'; currency: string;
@@ -47,6 +79,18 @@ interface BuybackRow {
   updatedBy: string;
   payments: BuybackPayment[];
   goldItem: { nameLo: string } | null;
+  /** ລາຍການຄຳໃນບິນ — ບິນດຽວມີໄດ້ຫຼາຍແຖວ. */
+  lines: Array<{
+    id: string;
+    weightG: string;
+    quantity: number;
+    goldPercent: string | null;
+    shopBuybackPrice: string;
+    deduction: string;
+    payableAmount: string;
+    goldType: { nameLo: string };
+    goldItem: { nameLo: string } | null;
+  }>;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED';
   weightG: string;
   quantity: number;
@@ -82,12 +126,10 @@ export default function BuybackPage() {
 
   const [phone, setPhone] = useState('');
   const [source, setSource] = useState<'KPV' | 'OTHER_SHOP'>('KPV');
-  const [goldTypeId, setGoldTypeId] = useState('');
-  const [goldItemId, setGoldItemId] = useState('');
-  const [weightG, setWeightG] = useState('');
-  const [quantity, setQuantity] = useState(1);
-  const [goldPercent, setGoldPercent] = useState('');
-  const [deduction, setDeduction] = useState('');
+  // ບິນດຽວ Add ລາຍການຄຳໄດ້ຫຼາຍແຖວ (TOR §5.1 ຕາມທີ່ລູກຄ້າແຈ້ງ).
+  const [lines, setLines] = useState<FormLine[]>([emptyLine()]);
+  const setLine = (i: number, patch: Partial<FormLine>) =>
+    setLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   // ສົດ ແລະ ໂອນ ແຍກແຖວກັນ: one buyback may be paid part cash, part transfer,
   // and each leg carries its own currency and rate.
   const [payments, setPayments] = useState<PaymentLine[]>(newPaymentLines);
@@ -114,24 +156,30 @@ export default function BuybackPage() {
   const rowsError = history.error;
   const refetchRows = history.refetch;
 
+  /** ແຖວທີ່ພ້ອມຄິດລາຄາ — ຕ້ອງມີ ປະເພດຄຳ ແລະ ນ້ຳໜັກ. */
+  const readyLines = lines
+    .filter((l) => l.goldTypeId && l.weightG.trim() && Number(l.weightG) > 0)
+    .map((l) => ({
+      goldTypeId: l.goldTypeId,
+      goldItemId: l.goldItemId || undefined,
+      weightG: l.weightG.trim(),
+      quantity: qty(l.quantity),
+      goldPercent: l.goldPercent.trim() || undefined,
+      deduction: l.deduction.trim() || undefined,
+    }));
+  const linesKey = JSON.stringify(readyLines);
+
   /* Re-price whenever the inputs change. */
   useEffect(() => {
-    const ready = goldTypeId && weightG.trim() && Number(weightG) > 0;
-    if (!ready) {
+    const payloadLines = JSON.parse(linesKey) as typeof readyLines;
+    if (payloadLines.length === 0) {
       setPreview(null);
       return;
     }
     let cancelled = false;
     const timer = setTimeout(() => {
       api
-        .post<Preview>('/buyback/preview', {
-          source,
-          goldTypeId,
-          weightG: weightG.trim(),
-          quantity,
-          goldPercent: goldPercent.trim() || undefined,
-          deduction: deduction.trim() || undefined,
-        })
+        .post<Preview>('/buyback/preview', { source, lines: payloadLines })
         .then((result) => {
           if (!cancelled) {
             setPreview(result);
@@ -149,26 +197,21 @@ export default function BuybackPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [source, goldTypeId, weightG, quantity, goldPercent, deduction]);
+  }, [source, linesKey]);
 
   const create = useMutation({
     mutationFn: () =>
       api.post('/buyback', {
         phone,
         source,
-        goldTypeId,
-        goldItemId: goldItemId || undefined,
-        weightG: weightG.trim(),
-        quantity,
-        goldPercent: goldPercent.trim() || undefined,
-        deduction: deduction.trim() || undefined,
+        lines: readyLines,
         payments: paymentPayload(payments),
       }),
     onSuccess: () => {
       setShowForm(false);
       toast.success('ດຳເນີນການສຳເລັດ');
-      setPhone(''); setWeightG(''); setQuantity(1); setGoldPercent('');
-      setDeduction(''); setPayments(newPaymentLines()); setPreview(null); setError(null);
+      setPhone(''); setLines([emptyLine()]);
+      setPayments(newPaymentLines()); setPreview(null); setError(null);
       void queryClient.invalidateQueries({ queryKey: ['buyback'] });
     },
     onError: (e) => {
@@ -198,6 +241,7 @@ export default function BuybackPage() {
   const bankLegReady = paymentLines.every((l) => l.method !== 'BANK' || Boolean(l.bankAccountId));
   const canSave =
     /^\d{8}$/.test(phone) &&
+    readyLines.length > 0 &&
     preview !== null &&
     Number(preview.payableAmount) > 0 &&
     paymentLines.length > 0 &&
@@ -237,60 +281,109 @@ export default function BuybackPage() {
             </select>
           </div>
 
-          <div>
-            <label className="label" htmlFor="goldType">ປະເພດຄຳ</label>
-            <select id="goldType" className="input input-lg" value={goldTypeId}
-              onChange={(e) => setGoldTypeId(e.target.value)}>
-              <option value="">— ເລືອກປະເພດຄຳ —</option>
-              {goldTypes.map((t) => <option key={t.id} value={t.id}>{t.nameLo}</option>)}
-            </select>
+        </div>
+
+        {/* ລາຍການຄຳ — Add ໄດ້ຫຼາຍແຖວໃນບິນດຽວ (TOR §5.1 ຕາມທີ່ລູກຄ້າແຈ້ງ).
+            ແຕ່ລະແຖວຄິດລາຄາແຍກກັນຢູ່ server ແລ້ວລວມເປັນຍອດບິນ. */}
+        <div className="mt-5">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <span className="label mb-0">ລາຍການຄຳ</span>
+            <button type="button" className="btn-secondary"
+              onClick={() => setLines((p) => [...p, emptyLine()])}>
+              + ເພີ່ມແຖວ
+            </button>
           </div>
 
-          <div>
-            <label className="label" htmlFor="goldItem">ລາຍການຄຳ</label>
-            <select id="goldItem" className="input input-lg" value={goldItemId}
-              onChange={(e) => setGoldItemId(e.target.value)}>
-              <option value="">— ເລືອກລາຍການຄຳ —</option>
-              {goldItems.map((i) => <option key={i.id} value={i.id}>{i.nameLo}</option>)}
-            </select>
+          <div className="space-y-3">
+            {lines.map((line, i) => (
+              <div key={i} className={`grid gap-2 ${isBoiled
+                ? 'md:grid-cols-[1.2fr_1.2fr_1fr_0.7fr_0.8fr_auto]'
+                : 'md:grid-cols-[1.2fr_1.2fr_1fr_0.7fr_1fr_auto]'}`}>
+                <select className="input" aria-label={`ປະເພດຄຳ ແຖວທີ ${i + 1}`}
+                  value={line.goldTypeId}
+                  onChange={(e) => setLine(i, { goldTypeId: e.target.value })}>
+                  <option value="">— ປະເພດຄຳ —</option>
+                  {goldTypes.map((t) => <option key={t.id} value={t.id}>{t.nameLo}</option>)}
+                </select>
+
+                <select className="input" aria-label={`ລາຍການຄຳ ແຖວທີ ${i + 1}`}
+                  value={line.goldItemId}
+                  onChange={(e) => setLine(i, { goldItemId: e.target.value })}>
+                  <option value="">— ລາຍການຄຳ —</option>
+                  {goldItems.map((it) => <option key={it.id} value={it.id}>{it.nameLo}</option>)}
+                </select>
+
+                <NumberInput decimals={4} className="input num" placeholder="ນ້ຳໜັກ (g)"
+                  aria-label={`ນ້ຳໜັກ ແຖວທີ ${i + 1}`}
+                  value={line.weightG} onValueChange={(v) => setLine(i, { weightG: v })} />
+
+                <input className="input num" type="number" min={1} placeholder="1"
+                  aria-label={`ຈຳນວນ ແຖວທີ ${i + 1}`}
+                  value={line.quantity}
+                  onChange={(e) => setLine(i, { quantity: e.target.value })} />
+
+                {isBoiled ? (
+                  <NumberInput decimals={2} className="input num" placeholder="%ຄຳ"
+                    aria-label={`%ຄຳ ແຖວທີ ${i + 1}`}
+                    value={line.goldPercent} onValueChange={(v) => setLine(i, { goldPercent: v })} />
+                ) : (
+                  <NumberInput decimals={0} className="input num" placeholder="ຄ່າອ່ອນ/ຄ່າຫັກ"
+                    aria-label={`ຄ່າອ່ອນ ຄ່າຫັກ ແຖວທີ ${i + 1}`}
+                    value={line.deduction} onValueChange={(v) => setLine(i, { deduction: v })} />
+                )}
+
+                <button type="button" className="btn-secondary" disabled={lines.length === 1}
+                  aria-label={`ລຶບແຖວທີ ${i + 1}`}
+                  onClick={() => setLines((p) => p.filter((_, idx) => idx !== i))}>
+                  ລຶບ
+                </button>
+              </div>
+            ))}
           </div>
 
-          <div>
-            <label className="label" htmlFor="weightG">ນ້ຳໜັກ (g)</label>
-            <NumberInput decimals={4} id="weightG" className="input input-lg num" placeholder="15"
-              value={weightG} onValueChange={setWeightG} />
-          </div>
-
-          <div>
-            <label className="label" htmlFor="quantity">ຈຳນວນ</label>
-            <input id="quantity" className="input input-lg num" type="number" min={1}
-              value={quantity} onChange={(e) => setQuantity(Number(e.target.value) || 1)} />
-          </div>
-
-          {isBoiled && (
-            <div>
-              <label className="label" htmlFor="goldPercent">%ຄຳ</label>
-              <NumberInput decimals={2} id="goldPercent" className="input input-lg num" placeholder="96"
-                value={goldPercent} onValueChange={setGoldPercent} />
-            </div>
-          )}
-
-          {!isBoiled && (
-            <div>
-              <label className="label" htmlFor="deduction">ຄ່າອ່ອນ / ຄ່າຫັກ (ຕໍ່ຊິ້ນ)</label>
-              <NumberInput decimals={0} id="deduction" className="input input-lg num" placeholder="0"
-                value={deduction} onValueChange={setDeduction} />
+          {/* ລາຄາຕໍ່ແຖວ ຈາກ server — ຜູ້ປະເມີນຕ້ອງເຫັນວ່າແຖວໃດໄດ້ເທົ່າໃດ. */}
+          {preview && preview.lines?.length > 1 && (
+            <div className="table-wrap mt-3" tabIndex={0} role="region" aria-label="ລາຄາຕໍ່ແຖວ">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>ປະເພດຄຳ</th>
+                    <th className="text-right">ນ້ຳໜັກ (g)</th>
+                    <th className="text-right">ຈຳນວນ</th>
+                    <th className="text-right">ລາຄາຊື້ຄືນໜ້າຮ້ານ</th>
+                    <th className="text-right">ຄ່າອ່ອນ / ຄ່າຫັກ</th>
+                    <th className="text-right">ລາຄາທີ່ຕ້ອງຈ່າຍ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.lines.map((line, i) => (
+                    <tr key={i}>
+                      <td>{line.goldTypeNameLo}</td>
+                      <td className="num text-right">{formatWeight(line.weightG)}</td>
+                      <td className="num text-right">{line.quantity}</td>
+                      <td className="num text-right">{formatLak(line.shopBuybackPrice)}</td>
+                      <td className="num text-right">{formatLak(line.deduction)}</td>
+                      <td className="num text-right font-medium">{formatLak(line.payableAmount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
 
-        {/* Live §5.1 result */}
-        <div className="recessed mt-5 grid gap-4 rounded-xl p-4 sm:grid-cols-3 sm:p-5">
-          <Field labelLo="ລາຄາຊື້ຄືນໜ້າຮ້ານ" value={preview ? formatLak(preview.shopBuybackPrice) : '—'} />
-          <Field labelLo="ຄ່າອ່ອນ / ຄ່າຫັກ" value={preview ? formatLak(preview.deduction) : '—'} />
-          <Field labelLo="ລາຄາທີ່ຕ້ອງຈ່າຍ" value={preview ? formatLak(preview.payableAmount) : '—'} strong />
-          {preview && (
-            <div className="text-xs text-muted sm:col-span-3">
+        {/* Live §5.1 result — ຍອດລວມທັງບິນ */}
+        <div className="recessed mt-5 grid gap-4 rounded-xl p-4 sm:grid-cols-4 sm:p-5">
+          <Field labelLo="ລວມນ້ຳໜັກ (g)"
+            value={preview ? formatWeight(preview.totalWeightG) : '—'} />
+          <Field labelLo="ລວມຈຳນວນ" value={preview ? String(preview.totalQuantity) : '—'} />
+          <Field labelLo="ລວມລາຍການ" value={preview ? `${preview.lines.length} ແຖວ` : '—'} />
+          <Field labelLo="ລວມເງິນທີ່ຕ້ອງຈ່າຍ"
+            value={preview ? formatLak(preview.payableAmount) : '—'} strong />
+          {preview && preview.lines.length === 1 && (
+            <div className="text-xs text-muted sm:col-span-4">
+              ລາຄາຊື້ຄືນໜ້າຮ້ານ {formatLak(preview.shopBuybackPrice)} ·
+              ຄ່າອ່ອນ / ຄ່າຫັກ {formatLak(preview.deduction)} ·
               ສູດທີ່ໃຊ້: <span className="font-medium text-fg">{preview.branch}</span>
             </div>
           )}
@@ -355,7 +448,12 @@ export default function BuybackPage() {
                   <td>{formatDateTime(row.createdAt)}</td>
                   <td className="num">{row.customer.phone}</td>
                   <td>{row.source === 'KPV' ? 'ຄຳຮ້ານ KPV' : 'ຄຳຮ້ານອື່ນ'}</td>
-                  <td>{row.goldType.nameLo}</td>
+                  <td>
+                    {row.goldType.nameLo}
+                    {row.lines?.length > 1 && (
+                      <span className="text-muted"> +{row.lines.length - 1}</span>
+                    )}
+                  </td>
                   <td className="num text-right">{formatWeight(row.weightG)}</td>
                   <td className="num text-right">{row.goldPercent ? `${Number(row.goldPercent)}%` : '—'}</td>
                   <td className="num text-right">{row.quantity}</td>
@@ -385,12 +483,46 @@ export default function BuybackPage() {
                 {viewing === row.id && (
                   <tr>
                     <td colSpan={12} className="bg-recessed p-4">
-                      <div className="grid gap-4 sm:grid-cols-4">
-                        <Field labelLo="ລາຍການຄຳ" value={row.goldItem?.nameLo ?? '—'} />
-                        <Field labelLo="ນ້ຳໜັກ (g)" value={formatWeight(row.weightG)} />
-                        <Field labelLo="ຈຳນວນ" value={String(row.quantity)} />
-                        <Field labelLo="%ຄຳ" value={row.goldPercent ? `${Number(row.goldPercent)}%` : '—'} />
-                      </div>
+                      <div className="section-label">ລາຍການຄຳໃນບິນ</div>
+                      <table className="table mt-1">
+                        <thead>
+                          <tr>
+                            <th>ປະເພດຄຳ</th>
+                            <th>ລາຍການຄຳ</th>
+                            <th className="text-right">ນ້ຳໜັກ (g)</th>
+                            <th className="text-right">ຈຳນວນ</th>
+                            <th className="text-right">%ຄຳ</th>
+                            <th className="text-right">ລາຄາທີ່ຕ້ອງຈ່າຍ</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(row.lines ?? []).length === 0 && (
+                            <tr>
+                              {/* ບິນເກົ່າກ່ອນມີຕາຕະລາງແຖວ — ສະແດງຈາກຫົວບິນ. */}
+                              <td>{row.goldType.nameLo}</td>
+                              <td>{row.goldItem?.nameLo ?? '—'}</td>
+                              <td className="num text-right">{formatWeight(row.weightG)}</td>
+                              <td className="num text-right">{row.quantity}</td>
+                              <td className="num text-right">
+                                {row.goldPercent ? `${Number(row.goldPercent)}%` : '—'}
+                              </td>
+                              <td className="num text-right">{formatLak(row.payableAmount)}</td>
+                            </tr>
+                          )}
+                          {(row.lines ?? []).map((line) => (
+                            <tr key={line.id}>
+                              <td>{line.goldType.nameLo}</td>
+                              <td>{line.goldItem?.nameLo ?? '—'}</td>
+                              <td className="num text-right">{formatWeight(line.weightG)}</td>
+                              <td className="num text-right">{line.quantity}</td>
+                              <td className="num text-right">
+                                {line.goldPercent ? `${Number(line.goldPercent)}%` : '—'}
+                              </td>
+                              <td className="num text-right font-medium">{formatLak(line.payableAmount)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                       <div className="section-label mt-4">
                         ລາຍລະອຽດ payment
                       </div>

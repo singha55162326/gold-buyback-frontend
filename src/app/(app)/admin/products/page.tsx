@@ -7,6 +7,7 @@ import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
 import { NumberInput } from '@/components/number-input';
 import { TableStateRow } from '@/components/query-state';
+import { PriceChart, type PricePoint } from '@/components/price-chart';
 import { formatLak, formatWeight, formatDate, formatDateTime } from '@/lib/format';
 
 interface PriceLine {
@@ -69,6 +70,16 @@ export default function ProductsPage() {
     queryKey: ['pricing', 'history'],
     queryFn: () => api.get<HistoryRow[]>('/pricing/history?limit=30'),
   });
+
+  /** ຈຸດກຼາບ = ແຖວ 1 ບາດ (15 g) ຂອງແຕ່ລະ snapshot. */
+  const chartPoints: PricePoint[] = history
+    .map((row) => {
+      const oneBaht = row.lines?.find((l) => Number(l.displayWeightG) === 15);
+      return oneBaht
+        ? { date: row.date, sellPrice: oneBaht.sellPrice, buybackPrice: oneBaht.buybackPrice }
+        : null;
+    })
+    .filter((p): p is PricePoint => p !== null);
 
   // 404 on /pricing/current means "no price set yet" (empty text), not a failure.
   const currentFailed = currentFailedRaw && !(currentError instanceof ApiError && currentError.status === 404);
@@ -210,6 +221,10 @@ export default function ProductsPage() {
           </table>
         </div>
       </div>
+
+      {/* ກຼາບລາຄາ ຮູບປະພັນ 1 ບາດ — ຈາກ snapshot ດຽວກັນກັບຕາຕະລາງປະຫວັດ,
+          ສະນັ້ນຕົວເລກໃນກຼາບ ກັບ ໃນຕາຕະລາງ ແມ່ນຊຸດດຽວກັນສະເໝີ. */}
+      <PriceChart points={chartPoints} />
 
       {/* History Products — 30 rows (TOR §3.1) */}
       <div data-fade className="card">

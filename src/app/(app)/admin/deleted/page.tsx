@@ -10,6 +10,8 @@ import { formatDateTime } from '@/lib/format';
 interface DeletedRow {
   entity: string; labelLo: string; id: string; code: string;
   detail: string; deletedAt: string | null;
+  /** ຜູ້ທີ່ກົດລຶບ — ມາຈາກ Audit Log. */
+  deletedBy: string;
 }
 
 /** TOR §3.7 — Deleted List. */
@@ -42,11 +44,12 @@ export default function DeletedListPage() {
                 <th>ລະຫັດລາຍການ</th>
                 <th>ລາຍລະອຽດ</th>
                 <th>ວັນທີລຶບ</th>
+                <th>ຜູ້ລຶບ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={4}
+                colSpan={5}
                 isLoading={isLoading}
                 isError={isError}
                 error={error}
@@ -60,6 +63,7 @@ export default function DeletedListPage() {
                   <td className="font-mono text-xs">{row.code}</td>
                   <td className="num text-muted">{row.detail || '—'}</td>
                   <td>{formatDateTime(row.deletedAt)}</td>
+                  <td className="text-muted">{row.deletedBy}</td>
                 </tr>
               ))}
             </tbody>

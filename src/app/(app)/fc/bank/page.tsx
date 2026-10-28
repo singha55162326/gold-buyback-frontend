@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatMoney, formatDateTime, formatByCurrency } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { Dialog } from '@/components/dialog';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { BankBalanceCards } from '@/components/bank-balance-cards';
 import { NumberInput } from '@/components/number-input';
@@ -22,6 +23,8 @@ interface Bank { id: string; nameLo: string }
 interface Row {
   id: string; type: string; currency: string; amount: string;
   note: string | null; createdAt: string; bankAccount: { nameLo: string };
+  /** ຜູ້ລົງລາຍການ — ມາຈາກ API. */
+  createdBy: string;
 }
 
 /**
@@ -45,6 +48,8 @@ export default function FcBankPage() {
   const [currency, setCurrency] = useState<'LAK' | 'THB' | 'USD'>('LAK');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
+  // ບັນທຶກທຸລະກຳຜ່ານ Modal ຕາມທີ່ລູກຄ້າຂໍ — ໜ້າຈໍຫຼັກຈຶ່ງເຫຼືອແຕ່ຍອດ ແລະ ປະຫວັດ.
+  const [showForm, setShowForm] = useState(false);
   const [editingNet, setEditingNet] = useState<string | null>(null);
   const [netAmount, setNetAmount] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +79,7 @@ export default function FcBankPage() {
         bankAccountId, type, currency,
         amount: amount.replace(/,/g, '').trim(), note: note || undefined,
       }),
-    onSuccess: () => { setAmount(''); setNote(''); setError(null); invalidate(); },
+    onSuccess: () => { setAmount(''); setNote(''); setError(null); setShowForm(false); invalidate(); },
     onError: (e) => {
       const detail = e instanceof ApiError ? e.message : 'ບັນທຶກບໍ່ສຳເລັດ';
       setError(detail);
@@ -104,6 +109,11 @@ export default function FcBankPage() {
       <PageHead
         title="Module Bank"
         subtitle="ຍອດ Bank ຕົວຈິງ ແຍກຕາມທະນາຄານ ແລະ ສະກຸນເງິນ · ຍອດເງິນຂາດດຸນ (TOR §3.7)"
+        actions={
+          <button className="btn-primary" onClick={() => setShowForm(true)}>
+            + ບັນທຶກທຸລະກຳ Bank
+          </button>
+        }
       />
 
       {banksQuery.isError && (
@@ -155,9 +165,22 @@ export default function FcBankPage() {
         )}
       </div>
 
-      <div data-fade className="card p-5">
-        <h2 className="card-title mb-4">ບັນທຶກທຸລະກຳ Bank</h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <Dialog
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        title="ບັນທຶກທຸລະກຳ Bank"
+        size="lg"
+        footer={
+          <>
+            <button className="btn-secondary" onClick={() => setShowForm(false)}>ຍົກເລີກ</button>
+            <button className="btn-primary" disabled={!bankAccountId || !amount.trim() || create.isPending}
+              onClick={() => create.mutate()}>
+              {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
+            </button>
+          </>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className="label" htmlFor="bank">ທະນາຄານ</label>
             <select id="bank" className="input" value={bankAccountId}
@@ -188,18 +211,13 @@ export default function FcBankPage() {
             <NumberInput id="amt" className="input num" decimals={currency === 'LAK' ? 0 : 2} aria-describedby={error ? 'bank-error' : undefined} value={amount}
               onValueChange={setAmount} />
           </div>
-          <div>
+          <div className="sm:col-span-2">
             <label className="label" htmlFor="note">Note</label>
             <input id="note" className="input" value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
         </div>
-        <div className="mt-4">
-          <button className="btn-primary min-h-[54px] w-full sm:w-auto sm:min-w-[240px]" disabled={!bankAccountId || !amount.trim() || create.isPending}
-            onClick={() => create.mutate()}>
-            {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
-          </button>
-        </div>
-      </div>
+        {error && <div role="alert" className="notice status-danger mt-3">{error}</div>}
+      </Dialog>
 
       <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ປະຫວັດ Bank</h2></div>
@@ -214,11 +232,12 @@ export default function FcBankPage() {
                 <th>ສະກຸນເງິນ</th>
                 <th className="text-right">ຈຳນວນເງິນ</th>
                 <th>ໝາຍເຫດ</th>
+                <th>ຜູ້ບັນທຶກ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={6}
+                colSpan={7}
                 isLoading={history.isLoading}
                 isError={history.isError}
                 error={history.error}
@@ -234,6 +253,7 @@ export default function FcBankPage() {
                   <td>{row.currency}</td>
                   <td className="num text-right font-medium">{formatByCurrency(row.amount, row.currency)}</td>
                   <td className="text-muted">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.createdBy}</td>
                 </tr>
               ))}
             </tbody>

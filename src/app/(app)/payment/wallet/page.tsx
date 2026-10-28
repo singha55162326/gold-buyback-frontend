@@ -13,6 +13,7 @@ import { statusClass } from '@/lib/status';
 import { StatCard } from '@/components/stat-card';
 
 interface Balance { currency: 'LAK' | 'THB' | 'USD'; inflow: string; outflow: string; balance: string }
+interface Wallet { shiftId: string | null; openedAt: string | null; balances: Balance[] }
 interface Request {
   id: string; direction: 'WITHDRAW' | 'HANDOVER'; status: string;
   note: string | null; createdAt: string;
@@ -43,10 +44,17 @@ export default function WalletPage() {
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: balances = [], isError: balancesFailed, error: balancesError, refetch: refetchBalances } = useQuery({
-    queryKey: ['cash', 'balances'],
-    queryFn: () => api.get<Balance[]>('/cash/balances'),
+  /*
+   * ຍອດໃນກະເປົ໋າ ບໍ່ແມ່ນຍອດເງິນສົດຂອງຮ້ານ.
+   *
+   * ມັນຄືເງິນທີ່ພະນັກງານຄົນນີ້ຖືຢູ່ໃນກະນີ້: ເຂົ້າຈາກການເບີກ ແລະ ສິນເຊື່ອ,
+   * ອອກຕອນຈ່າຍ Buyback / ປ່ຽນເປັນເງິນ ແລະ ຕອນມອບເງິນຄືນ.
+   */
+  const { data: wallet, isError: balancesFailed, error: balancesError, refetch: refetchBalances } = useQuery({
+    queryKey: ['cash', 'wallet'],
+    queryFn: () => api.get<Wallet>('/cash/wallet'),
   });
+  const balances = wallet?.balances ?? [];
   const { data: requests = [], isError: requestsFailed, error: requestsError, refetch: refetchRequests } = useQuery({
     queryKey: ['cash', 'requests'],
     queryFn: () => api.get<Request[]>('/cash/requests'),
@@ -105,9 +113,16 @@ export default function WalletPage() {
       />
       {balancesFailed && <QueryErrorNotice error={balancesError} onRetry={() => void refetchBalances()} />}
 
+      {!wallet?.shiftId && (
+        <div data-fade className="notice status-warning">
+          ຍັງບໍ່ໄດ້ເປີດກະ — ຍອດໃນກະເປົ໋າຈະເປັນ 0 ຈົນກວ່າຈະເປີດກະ ແລະ ເບີກເງິນ
+        </div>
+      )}
+
       <div className="stat-grid">
         {balances.map((b) => (
-          <StatCard key={b.currency} label={`ຍອດຄົງເຫຼືອ ${b.currency}`} value={formatMoney(b.balance)} />
+          <StatCard key={b.currency} label={`ຍອດຄົງເຫຼືອ ${b.currency}`} value={formatMoney(b.balance)}
+            sub={`ເຂົ້າ ${formatMoney(b.inflow)} · ອອກ ${formatMoney(b.outflow)}`} />
         ))}
       </div>
 

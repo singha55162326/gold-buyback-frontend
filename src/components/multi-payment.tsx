@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { formatLak } from '@/lib/format';
+import { NumberInput } from './number-input';
 
 export type PayMethod = 'CASH' | 'BANK';
 export type PayCurrency = 'LAK' | 'THB' | 'USD';
@@ -164,13 +165,15 @@ export function MultiPayment({
 
               <div className="sm:col-span-3">
                 <label className="label" htmlFor={`pay-amt-${i}`}>ຈຳນວນ</label>
-                <input
+                {/* ຕົວຂັ້ນຫຼັກພັນ ແລະ ຈຸດທົດສະນິຍົມຕາມສະກຸນເງິນ: ກີບບໍ່ມີອັດຕາ
+                    ຍ່ອຍ, ສ່ວນ THB/USD ມີ 2 ຕຳແໜ່ງ. */}
+                <NumberInput
                   id={`pay-amt-${i}`}
                   className="input num"
-                  inputMode="decimal"
+                  decimals={line.currency === 'LAK' ? 0 : 2}
                   placeholder="0"
                   value={line.amount}
-                  onChange={(e) => set(i, { amount: e.target.value })}
+                  onValueChange={(v) => set(i, { amount: v })}
                 />
                 {line.currency !== 'LAK' && (
                   <div className="num mt-1 text-xs text-muted">

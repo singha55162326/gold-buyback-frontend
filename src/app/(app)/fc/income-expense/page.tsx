@@ -16,6 +16,8 @@ import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 interface Category { id: string; code: string; nameLo: string; kind: 'INCOME' | 'EXPENSE' }
 interface Bank { id: string; nameLo: string }
 interface Row {
+  /** ຜູ້ລົງລາຍການ — ມາຈາກ API. */
+  createdBy: string;
   id: string; code: string; kind: 'INCOME' | 'EXPENSE'; currency: string;
   amount: string; method: string; note: string | null; createdAt: string;
   category: { nameLo: string }; bankAccount: { nameLo: string } | null;
@@ -158,11 +160,12 @@ export default function IncomeExpensePage() {
                 <th>ສະກຸນເງິນ</th>
                 <th className="text-right">ຈຳນວນເງິນ</th>
                 <th>ໝາຍເຫດ</th>
+                <th>ຜູ້ບັນທຶກ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={9}
+                colSpan={10}
                 isLoading={history.isLoading}
                 isError={history.isError}
                 error={history.error}
@@ -185,6 +188,7 @@ export default function IncomeExpensePage() {
                   <td>{row.currency}</td>
                   <td className="num text-right font-medium">{formatByCurrency(row.amount, row.currency)}</td>
                   <td className="text-muted">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.createdBy}</td>
                 </tr>
               ))}
             </tbody>

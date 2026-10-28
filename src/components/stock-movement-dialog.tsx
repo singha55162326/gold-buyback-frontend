@@ -13,21 +13,28 @@ export type MovementKind = 'IN' | 'OUT' | 'TRANSFER';
 
 interface Sku { id: string; fullSkuName: string; weightG: string }
 interface GoldType { id: string; nameLo: string }
+interface GoldItem { id: string; nameLo: string }
 interface Partner { id: string; nameLo: string; code: string; direction: string }
 interface Wac { pricePerG: string; pricePerBaht: string }
 
 interface Line {
   goldSkuId: string;
   goldTypeId: string;
+  /** ລາຍການຄຳ — Stock (OLD) ເທົ່ານັ້ນ. */
+  goldItemId: string;
   /** ໝວດ (ຮູບປະພັນ / ແທ່ງ) — ຖາມສະເພາະ Stock OLD IN. */
   oldCategory: 'JEWELRY' | 'BAR';
   weightG: string;
-  quantity: number;
+  /** ເກັບເປັນ string ເພື່ອໃຫ້ລຶບຄ່າເກົ່າອອກແລ້ວພິມໃໝ່ໄດ້ ບໍ່ຖືກບັງຄັບເປັນ 1. */
+  quantity: string;
 }
 
 const emptyLine = (): Line => ({
-  goldSkuId: '', goldTypeId: '', oldCategory: 'JEWELRY', weightG: '', quantity: 1,
+  goldSkuId: '', goldTypeId: '', goldItemId: '', oldCategory: 'JEWELRY', weightG: '', quantity: '1',
 });
+
+/** ຈຳນວນທີ່ພິມຍັງບໍ່ຄົບ ("" ຫຼື "0") ນັບເປັນ 1 ຕອນຄຳນວນ ແລະ ຕອນບັນທຶກ. */
+const qty = (value: string) => Math.max(1, Math.trunc(Number(value) || 0) || 1);
 
 /**
  * The Stock IN / OUT / Transfer dialogs (TOR §7.2, §7.3).
@@ -58,6 +65,8 @@ export function StockMovementDialog({
   );
   const [transformType, setTransformType] = useState<'' | 'DYE' | 'ETCH' | 'MELT'>('');
   const [goldPercent, setGoldPercent] = useState('');
+  // ໝວດຄຳເກົ່າ — ໜຶ່ງຄ່າຕໍ່ລາຍການ, ຢູ່ຂ້າງ ປະເພດຄຳ ຕາມທີ່ລູກຄ້າຂໍ.
+  const [oldCategory, setOldCategory] = useState<'JEWELRY' | 'BAR'>('JEWELRY');
   const [lines, setLines] = useState<Line[]>([emptyLine()]);
   const [totalCost, setTotalCost] = useState('');
   const [laborFeeThb, setLaborFeeThb] = useState('');
@@ -72,6 +81,10 @@ export function StockMovementDialog({
     queryKey: ['catalog', 'gold-types'],
     queryFn: () => api.get<GoldType[]>('/catalog/gold-types?stockOnly=true'),
   });
+  const goldItemsQ = useQuery({
+    queryKey: ['catalog', 'gold-items'],
+    queryFn: () => api.get<GoldItem[]>('/catalog/gold-items'),
+  });
   const partnersQ = useQuery({
     queryKey: ['catalog', 'partners'],
     queryFn: () => api.get<Partner[]>('/catalog/partners'),
@@ -84,27 +97,24 @@ export function StockMovementDialog({
   const skus = skusQ.data ?? [];
   const goldTypes = goldTypesQ.data ?? [];
   const partners = partnersQ.data ?? [];
+  const goldItems = goldItemsQ.data ?? [];
   const wac = wacQ.data;
   const failedQuery = [skusQ, goldTypesQ, partnersQ, wacQ].find((q) => q.isError);
   const retryFailed = () => {
     for (const q of [skusQ, goldTypesQ, partnersQ, wacQ]) if (q.isError) void q.refetch();
   };
 
-  /** IN sources vs OUT destinations differ (TOR §7.2). */
+  /**
+   * IN sources vs OUT destinations differ (TOR §7.2).
+   *
+   * ກອງຕາມ `direction` ທີ່ຕັ້ງໄວ້ໃນ ຈັດການ Supplier ບໍ່ແມ່ນລາຍຊື່ code ທີ່
+   * ຂຽນຕາຍໃນໜ້າຈໍ — ບໍ່ດັ່ງນັ້ນ ແຫຼ່ງທີ່ຮ້ານເພີ່ມເອງຈະບໍ່ປາກົດໃຫ້ເລືອກ
+   * (ລູກຄ້າແຈ້ງວ່າ "ບໍ່ມີແຫຼ່ງທີ່ມາທີ່ຕັ້ງໄວ້ມາໃຫ້ເລືອກ").
+   */
   const partnerOptions = useMemo(() => {
-    if (kind === 'IN') {
-      const codes =
-        scope === 'NEW'
-          ? ['EASY', 'FACTORY', 'OUTSOURCE_SMITH', 'OTHER']
-          : ['CASHIER'];
-      return partners.filter((p) => codes.includes(p.code));
-    }
-    const codes =
-      scope === 'NEW'
-        ? ['CABINET', 'WHOLESALES', 'WITHDRAW']
-        : ['OUTSOURCE_SMITH', 'OTHER', 'FACTORY'];
-    return partners.filter((p) => codes.includes(p.code));
-  }, [partners, kind, scope]);
+    const wanted = kind === 'IN' ? 'IN' : 'OUT';
+    return partners.filter((p) => p.direction === wanted || p.direction === 'BOTH');
+  }, [partners, kind]);
 
   const selectedPartner = partners.find((p) => p.id === partnerId);
   const isFactoryOut = kind === 'OUT' && selectedPartner?.code === 'FACTORY';
@@ -121,14 +131,16 @@ export function StockMovementDialog({
    * server ກໍບັງຄັບເຊັ່ນກັນ, ຟອມນີ້ພຽງແຕ່ບໍ່ຖາມສິ່ງທີ່ບໍ່ມີທາງເລືອກ.
    */
   const isOldIn = kind === 'IN' && scope === 'OLD';
+  /** ຄຳເກົ່າອອກ: ນັບເປັນນ້ຳໜັກລ້ວນ ບໍ່ມີຈຳນວນ ແລະ ບໍ່ເລືອກລາຍການຄຳ. */
+  const isOldOut = kind === 'OUT' && scope === 'OLD';
 
   const totals = useMemo(() => {
     const goldG = lines.reduce((sum, l) => {
       const w = l.weightG.trim();
       if (!/^\d+(\.\d+)?$/.test(w)) return sum;
-      return sum.plus(dec(w).mul(l.quantity));
+      return sum.plus(dec(w).mul(qty(l.quantity)));
     }, dec(0));
-    const quantity = lines.reduce((sum, l) => sum + l.quantity, 0);
+    const quantity = lines.reduce((sum, l) => sum + qty(l.quantity), 0);
 
     // IN derives the rate from what was paid; OUT/TRANSFER use WAC.
     const cost = totalCost.replace(/,/g, '').trim();
@@ -162,9 +174,10 @@ export function StockMovementDialog({
         .map((l) => ({
           goldSkuId: usesSku ? l.goldSkuId : undefined,
           goldTypeId: usesSku ? undefined : goldTypeId || l.goldTypeId,
-          ...(isOldIn ? { oldCategory: l.oldCategory } : {}),
+          ...(isOldIn ? { oldCategory } : {}),
           weightG: l.weightG.trim(),
-          quantity: l.quantity,
+          quantity: qty(l.quantity),
+          ...(scope === 'OLD' && l.goldItemId ? { goldItemId: l.goldItemId } : {}),
         }));
 
       if (kind === 'TRANSFER') {
@@ -279,6 +292,17 @@ export function StockMovementDialog({
           </div>
         )}
 
+        {isOldIn && (
+          <div>
+            <label className="label" htmlFor="oldCategory">ໝວດ</label>
+            <select id="oldCategory" className="input" value={oldCategory}
+              onChange={(e) => setOldCategory(e.target.value as 'JEWELRY' | 'BAR')}>
+              <option value="JEWELRY">ຮູບປະພັນ</option>
+              <option value="BAR">ແທ່ງ</option>
+            </select>
+          </div>
+        )}
+
         {kind === 'OUT' && scope === 'OLD' && (
           <div>
             <label className="label" htmlFor="transform">ແປງສະພາບ</label>
@@ -312,7 +336,11 @@ export function StockMovementDialog({
         </div>
         <div className="space-y-3">
           {lines.map((line, i) => (
-            <div key={i} className={`grid gap-2 ${isOldIn ? 'md:grid-cols-[2fr_1fr_1fr_0.8fr_1fr_auto]' : 'md:grid-cols-[2fr_1fr_0.8fr_1fr_auto]'}`}>
+            <div key={i} className={`grid gap-2 ${
+              isOldIn ? 'md:grid-cols-[1.4fr_1.4fr_1fr_0.8fr_1fr_auto]'
+                : isOldOut ? 'md:grid-cols-[2fr_1fr_auto]'
+                : 'md:grid-cols-[2fr_1fr_0.8fr_1fr_auto]'
+            }`}>
               {usesSku ? (
                 /* ຂຽນຄົ້ນຫາໄດ້: ລາຍການ SKU ຍາວເກີນກວ່າຈະເລື່ອນຫາ. ໃຊ້ datalist
                    ຂອງ browser ເອງ ຈຶ່ງໃຊ້ໄດ້ທັງແປ້ນພິມ ແລະ ຈໍສຳຜັດ ໂດຍບໍ່ຕ້ອງ
@@ -338,27 +366,42 @@ export function StockMovementDialog({
                   {goldTypes.map((t) => <option key={t.id} value={t.id}>{t.nameLo}</option>)}
                 </select>
               )}
+              {isOldIn && (
+                /* ຄຳເກົ່າບໍ່ມີ SKU ແຕ່ຍັງຕ້ອງຮູ້ວ່າເປັນສາຍແຂນ ຫຼື ແຫວນ. */
+                <select className="input" aria-label="ລາຍການຄຳ" value={line.goldItemId}
+                  onChange={(e) => setLine(i, { goldItemId: e.target.value })}>
+                  <option value="">ລາຍການຄຳ (ບໍ່ບັງຄັບ)</option>
+                  {goldItems.map((it) => <option key={it.id} value={it.id}>{it.nameLo}</option>)}
+                </select>
+              )}
               {usesSku && (
                 <datalist id={`sku-options-${i}`}>
                   {skus.map((s) => <option key={s.id} value={s.fullSkuName} />)}
                 </datalist>
               )}
-              {isOldIn && (
-                <select className="input" aria-label="ໝວດ" value={line.oldCategory}
-                  onChange={(e) => setLine(i, { oldCategory: e.target.value as Line['oldCategory'] })}>
-                  <option value="JEWELRY">ຮູບປະພັນ</option>
-                  <option value="BAR">ແທ່ງ</option>
-                </select>
+              {usesSku && line.goldSkuId ? (
+                /* ນ້ຳໜັກມາຈາກ SKU ທີ່ເລືອກ — ແກ້ບໍ່ໄດ້, ບໍ່ດັ່ງນັ້ນນ້ຳໜັກໃນສາງ
+                   ຈະບໍ່ກົງກັບນິຍາມຂອງ SKU ນັ້ນອີກຕໍ່ໄປ. */
+                <div className="input num flex items-center justify-end text-muted"
+                  aria-label="weight_g" title="ນ້ຳໜັກມາຈາກ SKU ທີ່ເລືອກ">
+                  {formatWeight(line.weightG)}
+                </div>
+              ) : (
+                <NumberInput className="input num" aria-label="weight_g" decimals={4} placeholder="weight_g"
+                  value={line.weightG} onValueChange={(v) => setLine(i, { weightG: v })} />
               )}
-              <NumberInput className="input num" aria-label="weight_g" decimals={4} placeholder="weight_g"
-                value={line.weightG} onValueChange={(v) => setLine(i, { weightG: v })} />
-              <input className="input num" aria-label="ຈຳນວນ" type="number" min={1} value={line.quantity}
-                onChange={(e) => setLine(i, { quantity: Number(e.target.value) || 1 })} />
-              <div className="input num flex items-center justify-end text-muted">
-                {/^\d+(\.\d+)?$/.test(line.weightG)
-                  ? formatWeight(dec(line.weightG).mul(line.quantity).toFixed())
-                  : '—'}
-              </div>
+              {!isOldOut && (
+                <>
+                  <input className="input num" aria-label="ຈຳນວນ" type="number" min={1}
+                    inputMode="numeric" placeholder="1" value={line.quantity}
+                    onChange={(e) => setLine(i, { quantity: e.target.value })} />
+                  <div className="input num flex items-center justify-end text-muted">
+                    {/^\d+(\.\d+)?$/.test(line.weightG)
+                      ? formatWeight(dec(line.weightG).mul(qty(line.quantity)).toFixed())
+                      : '—'}
+                  </div>
+                </>
+              )}
               <button className="btn-secondary" disabled={lines.length === 1}
                 onClick={() => setLines((p) => p.filter((_, idx) => idx !== i))}>
                 ລຶບ

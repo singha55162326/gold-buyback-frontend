@@ -28,12 +28,13 @@ interface Row {
  */
 export default function PaymentBankPage() {
   const { data: balances = [], isError: balancesFailed, error: balancesError, refetch: refetchBalances } = useQuery({
-    queryKey: ['cash', 'bank', 'balances'],
-    queryFn: () => api.get<BankBalance[]>('/cash/bank/balances'),
+    queryKey: ['cash', 'bank', 'balances', 'counter'],
+    // ໜ້ານີ້ນັບສະເພາະເງິນໜ້າຮ້ານ: Buyback / ປ່ຽນເປັນເງິນ / ສິນເຊື່ອ.
+    queryFn: () => api.get<BankBalance[]>('/cash/bank/balances?sources=counter'),
   });
   const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
-    queryKey: ['cash', 'bank', 'history'],
-    queryFn: () => api.get<PagedResult<Row>>('/cash/bank/history?all=true').then((r) => r.rows),
+    queryKey: ['cash', 'bank', 'history', 'counter'],
+    queryFn: () => api.get<PagedResult<Row>>('/cash/bank/history?sources=counter').then((r) => r.rows),
   });
 
   const banks = [...new Set(balances.map((b) => b.bankNameLo))];

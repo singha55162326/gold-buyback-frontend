@@ -19,6 +19,8 @@ interface GoldItem {
 
 interface Sku {
   id: string;
+  /** ລະຫັດ SKU ອັດຕະໂນມັດ. */
+  code: string | null;
   nameLo: string;
   weightG: string;
   bahtWeight: string;
@@ -236,6 +238,7 @@ export default function SkusPage() {
           <table className="table">
             <thead>
               <tr>
+                <th>ລະຫັດ</th>
                 <th>ຊື່ SKU ເຕັມ</th>
                 <th>ລາຍການຄຳ</th>
                 <th className="text-right">ນ້ຳໜັກ (g)</th>
@@ -245,7 +248,7 @@ export default function SkusPage() {
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={5}
+                colSpan={6}
                 isLoading={skusLoading}
                 isError={skusFailed}
                 error={skusError}
@@ -256,6 +259,7 @@ export default function SkusPage() {
               />
               {pager.pageItems.map((sku) => (
                 <tr key={sku.id}>
+                  <td className="font-mono text-xs text-muted">{sku.code ?? '—'}</td>
                   <td className="font-medium">{sku.fullSkuName}</td>
                   <td className="text-muted">{sku.goldItem.nameLo}</td>
                   <td className="num text-right">{formatGrams(sku.weightG)}</td>

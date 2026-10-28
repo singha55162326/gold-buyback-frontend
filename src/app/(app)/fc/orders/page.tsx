@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -26,11 +26,33 @@ type OrderStatus =
   | 'COMPLETED'
   | 'CANCELLED';
 
+/** ແຖວລາຍການໃນຟອມສ້າງ Order. */
+interface FormLine {
+  goldItemId: string;
+  weightG: string;
+  quantity: string;
+  amount: string;
+}
+
+const emptyLine = (): FormLine => ({ goldItemId: '', weightG: '', quantity: '1', amount: '' });
+
+/** ຈຳນວນທີ່ພິມຍັງບໍ່ຄົບ ນັບເປັນ 1. */
+const qty = (value: string) => Math.max(1, Math.trunc(Number(value) || 0) || 1);
+
 interface Order {
   id: string; code: string; billNo: string; productType: 'IT' | 'ITP';
   staffName: string; weightG: string; quantity: number;
   totalAmount: string; receivedAmount: string; balanceAmount: string;
   status: OrderStatus; note: string | null; createdAt: string;
+  sentToSmithAt: string | null;
+  /** ລາຍການໃນບິນ — ບິນດຽວມີໄດ້ຫຼາຍແຖວ. */
+  lines: Array<{
+    id: string;
+    weightG: string;
+    quantity: number;
+    amount: string | null;
+    goldItem: { nameLo: string };
+  }>;
   receivedFromSmithAt: string | null; customerPickupAt: string | null;
   customer: { phone: string };
   goldItem: { nameLo: string };
@@ -70,6 +92,10 @@ export default function OrdersPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [advancing, setAdvancing] = useState<Order | null>(null);
   const [paying, setPaying] = useState<Order | null>(null);
+  // ຈ່າຍເງິນຄືນທີ່ຮັບຈາກລູກຄ້າ (ຕອນມາຮັບເຄື່ອງ) ແລະ ລາຍລະອຽດ Order.
+  const [refunding, setRefunding] = useState<Order | null>(null);
+  const [refundPayments, setRefundPayments] = useState<PaymentLine[]>(newPaymentLines());
+  const [viewing, setViewing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // create form
@@ -77,9 +103,10 @@ export default function OrdersPage() {
   const [billNo, setBillNo] = useState('');
   const [productType, setProductType] = useState<'IT' | 'ITP'>('IT');
   const [staffName, setStaffName] = useState('');
-  const [goldItemId, setGoldItemId] = useState('');
-  const [weightG, setWeightG] = useState('');
-  const [quantity, setQuantity] = useState(1);
+  // ບິນດຽວ Add ລາຍການໄດ້ຫຼາຍແຖວ (TOR §7 ຕາມທີ່ລູກຄ້າແຈ້ງ).
+  const [lines, setLines] = useState<FormLine[]>([emptyLine()]);
+  const setLine = (i: number, patch: Partial<FormLine>) =>
+    setLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const [totalAmount, setTotalAmount] = useState('');
   const [note, setNote] = useState('');
 
@@ -118,20 +145,30 @@ export default function OrdersPage() {
     void queryClient.invalidateQueries({ queryKey: ['cash'] });
   };
 
+  /** ແຖວທີ່ຄົບພໍຈະສົ່ງໄປ server — ຕ້ອງມີລາຍການ ແລະ ນ້ຳໜັກ. */
+  const orderLines = lines
+    .filter((l) => l.goldItemId && Number(l.weightG) > 0)
+    .map((l) => ({
+      goldItemId: l.goldItemId,
+      weightG: l.weightG.trim(),
+      quantity: qty(l.quantity),
+      amount: l.amount.replace(/,/g, '').trim() || undefined,
+    }));
+
   const create = useMutation({
     mutationFn: () =>
       api.post('/orders', {
-        phone, billNo, productType, staffName, goldItemId,
-        weightG: weightG.trim(), quantity,
+        phone, billNo, productType, staffName,
+        lines: orderLines,
         totalAmount: totalAmount.replace(/,/g, '').trim(),
         note: note || undefined,
         receipts: paymentPayload(payments),
       }),
     onSuccess: () => {
       toast.success('ດຳເນີນການສຳເລັດ');
-      setShowAdd(false);
-      setPhone(''); setBillNo(''); setStaffName(''); setWeightG('');
-      setQuantity(1); setTotalAmount(''); setPayments(newPaymentLines()); setNote('');
+      setShowAdd(false); setLines([emptyLine()]);
+      setPhone(''); setBillNo(''); setStaffName('');
+      setTotalAmount(''); setPayments(newPaymentLines()); setNote('');
       setError(null); invalidate();
     },
     onError: (e) => {
@@ -162,6 +199,20 @@ export default function OrdersPage() {
     },
   });
 
+  const refund = useMutation({
+    mutationFn: (row: Order) =>
+      api.post(`/orders/${row.id}/refund`, { receipts: paymentPayload(refundPayments) }),
+    onSuccess: () => {
+      toast.success('ຈ່າຍເງິນຄືນແລ້ວ');
+      setRefunding(null); setRefundPayments(newPaymentLines()); setError(null); invalidate();
+    },
+    onError: (e) => {
+      const detail = e instanceof ApiError ? e.message : 'ຈ່າຍເງິນຄືນບໍ່ສຳເລັດ';
+      setError(detail);
+      toast.error('ບໍ່ສຳເລັດ', detail);
+    },
+  });
+
   const pay = useMutation({
     mutationFn: (order: Order) =>
       api.post(`/orders/${order.id}/receipts`, {
@@ -185,7 +236,7 @@ export default function OrdersPage() {
 
   const canSave =
     /^\d{8}$/.test(phone) && /^\d{4}$/.test(billNo) && staffName.trim() &&
-    goldItemId && Number(weightG) > 0 && Number(totalAmount.replace(/,/g, '')) > 0 &&
+    orderLines.length > 0 && Number(totalAmount.replace(/,/g, '')) > 0 &&
     legsReady(payments);
 
   const pager = usePagination(orders);
@@ -239,28 +290,53 @@ export default function OrdersPage() {
                 onChange={(e) => setStaffName(e.target.value)} />
             </div>
             <div>
-              <label className="label" htmlFor="goldItem">ລາຍການ</label>
-              <select id="goldItem" className="input" value={goldItemId}
-                onChange={(e) => setGoldItemId(e.target.value)}>
-                <option value="">— ເລືອກລາຍການ —</option>
-                {goldItems.map((i) => <option key={i.id} value={i.id}>{i.nameLo}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="weightG">ນ້ຳໜັກ (g)</label>
-              <NumberInput id="weightG" className="input num" decimals={4} value={weightG}
-                onValueChange={setWeightG} />
-            </div>
-            <div>
-              <label className="label" htmlFor="qty">ຈຳນວນ</label>
-              <input id="qty" className="input num" type="number" min={1} value={quantity}
-                onChange={(e) => setQuantity(Number(e.target.value) || 1)} />
-            </div>
-            <div>
               <label className="label" htmlFor="total">TOTAL (LAK)</label>
               <NumberInput id="total" className="input num" decimals={0} value={totalAmount}
                 onValueChange={setTotalAmount} />
             </div>
+          </div>
+
+          {/* ລາຍການໃນບິນ — Add ໄດ້ຫຼາຍແຖວ. ຍອດລວມບິນຍັງປ້ອນບ່ອນດຽວ
+              ເພາະລູກຄ້າຕົກລົງລາຄາລວມກັບຮ້ານ; ຊ່ອງຍອດຕໍ່ແຖວເປັນທາງເລືອກ. */}
+          <div className="mt-5">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="label mb-0">ລາຍການ</span>
+              <button type="button" className="btn-secondary"
+                onClick={() => setLines((p) => [...p, emptyLine()])}>
+                + ເພີ່ມແຖວ
+              </button>
+            </div>
+            <div className="space-y-3">
+              {lines.map((line, i) => (
+                <div key={i} className="grid gap-2 md:grid-cols-[2fr_1fr_0.7fr_1fr_auto]">
+                  <select className="input" aria-label={`ລາຍການ ແຖວທີ ${i + 1}`}
+                    value={line.goldItemId}
+                    onChange={(e) => setLine(i, { goldItemId: e.target.value })}>
+                    <option value="">— ເລືອກລາຍການ —</option>
+                    {goldItems.map((it) => <option key={it.id} value={it.id}>{it.nameLo}</option>)}
+                  </select>
+                  <NumberInput className="input num" decimals={4} placeholder="ນ້ຳໜັກ (g)"
+                    aria-label={`ນ້ຳໜັກ ແຖວທີ ${i + 1}`}
+                    value={line.weightG} onValueChange={(v) => setLine(i, { weightG: v })} />
+                  <input className="input num" type="number" min={1} placeholder="1"
+                    aria-label={`ຈຳນວນ ແຖວທີ ${i + 1}`}
+                    value={line.quantity}
+                    onChange={(e) => setLine(i, { quantity: e.target.value })} />
+                  <NumberInput className="input num" decimals={0} placeholder="ຍອດແຖວ (ບໍ່ບັງຄັບ)"
+                    aria-label={`ຍອດເງິນ ແຖວທີ ${i + 1}`}
+                    value={line.amount} onValueChange={(v) => setLine(i, { amount: v })} />
+                  <button type="button" className="btn-secondary" disabled={lines.length === 1}
+                    aria-label={`ລຶບແຖວທີ ${i + 1}`}
+                    onClick={() => setLines((p) => p.filter((_, idx) => idx !== i))}>
+                    ລຶບ
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-xs text-muted">
+              ລວມ {formatWeight(String(orderLines.reduce((s, l) => s + Number(l.weightG) * l.quantity, 0)))} g ·
+              {' '}{orderLines.reduce((s, l) => s + l.quantity, 0)} ອັນ
+            </p>
           </div>
 
           <div className="mt-5 border-t border-line pt-5">
@@ -358,6 +434,32 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {refunding && (
+        <div data-fade className="card p-5">
+          <h2 className="card-title mb-4">
+            ຈ່າຍເງິນຄືນ — {refunding.code} (ຮັບມາແລ້ວ {formatLak(refunding.receivedAmount)} LAK)
+          </h2>
+          <MultiPayment
+            lines={refundPayments}
+            onChange={setRefundPayments}
+            owedLak={refunding.receivedAmount}
+            direction="out"
+            labelLo="ຈ່າຍເງິນຄືນ (ສົດ / ໂອນ, ຫຼາຍສະກຸນເງິນ)"
+          />
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button className="btn-primary" aria-describedby={error ? 'orders-error' : undefined}
+              disabled={!legsReady(refundPayments) || refund.isPending}
+              onClick={() => refund.mutate(refunding)}>
+              {refund.isPending ? 'ກຳລັງບັນທຶກ...' : 'ຈ່າຍເງິນຄືນ'}
+            </button>
+            <button className="btn-secondary" onClick={() => setRefunding(null)}>ຍົກເລີກ</button>
+          </div>
+          <p className="mt-2 text-xs text-muted">
+            ເງິນອອກຈາກລີ້ນຊັກ/ບັນຊີຈິງ ແລະ ຍອດ Advance ທີ່ຖືແທນລູກຄ້າຈະຫຼຸດລົງຕາມຈຳນວນນີ້
+          </p>
+        </div>
+      )}
+
       <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">ລາຍການ Order</h2>
@@ -392,12 +494,16 @@ export default function OrdersPage() {
                 onRetry={() => history.refetch()}
               />
               {pager.pageItems.map((row) => (
-                <tr key={row.id}>
+                <Fragment key={row.id}>
+                  <tr>
                   {/* ລາຍການ / Supplier / ຍອດລວມ ບໍ່ຢູ່ໃນຖັນທີ່ລູກຄ້າຂໍ ແຕ່ຍັງ
                       ຕ້ອງເຂົ້າເຖິງໄດ້ — ວາງໄວ້ເປັນ tooltip ຂອງລະຫັດ Order. */}
                   <td className="font-mono text-xs"
                     title={`ລາຍການ: ${row.goldItem.nameLo} · ແຫຼ່ງທີ່ມາ: ${row.supplier?.nameLo ?? '—'} · ຍອດ Order: ${formatLak(row.totalAmount)}`}>
                     {row.code}
+                    {row.lines?.length > 1 && (
+                      <span className="ml-1 text-muted">({row.lines.length} ລາຍການ)</span>
+                    )}
                   </td>
                   <td>{formatDate(row.createdAt)}</td>
                   <td className="num">{row.customer.phone}</td>
@@ -431,12 +537,79 @@ export default function OrdersPage() {
                           ຊຳຣະເພີ່ມ
                         </button>
                       )}
-                      {!NEXT[row.status] && Number(row.balanceAmount) === 0 && (
-                        <span className="text-xs text-muted">—</span>
+                      {/* ຈ່າຍເງິນຄືນໄດ້ ເມື່ອເຄີຍຮັບເງິນມາແລ້ວ ແລະ ລູກຄ້າມາຮັບເຄື່ອງ. */}
+                      {Number(row.receivedAmount) > 0 &&
+                        (row.status === 'AWAITING_PICKUP' || row.status === 'COMPLETED') && (
+                        <button className="btn-ghost text-danger"
+                          aria-label={`ຈ່າຍເງິນຄືນ ${row.code}`}
+                          onClick={() => {
+                            setRefunding(row); setPaying(null); setAdvancing(null);
+                            setShowAdd(false); setRefundPayments(newPaymentLines());
+                          }}>
+                          Payment ຈ່າຍຄືນ
+                        </button>
                       )}
+                      <button className="btn-ghost" aria-expanded={viewing === row.id}
+                        aria-label={`View ${row.code}`}
+                        onClick={() => setViewing(viewing === row.id ? null : row.id)}>
+                        View
+                      </button>
                     </div>
                   </td>
-                </tr>
+                  </tr>
+                  {viewing === row.id && (
+                    <tr>
+                      <td colSpan={11} className="bg-recessed p-4">
+                        <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                          <Detail labelLo="ຊື່ພະນັກງານທີ່ຮັບ Order" value={row.staffName} />
+                          <Detail labelLo="ລວມນ້ຳໜັກ (g)" value={formatWeight(row.weightG)} />
+                          <Detail labelLo="ລວມຈຳນວນ" value={String(row.quantity)} />
+                          <Detail labelLo="Supplier" value={row.supplier?.nameLo ?? '—'} />
+                          <Detail labelLo="ວັນທີສັ່ງຊ່າງ" value={formatDate(row.sentToSmithAt)} />
+                          <Detail labelLo="ວັນທີຮັບເຄື່ອງຈາກຊ່າງ" value={formatDate(row.receivedFromSmithAt)} />
+                          <Detail labelLo="ວັນທີລູກຄ້າມາຮັບເຄື່ອງ" value={formatDate(row.customerPickupAt)} />
+                          <Detail labelLo="ຍອດ Order" value={`${formatLak(row.totalAmount)} LAK`} />
+                          <Detail labelLo="ຮັບມາແລ້ວ" value={`${formatLak(row.receivedAmount)} LAK`} />
+                          <Detail labelLo="ຍອດຄົງເຫຼືອ" value={`${formatLak(row.balanceAmount)} LAK`} />
+                          <Detail labelLo="ສະຖານະ" value={STATUS[row.status].lo} />
+                        </div>
+
+                        <div className="section-label mt-4">ລາຍການໃນບິນ</div>
+                        <table className="table mt-1">
+                          <thead>
+                            <tr>
+                              <th>ລາຍການ</th>
+                              <th className="text-right">ນ້ຳໜັກ (g)</th>
+                              <th className="text-right">ຈຳນວນ</th>
+                              <th className="text-right">ຍອດແຖວ</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(row.lines ?? []).length === 0 && (
+                              <tr>
+                                {/* ບິນເກົ່າກ່ອນມີຕາຕະລາງແຖວ. */}
+                                <td>{row.goldItem.nameLo}</td>
+                                <td className="num text-right">{formatWeight(row.weightG)}</td>
+                                <td className="num text-right">{row.quantity}</td>
+                                <td className="num text-right">{formatLak(row.totalAmount)}</td>
+                              </tr>
+                            )}
+                            {(row.lines ?? []).map((line) => (
+                              <tr key={line.id}>
+                                <td>{line.goldItem.nameLo}</td>
+                                <td className="num text-right">{formatWeight(line.weightG)}</td>
+                                <td className="num text-right">{line.quantity}</td>
+                                <td className="num text-right">
+                                  {line.amount ? formatLak(line.amount) : '—'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>
@@ -447,6 +620,16 @@ export default function OrdersPage() {
           ເມື່ອຍອດຄົງເຫຼືອ = 0 ລະບົບປ່ຽນສະຖານະເປັນ Completed ອັດຕະໂນມັດ.
         </p>
       </div>
+    </div>
+  );
+}
+
+/** ຊ່ອງລາຍລະອຽດໃນແຖວ View. */
+function Detail({ labelLo, value }: { labelLo: string; value: string }) {
+  return (
+    <div>
+      <div className="section-label">{labelLo}</div>
+      <div className="num mt-0.5 font-semibold text-fg-strong">{value}</div>
     </div>
   );
 }

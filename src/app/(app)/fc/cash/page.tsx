@@ -11,6 +11,8 @@ import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 
 interface Balance { currency: 'LAK' | 'THB' | 'USD'; inflow: string; outflow: string; balance: string }
 interface Row {
+  /** ຜູ້ລົງລາຍການ — ມາຈາກ API. */
+  createdBy: string;
   id: string; type: string; currency: string; amount: string;
   refType: string | null; note: string | null; createdAt: string;
 }
@@ -74,11 +76,12 @@ export default function FcCashPage() {
                 <th className="text-right">ຈຳນວນເງິນ</th>
                 <th>ອ້າງອີງ</th>
                 <th>ໝາຍເຫດ</th>
+                <th>ຜູ້ບັນທຶກ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={6}
+                colSpan={7}
                 isLoading={history.isLoading}
                 isError={history.isError}
                 error={history.error}
@@ -94,6 +97,7 @@ export default function FcCashPage() {
                   <td className="num text-right font-medium">{formatByCurrency(row.amount, row.currency)}</td>
                   <td className="text-muted">{row.refType ?? '—'}</td>
                   <td className="text-muted">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.createdBy}</td>
                 </tr>
               ))}
             </tbody>

@@ -12,7 +12,7 @@ interface Coh {
   cash: Array<{
     currency: 'LAK' | 'THB' | 'USD';
     cash: string; bcel: string; ldb: string; otherBank: string;
-    ap: string; ar: string; coh: string;
+    ap: string; ar: string; advance: string; coh: string;
   }>;
   gold: { newG: string; oldG: string; apG: string; arG: string; cohG: string; cohBaht: string };
 }
@@ -78,11 +78,12 @@ export default function CohPage() {
                 <th className="text-right">ທະນາຄານອື່ນ</th>
                 <th className="text-right">AP (−)</th>
                 <th className="text-right">AR (+)</th>
+                <th className="text-right">Advance (−)</th>
                 <th className="text-right">COH Cash</th>
               </tr>
             </thead>
             <tbody>
-              <TableStateRow colSpan={8} isLoading={isLoading} isError={isError} error={error} isEmpty={false} emptyText="" onRetry={() => void refetch()} />
+              <TableStateRow colSpan={9} isLoading={isLoading} isError={isError} error={error} isEmpty={false} emptyText="" onRetry={() => void refetch()} />
               {data?.cash.map((row) => (
                 <tr key={row.currency}>
                   <td className="font-medium">{row.currency}</td>
@@ -92,6 +93,8 @@ export default function CohPage() {
                   <td className="num text-right">{formatByCurrency(row.otherBank, row.currency)}</td>
                   <td className="num text-right text-danger">{formatByCurrency(row.ap, row.currency)}</td>
                   <td className="num text-right text-success">{formatByCurrency(row.ar, row.currency)}</td>
+                  {/* ເງິນມັດຈຳ Order ທີ່ຍັງຖືແທນລູກຄ້າ — ຫັກອອກຈາກ COH. */}
+                  <td className="num text-right text-danger">{formatByCurrency(row.advance, row.currency)}</td>
                   <td className="num text-right font-semibold">{formatByCurrency(row.coh, row.currency)}</td>
                 </tr>
               ))}
@@ -99,7 +102,8 @@ export default function CohPage() {
           </table>
         </div>
         <p className="border-t border-line px-5 py-3 text-xs text-muted">
-          COH Cash = Cash + BCEL + LDB + Other Bank − AP + AR
+          COH Cash = Cash + BCEL + LDB + Other Bank − AP + AR − Advance ·
+          ຍອດເງິນສົດ ແລະ ທະນາຄານ ເປັນຍອດສະສົມ (ຍົກມາຈາກມື້ກ່ອນ + ການເຄື່ອນໄຫວຂອງມື້ນີ້)
         </p>
       </div>
 
