@@ -40,6 +40,7 @@ interface Preview {
 interface ExchangeRow {
   id: string; code: string; txnType: string; totalPayable: string;
   outstandingAmount: string; status: string; createdAt: string;
+  createdBy: string;
   updatedBy: string;
   customer: { phone: string };
   oldLines: Array<{ id: string; weightG: string; quantity: number }>;
@@ -437,11 +438,12 @@ export default function ExchangePage() {
                 <th className="text-right">ລວມເງິນທີ່ຕ້ອງຈ່າຍ</th>
                 <th className="text-right">ຍອດຄ້າງຈ່າຍ</th>
                 <th>ສະຖານະ</th>
+                <th>ຜູ້ບັນທຶກ</th>
                 <th>ຜູ້ແກ້ໄຂ</th>
               </tr>
             </thead>
             <tbody>
-              <TableStateRow colSpan={10} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
+              <TableStateRow colSpan={11} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
               {rows.map((row) => {
                 const oldG = row.oldLines.reduce((s, l) => s + Number(l.weightG) * l.quantity, 0);
                 const newG = row.newLines.reduce((s, l) => s + Number(l.weightG) * l.quantity, 0);
@@ -456,6 +458,7 @@ export default function ExchangePage() {
                     <td className="num text-right font-medium">{formatLak(row.totalPayable)}</td>
                     <td className="num text-right">{formatLak(row.outstandingAmount)}</td>
                     <td><span className={statusClass(row.status)}>{row.status}</span></td>
+                    <td className="text-muted">{row.createdBy}</td>
                     <td className="text-muted">{row.updatedBy}</td>
                   </tr>
                 );

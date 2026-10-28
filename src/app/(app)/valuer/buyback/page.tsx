@@ -76,6 +76,7 @@ interface BuybackRow {
   source: 'KPV' | 'OTHER_SHOP';
   goldPercent: string | null;
   outstandingAmount: string;
+  createdBy: string;
   updatedBy: string;
   payments: BuybackPayment[];
   goldItem: { nameLo: string } | null;
@@ -435,12 +436,13 @@ export default function BuybackPage() {
                 <th className="text-right">ລວມເງິນທີ່ຕ້ອງຈ່າຍ</th>
                 <th className="text-right">ຍອດເງິນຄ້າງຈ່າຍ</th>
                 <th>ສະຖານະ</th>
+                <th>ຜູ້ບັນທຶກ</th>
                 <th>ຜູ້ແກ້ໄຂ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
-              <TableStateRow colSpan={12} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
+              <TableStateRow colSpan={14} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
               {rows.map((row) => (
                 <Fragment key={row.id}>
                 <tr>
@@ -464,6 +466,7 @@ export default function BuybackPage() {
                       {STATUS_LABEL[row.status].lo}
                     </span>
                   </td>
+                  <td className="text-muted">{row.createdBy}</td>
                   <td className="text-muted">{row.updatedBy}</td>
                   <td className="text-right">
                     <div className="flex justify-end gap-2">
@@ -482,7 +485,7 @@ export default function BuybackPage() {
                 </tr>
                 {viewing === row.id && (
                   <tr>
-                    <td colSpan={12} className="bg-recessed p-4">
+                    <td colSpan={14} className="bg-recessed p-4">
                       <div className="section-label">ລາຍການຄຳໃນບິນ</div>
                       <table className="table mt-1">
                         <thead>

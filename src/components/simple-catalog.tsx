@@ -43,6 +43,7 @@ export function SimpleCatalog({
   addLabelLo,
   editPath,
   editableKeys,
+  showRecorder = false,
 }: {
   titleLo: string;
   descriptionLo: string;
@@ -61,6 +62,14 @@ export function SimpleCatalog({
   editPath?: string;
   /** Fields that may be edited in place. Defaults to every non-code field. */
   editableKeys?: string[];
+  /**
+   * ສະແດງຖັນ ຜູ້ບັນທຶກ ທ້າຍຕາຕະລາງ (ກ່ອນຖັນ ຈັດການ).
+   *
+   * ລູກຄ້າຂໍວ່າ ທຸກ Module ທີ່ມີການສ້າງລາຍການ ຕ້ອງເຫັນວ່າ User ໃດເປັນຄົນລົງ.
+   * ຖ້າເປີດ ຕ້ອງເອີ້ນ `listPath` ດ້ວຍ `?withActor=true` ເພື່ອໃຫ້ server
+   * ສົ່ງຊື່ມານຳ.
+   */
+  showRecorder?: boolean;
 }) {
   const queryClient = useQueryClient();
   const toast = useToast();
@@ -215,12 +224,13 @@ export function SimpleCatalog({
                 {columns.map((col) => (
                   <th key={col.key}>{col.labelLo}</th>
                 ))}
+                {showRecorder && <th>ຜູ້ບັນທຶກ</th>}
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={columns.length + 1}
+                colSpan={columns.length + (showRecorder ? 2 : 1)}
                 isLoading={isLoading}
                 isError={isError}
                 error={loadError}
@@ -273,6 +283,9 @@ export function SimpleCatalog({
                         </td>
                       );
                     })}
+                    {showRecorder && (
+                      <td className="text-muted">{String(row.createdBy ?? '—')}</td>
+                    )}
                     <td className="text-right">
                       {isEditing ? (
                         <div className="flex justify-end gap-2">

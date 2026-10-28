@@ -15,6 +15,8 @@ interface Partner {
   nameLo: string;
   direction: 'IN' | 'OUT' | 'BOTH';
   tracksGoldApAr: boolean;
+  /** ຜູ້ບັນທຶກ — ອ່ານຈາກ Audit Log ຢູ່ server. */
+  createdBy: string;
 }
 
 const DIRECTION_LABEL: Record<Partner['direction'], string> = {
@@ -33,8 +35,8 @@ export default function PartnersPage() {
   const [error, setError] = useState<string | null>(null);
 
   const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
-    queryKey: ['catalog', 'partners'],
-    queryFn: () => api.get<Partner[]>('/catalog/partners'),
+    queryKey: ['catalog', 'partners', 'admin'],
+    queryFn: () => api.get<Partner[]>('/catalog/partners?withActor=true'),
   });
 
   const create = useMutation({
@@ -144,12 +146,13 @@ export default function PartnersPage() {
                 <th>ຊື່ແຫຼ່ງ</th>
                 <th>ທິດທາງ</th>
                 <th>AP/AR (GOLD)</th>
+                <th>ຜູ້ບັນທຶກ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={5}
+                colSpan={6}
                 isError={rowsFailed}
                 error={rowsError}
                 isEmpty={false}
@@ -169,6 +172,7 @@ export default function PartnersPage() {
                   </td>
                   <td>{DIRECTION_LABEL[row.direction]}</td>
                   <td>{row.tracksGoldApAr ? 'ຕິດຕາມ' : '—'}</td>
+                  <td className="text-muted">{row.createdBy}</td>
                   <td className="text-right">
                     <RowActions
                       id={row.id}

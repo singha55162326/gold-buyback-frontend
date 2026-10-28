@@ -17,6 +17,8 @@ interface Row {
   id: string; type: string; currency: string; amount: string;
   refType: string | null; note: string | null; createdAt: string;
   bankAccount: { nameLo: string };
+  /** ຜູ້ບັນທຶກທຸລະກຳນີ້. */
+  createdBy: string;
 }
 
 /**
@@ -79,10 +81,11 @@ export default function PaymentBankPage() {
                 <th className="text-right">ຈຳນວນເງິນ</th>
                 <th>ອ້າງອີງ</th>
                 <th>ໝາຍເຫດ</th>
+                <th>ຜູ້ບັນທຶກ</th>
               </tr>
             </thead>
             <tbody>
-              <TableStateRow colSpan={7} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
+              <TableStateRow colSpan={8} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
               {rows.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDateTime(row.createdAt)}</td>
@@ -92,6 +95,7 @@ export default function PaymentBankPage() {
                   <td className="num text-right font-medium">{formatByCurrency(row.amount, row.currency)}</td>
                   <td className="text-muted">{row.refType ?? '—'}</td>
                   <td className="text-muted">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.createdBy}</td>
                 </tr>
               ))}
             </tbody>

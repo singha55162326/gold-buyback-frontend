@@ -18,6 +18,9 @@ interface Request {
   id: string; direction: 'WITHDRAW' | 'HANDOVER'; status: string;
   note: string | null; createdAt: string;
   lines: Array<{ id: string; currency: string; amount: string }>;
+  /** ຜູ້ບັນທຶກ (ຜູ້ຮ້ອງຂໍ) ແລະ ມືສຸດທ້າຍ (ຜູ້ອະນຸມັດ). */
+  createdBy: string;
+  updatedBy: string;
 }
 
 const STATUS: Record<string, { lo: string }> = {
@@ -187,11 +190,12 @@ export default function WalletPage() {
                 <th className="text-right">USD</th>
                 <th>ໝາຍເຫດ</th>
                 <th>ສະຖານະ</th>
+                <th>ຜູ້ບັນທຶກ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
-              <TableStateRow colSpan={8} isError={requestsFailed} error={requestsError} isEmpty={requests.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRequests()} />
+              <TableStateRow colSpan={9} isError={requestsFailed} error={requestsError} isEmpty={requests.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRequests()} />
               {pager.pageItems.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDateTime(row.createdAt)}</td>
@@ -205,6 +209,7 @@ export default function WalletPage() {
                       {STATUS[row.status]?.lo ?? row.status}
                     </span>
                   </td>
+                  <td className="text-muted">{row.createdBy}</td>
                   <td className="text-right">
                     {row.status === 'APPROVED' ? (
                       <button className="btn-primary"

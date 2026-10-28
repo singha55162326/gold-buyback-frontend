@@ -45,6 +45,8 @@ interface Order {
   totalAmount: string; receivedAmount: string; balanceAmount: string;
   status: OrderStatus; note: string | null; createdAt: string;
   sentToSmithAt: string | null;
+  /** ຜູ້ບັນທຶກ Order ນີ້. */
+  createdBy: string;
   /** ລາຍການໃນບິນ — ບິນດຽວມີໄດ້ຫຼາຍແຖວ. */
   lines: Array<{
     id: string;
@@ -480,12 +482,13 @@ export default function OrdersPage() {
                 <th className="text-right">ຍອດເງິນທີ່ໄດ້ຮັບ</th>
                 <th className="text-right">ຍອດຄົງເຫຼືອ</th>
                 <th>ສະຖານະ</th>
+                <th>ຜູ້ບັນທຶກ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={11}
+                colSpan={12}
                 isLoading={history.isLoading}
                 isError={history.isError}
                 error={history.error}
@@ -516,6 +519,7 @@ export default function OrdersPage() {
                   <td>
                     <span className={statusClass(row.status)}>{STATUS[row.status].lo}</span>
                   </td>
+                  <td className="text-muted">{row.createdBy}</td>
                   <td className="text-right">
                     <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                       {NEXT[row.status] && (
@@ -559,7 +563,7 @@ export default function OrdersPage() {
                   </tr>
                   {viewing === row.id && (
                     <tr>
-                      <td colSpan={11} className="bg-recessed p-4">
+                      <td colSpan={12} className="bg-recessed p-4">
                         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
                           <Detail labelLo="ຊື່ພະນັກງານທີ່ຮັບ Order" value={row.staffName} />
                           <Detail labelLo="ລວມນ້ຳໜັກ (g)" value={formatWeight(row.weightG)} />
@@ -572,6 +576,7 @@ export default function OrdersPage() {
                           <Detail labelLo="ຮັບມາແລ້ວ" value={`${formatLak(row.receivedAmount)} LAK`} />
                           <Detail labelLo="ຍອດຄົງເຫຼືອ" value={`${formatLak(row.balanceAmount)} LAK`} />
                           <Detail labelLo="ສະຖານະ" value={STATUS[row.status].lo} />
+                          <Detail labelLo="ຜູ້ບັນທຶກ" value={row.createdBy} />
                         </div>
 
                         <div className="section-label mt-4">ລາຍການໃນບິນ</div>

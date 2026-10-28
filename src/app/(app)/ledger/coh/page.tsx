@@ -58,7 +58,7 @@ export default function CohPage() {
             )}
           </div>
           <div className="filter-tail">
-            <span className="num text-xs text-slate-500">
+            <span className="filter-note">
               {isFetching ? 'ກຳລັງໂຫຼດ...' : isToday ? 'ຍອດມື້ນີ້' : `ຍອດ ຢູ່ ${asOf}`}
             </span>
           </div>

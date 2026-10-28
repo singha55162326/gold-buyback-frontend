@@ -150,7 +150,7 @@ export function DateRangeFilter<T>({
           onChange={(e) => history.setDraftFrom(e.target.value)}
           aria-label="ຈາກວັນທີ"
         />
-        <span className="text-slate-400">–</span>
+        <span className="filter-sep">–</span>
         <input
           className="filter-date"
           type="date"
@@ -176,11 +176,11 @@ export function DateRangeFilter<T>({
 
       <div className="filter-tail">
         {history.truncated && (
-          <span className="text-xs font-medium text-amber-700">
+          <span className="text-xs font-medium text-warning">
             ເກີນ {history.maxRows.toLocaleString('en-US')} ແຖວ — ແຄບຊ່ວງວັນທີລົງ
           </span>
         )}
-        <span className="num text-xs text-slate-500">
+        <span className="filter-note">
           {history.isFetching ? 'ກຳລັງໂຫຼດ...' : `${history.total.toLocaleString('en-US')} ລາຍການ`}
         </span>
       </div>

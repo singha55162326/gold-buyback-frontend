@@ -22,6 +22,7 @@ interface Credit {
   id: string; code: string; weightG: string; quantity: number;
   sellPrice: string; downPayment: string; outstanding: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'COMPLETED' | 'CANCELLED';
+  createdBy: string;
   updatedBy: string;
   createdAt: string;
   customer: { phone: string };
@@ -292,12 +293,13 @@ export default function CreditPage() {
                 <th className="text-right">ລວມເງິນວາງດາວທີ່ຮັບ</th>
                 <th className="text-right">ຄ້າງຮັບ</th>
                 <th>ສະຖານະ</th>
+                <th>ຜູ້ບັນທຶກ</th>
                 <th>ຜູ້ແກ້ໄຂ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
-              <TableStateRow colSpan={12} isError={creditsFailed} error={creditsError} isEmpty={credits.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchCredits()} />
+              <TableStateRow colSpan={13} isError={creditsFailed} error={creditsError} isEmpty={credits.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchCredits()} />
               {credits.map((row) => (
                 <tr key={row.id}>
                   <td className="font-mono text-xs">{row.code}</td>
@@ -312,6 +314,7 @@ export default function CreditPage() {
                   <td>
                     <span className={statusClass(row.status)}>{STATUS[row.status].lo}</span>
                   </td>
+                  <td className="text-muted">{row.createdBy}</td>
                   <td className="text-muted">{row.updatedBy}</td>
                   <td className="text-right">
                     {row.status === 'APPROVED' && Number(row.outstanding) > 0 && canReceive ? (

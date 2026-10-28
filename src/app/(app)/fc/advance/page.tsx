@@ -30,6 +30,8 @@ interface Row {
   netAmount: string;
   method: string | null;
   note: string | null;
+  /** ຜູ້ບັນທຶກລາຍການນີ້. */
+  createdBy: string;
   order: {
     id: string; code: string; billNo: string; productType: string;
     staffName: string; weightG: string; quantity: number;
@@ -102,12 +104,13 @@ export default function AdvancePage() {
                 <th className="text-right">ຍອດເງິນຕັດຊຳລະ</th>
                 <th className="text-right">ຍອດເງິນສຸດທິ</th>
                 <th>ສະຖານະ</th>
+                <th>ຜູ້ບັນທຶກ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={11}
+                colSpan={12}
                 isLoading={history.isLoading}
                 isError={history.isError}
                 error={history.error}
@@ -132,6 +135,7 @@ export default function AdvancePage() {
                       statusClass(row.order.status)
                     }>{row.order.status}</span>
                   </td>
+                  <td className="text-muted">{row.createdBy}</td>
                   <td className="text-right">
                     <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                       {Number(row.order.balanceAmount) > 0 && (
@@ -149,7 +153,7 @@ export default function AdvancePage() {
                 </tr>
                 {viewing === row.id && (
                   <tr>
-                    <td colSpan={11} className="bg-recessed p-4">
+                    <td colSpan={12} className="bg-recessed p-4">
                       <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-4">
                         <F labelLo="ຊື່ພະນັກງານທີ່ຮັບ Order" value={row.order.staffName} />
                         <F labelLo="ສະກຸນເງິນ" value={row.currency} />

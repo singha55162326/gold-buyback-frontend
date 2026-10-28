@@ -20,6 +20,8 @@ interface Row {
   createdAt: string; customer: { phone: string }; lines: Array<Line & { id: string }>;
   /** ວັນທີທີ່ກົດຢືນຢັນສົ່ງມອບຄືນ — ຫວ່າງໄວ້ຈົນກວ່າຈະສົ່ງຄືນ. */
   returnedAt: string | null;
+  /** ຜູ້ບັນທຶກລາຍການຝາກນີ້. */
+  createdBy: string;
 }
 interface Payload extends PagedResult<Row> {
   totals: { totalWeightG: string; totalQuantity: number; billCount: number };
@@ -84,14 +86,14 @@ export default function ConsignmentsPage() {
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
 
   const canSave =
-    /^\d{8}$/.test(phone) && /^\d{4}$/.test(billId) && customerName.trim() && staffName.trim() &&
+    /^\d{8}$/.test(phone) && /^\d{6}$/.test(billId) && customerName.trim() && staffName.trim() &&
     lines.some((l) => l.nameLo.trim() && Number(l.weightG) > 0);
 
   return (
     <div className="space-y-6">
       <PageHead
         title="ຝາກສິນຄ້າ"
-        subtitle="ຄຳທີ່ລູກຄ້າຝາກໄວ້ກັບຮ້ານ — ບໍ່ນັບເຂົ້າ Stock ຫຼື COH Gold (TOR §3.7)"
+        subtitle="ຄຳທີ່ລູກຄ້າຝາກໄວ້ກັບຮ້ານ — ບໍ່ນັບເຂົ້າ Stock ຫຼື COH Gold (TOR §3.7)"
         actions={
           <button className="btn-primary" onClick={() => setShowForm((v) => !v)}>
             {showForm ? 'ປິດຟອມ' : '+ ສ້າງລາຍການຝາກ'}
@@ -111,11 +113,11 @@ export default function ConsignmentsPage() {
       <div data-fade className="card p-5">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <label className="label" htmlFor="billId">ລະຫັດ / BILL ID (ຕົວເລກ 4 ໂຕ)</label>
-            {/* ຕົວເລກ 4 ໂຕ ຕາມໃບບິນເຈ້ຍ — server ກວດຊ້ຳອີກຮອບ. */}
-            <input id="billId" className="input num" inputMode="numeric" maxLength={4}
-              placeholder="0001" aria-describedby={error ? 'cons-error' : undefined}
-              value={billId} onChange={(e) => setBillId(e.target.value.replace(/D/g, ''))} />
+            <label className="label" htmlFor="billId">ລະຫັດ / BILL ID (ຕົວເລກ 6 ໂຕ)</label>
+            {/* ຕົວເລກ 6 ໂຕ ຕາມໃບບິນເຈ້ຍ — server ກວດຊ້ຳອີກຮອບ. */}
+            <input id="billId" className="input num" inputMode="numeric" maxLength={6}
+              placeholder="000001" aria-describedby={error ? 'cons-error' : undefined}
+              value={billId} onChange={(e) => setBillId(e.target.value.replace(/\D/g, ''))} />
           </div>
           <div>
             <label className="label" htmlFor="phone">ເບີໂທ (8 ໂຕ)</label>
@@ -188,12 +190,13 @@ export default function ConsignmentsPage() {
                 <th>ຊື່ພະນັກງານ</th>
                 <th>ວັນທີຢືນຢັນສົ່ງມອບ</th>
                 <th>ສະຖານະ</th>
+                <th>ຜູ້ບັນທຶກ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={11}
+                colSpan={12}
                 isLoading={history.isLoading}
                 isError={history.isError}
                 error={history.error}
@@ -220,6 +223,7 @@ export default function ConsignmentsPage() {
                         {row.status === 'HELD' ? 'ຝາກຢູ່' : 'ສົ່ງຄືນແລ້ວ'}
                       </span>
                     </td>
+                    <td className="text-muted">{row.createdBy}</td>
                     <td className="text-right">
                       <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                         <button className="btn-ghost" aria-expanded={viewing === row.id}
@@ -240,7 +244,7 @@ export default function ConsignmentsPage() {
                   </tr>
                   {viewing === row.id && (
                     <tr>
-                      <td colSpan={11} className="bg-recessed p-4">
+                      <td colSpan={12} className="bg-recessed p-4">
                         <table className="table">
                           <thead>
                             <tr>

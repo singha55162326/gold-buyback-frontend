@@ -21,6 +21,8 @@ interface HistoryRow {
   amountIn: string; amountOut: string; balance: string; note: string | null;
   partner: { nameLo: string } | null;
   category: { nameLo: string } | null;
+  /** ຜູ້ບັນທຶກລາຍການນີ້. */
+  createdBy: string;
 }
 interface Partner { id: string; nameLo: string }
 interface Category { id: string; nameLo: string }
@@ -288,11 +290,12 @@ export function ApArCashModule({
                 <th className="text-right">(−)</th>
                 <th className="text-right">ຍອດສະສົມ</th>
                 <th>ໝາຍເຫດ</th>
+                <th>ຜູ້ບັນທຶກ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={9}
+                colSpan={10}
                 isError={historyFailed}
                 error={historyError}
                 isEmpty={history.length === 0}
@@ -310,6 +313,7 @@ export function ApArCashModule({
                   <td className="num text-right text-danger">{formatMoney(row.amountOut)}</td>
                   <td className="num text-right font-medium">{formatMoney(row.balance)}</td>
                   <td className="text-muted">{row.note ?? '—'}</td>
+                  <td className="text-muted">{row.createdBy}</td>
                 </tr>
               ))}
             </tbody>

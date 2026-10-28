@@ -9,7 +9,7 @@ export default function ApArCategoriesPage() {
       titleLo="ລາຍການ AP-AR (Cash)"
       section="§9.1"
       descriptionLo="ປະເພດລາຍການທີ່ໃຊ້ຕອນເພີ່ມ AP (Cash) ແລະ AR (Cash)"
-      listPath="/finance/ap-ar/categories"
+      listPath="/finance/ap-ar/categories?withActor=true"
       createPath="/finance/ap-ar/categories"
       queryKey={['finance', 'ap-ar-categories', 'all']}
       addLabelLo="ເພີ່ມປະເພດລາຍການ"
@@ -26,6 +26,7 @@ export default function ApArCategoriesPage() {
           ],
         },
       ]}
+      showRecorder
       columns={[
         { key: 'code', labelLo: 'Code' },
         { key: 'nameLo', labelLo: 'ຊື່ປະເພດລາຍການ' },

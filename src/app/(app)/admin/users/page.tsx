@@ -20,6 +20,8 @@ interface User {
   notifyWhatsApp: boolean;
   isActive: boolean;
   lastLoginAt: string | null;
+  /** ຜູ້ບັນທຶກ (ຜູ້ສ້າງບັນຊີນີ້) — ອ່ານຈາກ Audit Log ຢູ່ server. */
+  createdBy: string;
 }
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -205,12 +207,13 @@ export default function UsersPage() {
                 <th>WhatsApp</th>
                 <th>ສະຖານະ</th>
                 <th>ເຂົ້າລະບົບລ່າສຸດ</th>
+                <th>ຜູ້ບັນທຶກ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={8}
+                colSpan={9}
                 isError={usersFailed}
                 error={usersError}
                 isEmpty={false}
@@ -280,6 +283,7 @@ export default function UsersPage() {
                     </span>
                   </td>
                   <td className="num text-muted">{formatDateTime(user.lastLoginAt)}</td>
+                  <td className="text-muted">{user.createdBy}</td>
                   <td className="text-right">
                     {editing === user.id ? (
                       <div className="flex justify-end gap-2">

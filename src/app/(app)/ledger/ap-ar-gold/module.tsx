@@ -17,6 +17,8 @@ interface HistoryRow {
   goldInG: string; goldOutG: string; weightG: string;
   priceIn: string; priceOut: string; cost: string;
   partner: { nameLo: string };
+  /** ຜູ້ບັນທຶກລາຍການນີ້. */
+  createdBy: string;
 }
 
 const SIDE_LABEL = {
@@ -153,11 +155,12 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
                 <th className="text-right">ຕົ້ນທຶນເຂົ້າ</th>
                 <th className="text-right">ຕົ້ນທຶນອອກ</th>
                 <th className="text-right">ຕົ້ນທຶນ</th>
+                <th>ຜູ້ບັນທຶກ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={9}
+                colSpan={10}
                 dense
                 isError={historyFailed}
                 error={historyError}
@@ -176,6 +179,7 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
                   <td className="num text-right">{formatLak(row.priceIn)}</td>
                   <td className="num text-right">{formatLak(row.priceOut)}</td>
                   <td className="num text-right font-medium">{formatLak(row.cost)}</td>
+                  <td className="text-muted">{row.createdBy}</td>
                 </tr>
               ))}
             </tbody>

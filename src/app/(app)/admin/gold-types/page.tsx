@@ -14,12 +14,15 @@ interface GoldType {
   code: string;
   nameLo: string;
   isStockType: boolean;
+  /** ຜູ້ບັນທຶກ — ອ່ານຈາກ Audit Log ຢູ່ server. */
+  createdBy: string;
 }
 
 interface GoldItem {
   id: string;
   code: string;
   nameLo: string;
+  createdBy: string;
 }
 
 /** TOR §3.5 — Module ປະເພດຄຳ ແລະ Module ລາຍການຄຳ. */
@@ -48,8 +51,8 @@ function GoldTypePanel() {
   const [error, setError] = useState<string | null>(null);
 
   const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
-    queryKey: ['catalog', 'gold-types'],
-    queryFn: () => api.get<GoldType[]>('/catalog/gold-types'),
+    queryKey: ['catalog', 'gold-types', 'admin'],
+    queryFn: () => api.get<GoldType[]>('/catalog/gold-types?withActor=true'),
   });
 
   const pager = usePagination(rows);
@@ -134,12 +137,13 @@ function GoldTypePanel() {
               <th>ລະຫັດ</th>
               <th>ຊື່ປະເພດຄຳ</th>
               <th>ສາງຄຳເກົ່າ</th>
+              <th>ຜູ້ບັນທຶກ</th>
               <th className="text-right">ຈັດການ</th>
             </tr>
           </thead>
           <tbody>
             <TableStateRow
-              colSpan={4}
+              colSpan={5}
               isError={rowsFailed}
               error={rowsError}
               isEmpty={false}
@@ -158,6 +162,7 @@ function GoldTypePanel() {
                   )}
                 </td>
                 <td>{row.isStockType ? 'ແມ່ນ' : '—'}</td>
+                <td className="text-muted">{row.createdBy}</td>
                 <td className="text-right">
                   <RowActions
                     id={row.id}
@@ -189,8 +194,8 @@ function GoldItemPanel() {
   const [error, setError] = useState<string | null>(null);
 
   const { data: rows = [], isError: rowsFailed, error: rowsError, refetch: refetchRows } = useQuery({
-    queryKey: ['catalog', 'gold-items'],
-    queryFn: () => api.get<GoldItem[]>('/catalog/gold-items'),
+    queryKey: ['catalog', 'gold-items', 'admin'],
+    queryFn: () => api.get<GoldItem[]>('/catalog/gold-items?withActor=true'),
   });
 
   const itemPager = usePagination(rows);
@@ -268,12 +273,13 @@ function GoldItemPanel() {
             <tr>
               <th>ລະຫັດ</th>
               <th>ຊື່ລາຍການຄຳ</th>
+              <th>ຜູ້ບັນທຶກ</th>
               <th className="text-right">ຈັດການ</th>
             </tr>
           </thead>
           <tbody>
             <TableStateRow
-              colSpan={3}
+              colSpan={4}
               isError={rowsFailed}
               error={rowsError}
               isEmpty={false}
@@ -291,6 +297,7 @@ function GoldItemPanel() {
                     row.nameLo
                   )}
                 </td>
+                <td className="text-muted">{row.createdBy}</td>
                 <td className="text-right">
                   <RowActions
                     id={row.id}

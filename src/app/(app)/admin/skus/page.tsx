@@ -27,6 +27,8 @@ interface Sku {
   fullSkuName: string;
   isActive: boolean;
   goldItem: GoldItem;
+  /** ຜູ້ບັນທຶກ SKU ນີ້. */
+  createdBy: string;
 }
 
 /**
@@ -243,12 +245,13 @@ export default function SkusPage() {
                 <th>ລາຍການຄຳ</th>
                 <th className="text-right">ນ້ຳໜັກ (g)</th>
                 <th className="text-right">ບາດຄຳ</th>
+                <th>ຜູ້ບັນທຶກ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={6}
+                colSpan={7}
                 isLoading={skusLoading}
                 isError={skusFailed}
                 error={skusError}
@@ -264,6 +267,7 @@ export default function SkusPage() {
                   <td className="text-muted">{sku.goldItem.nameLo}</td>
                   <td className="num text-right">{formatGrams(sku.weightG)}</td>
                   <td className="num text-right">{formatWeight(sku.bahtWeight)}</td>
+                  <td className="text-muted">{sku.createdBy}</td>
                   <td className="text-right">
                     <button
                       className="btn-danger"

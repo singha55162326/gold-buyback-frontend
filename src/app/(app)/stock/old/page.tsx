@@ -23,6 +23,8 @@ interface LedgerRow {
   goldInG: string; goldOutG: string; weightG: string;
   priceIn: string; priceOut: string; cost: string;
   goldType: { nameLo: string };
+  /** ຜູ້ບັນທຶກລາຍການນີ້. */
+  createdBy: string;
 }
 
 /** TOR §7.3 — Stock (OLD), ສາງຄຳເກົ່າ. */
@@ -137,10 +139,11 @@ export default function StockOldPage() {
                 <th className="text-right">ຕົ້ນທຶນເຂົ້າ</th>
                 <th className="text-right">ຕົ້ນທຶນອອກ</th>
                 <th className="text-right">ຕົ້ນທຶນ</th>
+                <th>ຜູ້ບັນທຶກ</th>
               </tr>
             </thead>
             <tbody>
-              <TableStateRow colSpan={10} isError={historyFailed} error={historyError} isEmpty={history.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchHistory()} />
+              <TableStateRow colSpan={11} isError={historyFailed} error={historyError} isEmpty={history.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchHistory()} />
               {history.map((row) => (
                 <tr key={row.id}>
                   <td>{formatDate(row.businessDate)}</td>
@@ -153,6 +156,7 @@ export default function StockOldPage() {
                   <td className="num text-right">{formatLak(row.priceIn)}</td>
                   <td className="num text-right">{formatLak(row.priceOut)}</td>
                   <td className="num text-right font-medium">{formatLak(row.cost)}</td>
+                  <td className="text-muted">{row.createdBy}</td>
                 </tr>
               ))}
             </tbody>

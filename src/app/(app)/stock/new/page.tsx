@@ -21,6 +21,8 @@ interface LedgerRow {
   id: string; businessDate: string; partnerLabel: string | null; typeLabel: string;
   goldInG: string; goldOutG: string; weightG: string;
   priceIn: string; priceOut: string; cost: string;
+  /** ຜູ້ບັນທຶກລາຍການນີ້. */
+  createdBy: string;
 }
 
 /** TOR §7.2 — Stock (NEW), ສາງຄຳໃໝ່. */
@@ -159,10 +161,11 @@ function LedgerTable({
               <th className="text-right">ຕົ້ນທຶນເຂົ້າ</th>
               <th className="text-right">ຕົ້ນທຶນອອກ</th>
               <th className="text-right">ຕົ້ນທຶນ</th>
+              <th>ຜູ້ບັນທຶກ</th>
             </tr>
           </thead>
           <tbody>
-            <TableStateRow colSpan={9} isError={isError} error={error} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={onRetry} />
+            <TableStateRow colSpan={10} isError={isError} error={error} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={onRetry} />
             {rows.map((row) => (
               <tr key={row.id}>
                 <td>{formatDate(row.businessDate)}</td>
@@ -174,6 +177,7 @@ function LedgerTable({
                 <td className="num text-right">{formatLak(row.priceIn)}</td>
                 <td className="num text-right">{formatLak(row.priceOut)}</td>
                 <td className="num text-right font-medium">{formatLak(row.cost)}</td>
+                <td className="text-muted">{row.createdBy}</td>
               </tr>
             ))}
           </tbody>

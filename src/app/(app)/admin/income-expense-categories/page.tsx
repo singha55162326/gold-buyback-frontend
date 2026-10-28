@@ -9,7 +9,7 @@ export default function IncomeExpenseCategoriesPage() {
       titleLo="ເພີ້ມລາຍການຮັບຈ່າຍ"
       section="§3.7"
       descriptionLo="ໝວດ ລາຍຮັບ / ລາຍຈ່າຍ ທີ່ໃຊ້ໃນ Module ຈັດການລາຍຮັບລາຍຈ່າຍ"
-      listPath="/finance/income-expense/categories"
+      listPath="/finance/income-expense/categories?withActor=true"
       createPath="/finance/income-expense/categories"
       queryKey={['finance', 'ie-categories', 'all']}
       addLabelLo="ເພີ່ມລາຍການ"
@@ -24,6 +24,7 @@ export default function IncomeExpenseCategoriesPage() {
         },
         { key: 'nameLo', labelLo: 'ຊື່ລາຍການ', placeholder: 'ເງິນເດືອນ' },
       ]}
+      showRecorder
       columns={[
         { key: 'code', labelLo: 'Code' },
         { key: 'nameLo', labelLo: 'ຊື່ລາຍການ' },

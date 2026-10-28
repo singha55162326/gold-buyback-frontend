@@ -15,6 +15,8 @@ interface Cabinet {
   id: string;
   code: string;
   nameLo: string;
+  /** ຜູ້ບັນທຶກ — ອ່ານຈາກ Audit Log ຢູ່ server. */
+  createdBy?: string;
 }
 
 interface CabinetContents {
@@ -48,8 +50,8 @@ export default function CabinetsPage() {
   const ranged = Boolean(fromDate && toDate);
 
   const { data: cabinets = [], isError: cabinetsFailed, error: cabinetsError, refetch: refetchCabinets } = useQuery({
-    queryKey: ['catalog', 'cabinets'],
-    queryFn: () => api.get<Cabinet[]>('/catalog/cabinets'),
+    queryKey: ['catalog', 'cabinets', 'admin'],
+    queryFn: () => api.get<Cabinet[]>('/catalog/cabinets?withActor=true'),
   });
 
   const { data: contents, isError: contentsFailed, error: contentsError, refetch: refetchContents } = useQuery({
@@ -145,12 +147,13 @@ export default function CabinetsPage() {
               <tr>
                 <th>ລະຫັດ</th>
                 <th>ຕູ້ເຄື່ອງ</th>
+                <th>ຜູ້ບັນທຶກ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={3}
+                colSpan={4}
                 isError={cabinetsFailed}
                 error={cabinetsError}
                 isEmpty={false}
@@ -168,6 +171,7 @@ export default function CabinetsPage() {
                       cab.nameLo
                     )}
                   </td>
+                  <td className="text-muted">{cab.createdBy ?? '—'}</td>
                   <td className="text-right">
                     <div className="flex justify-end gap-2">
                       {editing !== cab.id && confirming !== cab.id && (
@@ -217,7 +221,7 @@ export default function CabinetsPage() {
                 <input className="filter-date" type="date" aria-label="ຈາກວັນທີ"
                   value={draftFrom} max={draftTo || undefined}
                   onChange={(e) => setDraftFrom(e.target.value)} />
-                <span className="text-slate-400">–</span>
+                <span className="filter-sep">–</span>
                 <input className="filter-date" type="date" aria-label="ຫາວັນທີ"
                   value={draftTo} min={draftFrom || undefined}
                   onChange={(e) => setDraftTo(e.target.value)} />
@@ -234,7 +238,7 @@ export default function CabinetsPage() {
                 )}
               </div>
               <div className="filter-tail">
-                <span className="num text-xs text-slate-500">
+                <span className="filter-note">
                   {ranged ? `${fromDate} – ${toDate}` : 'ທັງໝົດໃນຕູ້'}
                 </span>
               </div>

@@ -22,6 +22,8 @@ interface Tracking {
   completedAt: string | null;
   /** ປະເພດຄຳ ຂອງລາຍການນີ້ — ແຖວໜຶ່ງອາດມີຫຼາຍປະເພດ, server ລວມໃຫ້ແລ້ວ. */
   goldTypesLo: string;
+  /** ຜູ້ບັນທຶກ (ຜູ້ສົ່ງຄຳອອກ FACTORY). */
+  createdBy: string;
   /** ຜູ້ອັບເດດລ່າສຸດ (ຜູ້ປ້ອນນ້ຳໜັກ FACTORY). */
   updatedBy: string;
   partner: { nameLo: string };
@@ -103,13 +105,14 @@ export default function FactoryTrackingPage() {
                 <th className="text-right">ຄຳເກົ່າອອກ (g)</th>
                 <th className="text-right">ນ້ຳໜັກ (g) FACTORY ປະເມີນ</th>
                 <th className="text-right">ຕົ້ນທຶນຄຳ</th>
-                <th>Updated By</th>
+                <th>ຜູ້ບັນທຶກ</th>
+                <th>ຜູ້ແກ້ໄຂ</th>
                 <th>ສະຖານະ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
-              <TableStateRow colSpan={11} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
+              <TableStateRow colSpan={12} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
               {pager.pageItems.map((row) => {
                 const locked = row.status === 'COMPLETED' && !isAdmin;
                 return (
@@ -136,6 +139,7 @@ export default function FactoryTrackingPage() {
                       )}
                     </td>
                     <td className="num text-right">{formatLak(row.cost)}</td>
+                    <td className="text-muted">{row.createdBy}</td>
                     <td className="text-muted">{row.updatedBy}</td>
                     <td>
                       <span className={statusClass(row.status, { AWAITING_ASSESSMENT: 'status-warning' })}>

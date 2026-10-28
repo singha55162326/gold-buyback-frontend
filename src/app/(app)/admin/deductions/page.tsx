@@ -15,6 +15,8 @@ interface Deduction {
   kind: 'PERCENT' | 'AMOUNT';
   value: string;
   tier: { labelLo: string; displayWeightG: string; sortOrder: number };
+  /** ຜູ້ບັນທຶກຄ່າທີ່ໃຊ້ຢູ່ປັດຈຸບັນ. */
+  createdBy: string;
 }
 
 /**
@@ -113,12 +115,13 @@ export default function DeductionsPage() {
                 <th className="text-right">ນ້ຳໜັກ (g)</th>
                 <th>ວິທີຫັກ</th>
                 <th className="text-right">ຄ່າ</th>
+                <th>ຜູ້ບັນທຶກ</th>
                 <th className="text-right">ຈັດການ</th>
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={5}
+                colSpan={6}
                 isError={rowsFailed}
                 error={rowsError}
                 isEmpty={false}
@@ -158,6 +161,7 @@ export default function DeductionsPage() {
                       formatLak(row.value)
                     )}
                   </td>
+                  <td className="text-muted">{row.createdBy}</td>
                   <td className="text-right">
                     {editing === row.id ? (
                       <div className="flex justify-end gap-2">
