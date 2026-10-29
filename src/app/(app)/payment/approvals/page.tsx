@@ -7,6 +7,22 @@ import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice } from '@/components/query-state';
+import { today, type PagedResult } from '@/components/date-range';
+
+/**
+ * ຄິວລໍຖ້າອະນຸມັດ ບໍ່ຄວນຫາຍຕອນຂຶ້ນມື້ໃໝ່.
+ *
+ * ລາຍການປະຫວັດຕັ້ງຕົ້ນເປັນ "ມື້ນີ້" ຕາມ TOR, ແຕ່ບິນທີ່ຍັງບໍ່ໄດ້ອະນຸມັດຈາກມື້
+ * ວານ ຍັງຕ້ອງເຫັນຢູ່ — ຈຶ່ງຖາມຍ້ອນຫຼັງ 1 ປີ ແລະ ເອົາທຸກແຖວໃນຊ່ວງ.
+ */
+const PENDING_RANGE = (() => {
+  const to = today();
+  const from = new Date();
+  from.setFullYear(from.getFullYear() - 1);
+  const p = (n: number) => String(n).padStart(2, '0');
+  const fromIso = `${from.getFullYear()}-${p(from.getMonth() + 1)}-${p(from.getDate())}`;
+  return `from_date=${fromIso}&to_date=${to}&all=true&status=PENDING`;
+})();
 
 interface PendingBuyback {
   id: string; code: string; weightG: string; quantity: number;
@@ -41,16 +57,20 @@ export default function PaymentApprovalsPage() {
 
   const buybacks = useQuery({
     queryKey: ['buyback', 'PENDING'],
-    queryFn: () => api.get<PendingBuyback[]>('/buyback?status=PENDING'),
+    queryFn: () => api.get<PagedResult<PendingBuyback>>(`/buyback?${PENDING_RANGE}`),
   });
   const exchanges = useQuery({
     queryKey: ['exchange', 'PENDING'],
-    queryFn: () => api.get<PendingExchange[]>('/exchange?status=PENDING'),
+    queryFn: () => api.get<PagedResult<PendingExchange>>(`/exchange?${PENDING_RANGE}`),
   });
   const credits = useQuery({
     queryKey: ['credit', 'PENDING'],
-    queryFn: () => api.get<PendingCredit[]>('/credit?status=PENDING'),
+    queryFn: () => api.get<PagedResult<PendingCredit>>(`/credit?${PENDING_RANGE}`),
   });
+
+  const buybackRows = buybacks.data?.rows ?? [];
+  const exchangeRows = exchanges.data?.rows ?? [];
+  const creditRows = credits.data?.rows ?? [];
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['buyback'] });
@@ -123,8 +143,7 @@ export default function PaymentApprovalsPage() {
       </div>
     );
 
-  const total =
-    (buybacks.data?.length ?? 0) + (exchanges.data?.length ?? 0) + (credits.data?.length ?? 0);
+  const total = buybackRows.length + exchangeRows.length + creditRows.length;
 
   return (
     <div className="space-y-6">
@@ -147,11 +166,11 @@ export default function PaymentApprovalsPage() {
         <div data-fade className="card p-10 text-center text-muted">ບໍ່ມີລາຍການລໍຖ້າອະນຸມັດ</div>
       )}
 
-      {(buybacks.data?.length ?? 0) > 0 && (
+      {buybackRows.length > 0 && (
         <div data-fade className="card">
           <div className="card-header">
             <h2 className="card-title">Buyback</h2>
-            <span className="num text-xs text-muted">{buybacks.data!.length} ລາຍການ</span>
+            <span className="num text-xs text-muted">{buybackRows.length} ລາຍການ</span>
           </div>
           <div className="table-wrap" tabIndex={0} role="region" aria-label="Buyback">
             <table className="table">
@@ -168,7 +187,7 @@ export default function PaymentApprovalsPage() {
                 </tr>
               </thead>
               <tbody>
-                {buybacks.data!.map((row) => (
+                {buybackRows.map((row) => (
                   <tr key={row.id}>
                     <td className="font-mono text-xs">{row.code}</td>
                     <td>{formatDateTime(row.createdAt)}</td>
@@ -186,11 +205,11 @@ export default function PaymentApprovalsPage() {
         </div>
       )}
 
-      {(exchanges.data?.length ?? 0) > 0 && (
+      {exchangeRows.length > 0 && (
         <div data-fade className="card">
           <div className="card-header">
             <h2 className="card-title">ລາຍການປ່ຽນເປັນເງິນ</h2>
-            <span className="num text-xs text-muted">{exchanges.data!.length} ລາຍການ</span>
+            <span className="num text-xs text-muted">{exchangeRows.length} ລາຍການ</span>
           </div>
           <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການປ່ຽນເປັນເງິນ">
             <table className="table">
@@ -204,7 +223,7 @@ export default function PaymentApprovalsPage() {
                 </tr>
               </thead>
               <tbody>
-                {exchanges.data!.map((row) => (
+                {exchangeRows.map((row) => (
                   <tr key={row.id}>
                     <td className="font-mono text-xs">{row.code}</td>
                     <td>{formatDateTime(row.createdAt)}</td>
@@ -219,11 +238,11 @@ export default function PaymentApprovalsPage() {
         </div>
       )}
 
-      {(credits.data?.length ?? 0) > 0 && (
+      {creditRows.length > 0 && (
         <div data-fade className="card">
           <div className="card-header">
             <h2 className="card-title">ລາຍການສິນເຊື່ອ</h2>
-            <span className="num text-xs text-muted">{credits.data!.length} ລາຍການ</span>
+            <span className="num text-xs text-muted">{creditRows.length} ລາຍການ</span>
           </div>
           <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການສິນເຊື່ອ">
             <table className="table">
@@ -239,7 +258,7 @@ export default function PaymentApprovalsPage() {
                 </tr>
               </thead>
               <tbody>
-                {credits.data!.map((row) => (
+                {creditRows.map((row) => (
                   <tr key={row.id}>
                     <td className="font-mono text-xs">{row.code}</td>
                     <td>{formatDateTime(row.createdAt)}</td>

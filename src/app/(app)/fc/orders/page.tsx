@@ -5,7 +5,7 @@ import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
-import { formatLak, formatWeight, formatDate, formatDateTime } from '@/lib/format';
+import { formatLak, formatWeight, formatDate, formatDateTime, formatByCurrency } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { NumberInput } from '@/components/number-input';
@@ -56,6 +56,18 @@ interface Order {
     goldItem: { nameLo: string };
   }>;
   receivedFromSmithAt: string | null; customerPickupAt: string | null;
+  /** ການຮັບ / ຈ່າຍຄືນເງິນຂອງບິນນີ້ — ສະແດງພ້ອມສະກຸນເງິນ. */
+  receipts: Array<{
+    id: string;
+    method: 'CASH' | 'BANK';
+    currency: 'LAK' | 'THB' | 'USD';
+    amount: string;
+    amountLak: string;
+    isRefund: boolean;
+    isDeposit: boolean;
+    createdAt: string;
+    bankAccount: { nameLo: string } | null;
+  }>;
   customer: { phone: string };
   goldItem: { nameLo: string };
   supplier: { nameLo: string } | null;
@@ -237,7 +249,7 @@ export default function OrdersPage() {
     lines.every((l) => l.method === 'CASH' || !l.amount.trim() || Boolean(l.bankAccountId));
 
   const canSave =
-    /^\d{8}$/.test(phone) && /^\d{4}$/.test(billNo) && staffName.trim() &&
+    /^\d{8}$/.test(phone) && /^\d{6}$/.test(billNo) && staffName.trim() &&
     orderLines.length > 0 && Number(totalAmount.replace(/,/g, '')) > 0 &&
     legsReady(payments);
 
@@ -274,8 +286,8 @@ export default function OrdersPage() {
                 value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))} />
             </div>
             <div>
-              <label className="label" htmlFor="billNo">ເລກບິນ (4 ຕົວ)</label>
-              <input id="billNo" className="input num" inputMode="numeric" maxLength={4}
+              <label className="label" htmlFor="billNo">ເລກບິນ / BILL ID (ຕົວເລກ 6 ຕົວ)</label>
+              <input id="billNo" className="input num" inputMode="numeric" maxLength={6}
                 value={billNo} onChange={(e) => setBillNo(e.target.value.replace(/\D/g, ''))} />
             </div>
             <div>
@@ -578,6 +590,43 @@ export default function OrdersPage() {
                           <Detail labelLo="ສະຖານະ" value={STATUS[row.status].lo} />
                           <Detail labelLo="ຜູ້ບັນທຶກ" value={row.createdBy} />
                         </div>
+
+                        <div className="section-label mt-4">Payment ໃນບິນ</div>
+                        <table className="table mt-1">
+                          <thead>
+                            <tr>
+                              <th>ວັນທີ</th>
+                              <th>ປະເພດ</th>
+                              <th>ຊ່ອງທາງ</th>
+                              <th>ສະກຸນເງິນ</th>
+                              <th className="text-right">ຍອດເງິນ</th>
+                              <th className="text-right">ເທົ່າກັບ (LAK)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {(row.receipts ?? []).length === 0 && (
+                              <tr>
+                                <td colSpan={6} className="text-center text-muted">ຍັງບໍ່ມີການຈ່າຍເງິນ</td>
+                              </tr>
+                            )}
+                            {(row.receipts ?? []).map((receipt) => (
+                              <tr key={receipt.id}>
+                                <td className="whitespace-nowrap">{formatDateTime(receipt.createdAt)}</td>
+                                <td className={receipt.isRefund ? 'text-danger' : 'text-success'}>
+                                  {receipt.isRefund ? 'ຈ່າຍຄືນ (−)' : receipt.isDeposit ? 'ມັດຈຳ (+)' : 'ຮັບເງິນ (+)'}
+                                </td>
+                                <td className="text-muted">
+                                  {receipt.method === 'CASH' ? 'ເງິນສົດ' : (receipt.bankAccount?.nameLo ?? 'ທະນາຄານ')}
+                                </td>
+                                <td>{receipt.currency}</td>
+                                <td className="num text-right font-medium">
+                                  {formatByCurrency(receipt.amount, receipt.currency)}
+                                </td>
+                                <td className="num text-right">{formatLak(receipt.amountLak)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
 
                         <div className="section-label mt-4">ລາຍການໃນບິນ</div>
                         <table className="table mt-1">

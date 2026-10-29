@@ -731,6 +731,65 @@
     }
   }
 
+  /* ---------------------------------------------------------------- *
+   * ຕົວຢ່າງໃບພິມ (PrintSheet)
+   * ---------------------------------------------------------------- */
+
+  .sheet-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: flex;
+    flex-direction: column;
+    background: var(--scrim);
+    -webkit-backdrop-filter: blur(6px);
+    backdrop-filter: blur(6px);
+  }
+  .sheet-bar {
+    @apply flex flex-wrap items-center justify-between gap-3;
+    padding: 12px 18px;
+    background: var(--surface-solid);
+    border-bottom: 1px solid var(--line);
+    color: var(--fg);
+  }
+  .sheet-scroll {
+    @apply flex-1 overflow-auto;
+    padding: 20px;
+  }
+  /* ເຈ້ຍ: ຂາວສະເໝີ ທັງສອງ theme — ສິ່ງທີ່ເຫັນຄືສິ່ງທີ່ພິມອອກ. */
+  .sheet {
+    margin: 0 auto;
+    width: min(1180px, 100%);
+    background: #fdfaf4; /* style-guard-ignore */
+    color: #2e1208; /* style-guard-ignore */
+    border-radius: 8px;
+    padding: 26px 28px;
+    box-shadow: 0 20px 60px -24px rgba(0, 0, 0, 0.55); /* style-guard-ignore */
+  }
+  .sheet h2 {
+    @apply font-serif text-xl font-bold;
+  }
+  .sheet h3 {
+    @apply mb-1 mt-5 text-sm font-semibold;
+  }
+  .sheet .table th,
+  .sheet .table td {
+    border-color: rgba(120, 80, 20, 0.25); /* style-guard-ignore */
+    color: inherit;
+  }
+  .sheet-head {
+    @apply flex flex-wrap items-start justify-between gap-4 border-b pb-3;
+    border-color: rgba(120, 80, 20, 0.3); /* style-guard-ignore */
+  }
+  .sheet-sign {
+    @apply mt-10 grid gap-10 text-center text-xs;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .sheet-sign > div {
+    padding-top: 8px;
+    border-top: 1px solid rgba(120, 80, 20, 0.45); /* style-guard-ignore */
+  }
+
   .login-card {
     border-radius: 28px;
     -webkit-backdrop-filter: blur(26px) saturate(140%);
@@ -1159,5 +1218,28 @@ input[type='radio']:focus-visible,
     box-shadow: none !important;
     background: transparent !important;
     color: #2e1208 !important;
+  }
+
+  /* ເມື່ອຕົວຢ່າງໃບພິມເປີດຢູ່ ເຈ້ຍເປັນເນື້ອຫາດຽວຂອງໜ້າ. */
+  .printing-sheet body > *:not(.sheet-overlay) {
+    display: none !important;
+  }
+  .printing-sheet .sheet-overlay {
+    position: static !important;
+    display: block !important;
+    background: none !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .printing-sheet .sheet-scroll {
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .printing-sheet .sheet {
+    width: 100% !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: none !important;
   }
 }

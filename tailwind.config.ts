@@ -36,6 +36,8 @@ const config: Config = {
         line: 'var(--line)',
         surface: 'var(--surface-solid)',
         recessed: 'var(--recessed)',
+        /** Faint gold wash for selected rows and toggles. */
+        'gold-tint': 'var(--gold-tint)',
         success: 'var(--success)',
         warning: 'var(--warning)',
         danger: 'var(--danger)',

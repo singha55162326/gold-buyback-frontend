@@ -100,7 +100,7 @@ const GET: Record<string, unknown> = {
   ],
   '/cash/bank/balances': [{ bankAccountId: 'b1', bankCode: 'BCEL', bankNameLo: bank.nameLo, currency: 'LAK', inflow: '9000000', outflow: '1000000', actual: '8000000', net: '8000000', variance: '0' }],
   '/cash/bank/history': bankRows,
-  '/stock/old-gold-summary': [{ goldTypeId: 'gt1', goldTypeCode: 'G96', goldTypeNameLo: 'ຄຳ 96.5%', weightG: '120.50', bahtWeight: '8.03', quantity: 12, totalPaid: '290000000', averagePerGram: '2400000', averagePerBaht: '36000000', averageMessageLo: null }],
+  '/stock/old-gold-summary': [{ goldTypeId: 'gt1', goldTypeCode: 'G96', goldTypeNameLo: 'ຄຳ 96.5%', receivedG: '140.50', receivedBahtWeight: '9.37', receivedPaid: '290000000', receivedAveragePerGram: '2063000', receivedAveragePerBaht: '30945000', handedG: '20.00', handedPaid: '0', weightG: '120.50', bahtWeight: '8.03', quantity: 12, totalPaid: '290000000', averagePerGram: '2406639', averagePerBaht: '36099585', averageMessageLo: null, newWeightG: '0' }],
   '/stock/handovers': [{ id: 'ho1', code: 'HO-001', weightG: '50.00', status: 'COMPLETED', note: null, createdAt: D, goldType: { nameLo: 'ຄຳ 96.5%' }, shift: { user: { fullName: 'ນາງ ແສງ' } } }],
   '/stock/new/balances': [{ id: 'nb1', openingQty: 5, inQty: 3, outQty: 2, balanceQty: 6, totalWeightG: '22.50', goldSku: { fullSkuName: 'ແຫວນ 1 ສະລຶງ', weightG: '3.75' } }],
   '/stock/new/history': goldLedger,
