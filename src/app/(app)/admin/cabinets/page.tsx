@@ -9,7 +9,7 @@ import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { RowActions } from '@/components/row-actions';
 import { formatWeight, formatDate } from '@/lib/format';
-import { canPickDates } from '@/components/date-range';
+import { canPickDates, isValidRange, rangeProblem } from '@/components/date-range';
 
 interface Cabinet {
   id: string;
@@ -226,8 +226,12 @@ export default function CabinetsPage() {
                   value={draftTo} min={draftFrom || undefined}
                   onChange={(e) => setDraftTo(e.target.value)} />
                 <button type="button" className="btn-secondary h-9 py-0"
-                  disabled={!draftFrom || !draftTo}
-                  onClick={() => { setFromDate(draftFrom); setToDate(draftTo); }}>
+                  disabled={!isValidRange(draftFrom, draftTo)}
+                  onClick={() => {
+                    if (!isValidRange(draftFrom, draftTo)) return;
+                    setFromDate(draftFrom);
+                    setToDate(draftTo);
+                  }}>
                   ຄົ້ນຫາ
                 </button>
                 {ranged && (
@@ -238,6 +242,12 @@ export default function CabinetsPage() {
                 )}
               </div>
               <div className="filter-tail">
+                {/* ວ່າງທັງສອງ = "ທັງໝົດ" ເຊິ່ງຖືກຕ້ອງສຳລັບຍອດຄົງຄ້າງ ຈຶ່ງບໍ່ເຕືອນ. */}
+                {(draftFrom || draftTo) && rangeProblem(draftFrom, draftTo) && (
+                  <span className="text-xs font-medium text-warning">
+                    {rangeProblem(draftFrom, draftTo)}
+                  </span>
+                )}
                 <span className="filter-note">
                   {ranged ? `${fromDate} – ${toDate}` : 'ທັງໝົດໃນຕູ້'}
                 </span>

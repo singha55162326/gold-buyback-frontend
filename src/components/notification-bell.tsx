@@ -1,10 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { io, type Socket } from 'socket.io-client';
-import { api, getToken } from '@/lib/api';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+import { useRealtimeInvalidate } from '@/lib/realtime';
 import { formatDateTime } from '@/lib/format';
+
+/** ນອກ component ເພື່ອໃຫ້ເປັນອ້າງອີງດຽວກັນທຸກຮອບ render. */
+const LIVE_KEYS = ['notifications'] as const;
 
 interface NotificationRow {
   id: string;
@@ -20,7 +23,6 @@ interface NotificationRow {
  * dropped connection degrades to "correct but not instant" rather than wrong.
  */
 export function NotificationBell() {
-  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
 
   const { data = [] } = useQuery({
@@ -29,19 +31,7 @@ export function NotificationBell() {
     refetchInterval: 60_000,
   });
 
-  useEffect(() => {
-    const token = getToken();
-    if (!token) return;
-
-    const url = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
-    const socket: Socket = io(`${url}/ws`, { auth: { token }, transports: ['websocket'] });
-    socket.on('notification', () => {
-      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
-    });
-    return () => {
-      socket.disconnect();
-    };
-  }, [queryClient]);
+  useRealtimeInvalidate(LIVE_KEYS);
 
   const unread = data.filter((n) => !n.readAt).length;
 

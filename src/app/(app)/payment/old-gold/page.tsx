@@ -13,6 +13,8 @@ import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import {
   DateRangeFilter,
   canPickDates,
+  isValidRange,
+  rangeProblem,
   today,
   useHistoryRange,
   type PagedResult,
@@ -186,12 +188,20 @@ export default function OldGoldPage() {
     enabled: mode === 'BOILED',
   });
 
+  /*
+   * ຊ່ອງວັນທີຂອງ ໃບມອບຄຳ ເຄີຍສົ່ງເຂົ້າ URL ໂດຍກົງ: ລ້າງຊ່ອງໃດຊ່ອງໜຶ່ງອອກ
+   * ຈະໄດ້ `?from_date=` ວ່າງ ແລ້ວໃບມອບຄຳຫວ່າງເປົ່າ. ກັ້ນໄວ້ທີ່ນີ້ ແລະ ຮັກສາ
+   * ຜົນເກົ່າໄວ້ໃຫ້ເຫັນ ແທນທີ່ຈະລ້າງໜ້າຈໍຂະນະຜູ້ໃຊ້ກຳລັງພິມ.
+   */
+  const dlProblem = rangeProblem(dlFrom, dlTo);
+
   const delivery = useQuery({
     queryKey: ['stock', 'handovers', 'delivery', dlFrom, dlTo],
     queryFn: () =>
       api.get<PagedResult<HandoverRow>>(
         `/stock/handovers?from_date=${dlFrom}&to_date=${dlTo}&all=true`,
       ),
+    enabled: isValidRange(dlFrom, dlTo),
     placeholderData: keepPreviousData,
   });
 
@@ -517,6 +527,9 @@ export default function OldGoldPage() {
                 <input className="filter-date" type="date" aria-label="ຫາວັນທີ" value={dlTo}
                   min={dlFrom}
                   onChange={(e) => { setDlTo(e.target.value); setChip(null); }} />
+                {dlProblem && (
+                  <span className="text-xs font-medium text-warning">{dlProblem}</span>
+                )}
               </>
             )}
             <button type="button" className="btn-secondary h-9 py-0" onClick={() => setPreview(true)}>

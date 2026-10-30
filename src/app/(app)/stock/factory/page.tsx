@@ -3,9 +3,14 @@
 import { useState } from 'react';
 import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
-import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  DateRangeFilter,
+  useHistoryRange,
+  type PagedResult,
+} from '@/components/date-range';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser } from '@/lib/api';
+import { useRealtimeInvalidate } from '@/lib/realtime';
 import { formatLak, formatWeight, formatDate } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { TableStateRow } from '@/components/query-state';
@@ -32,27 +37,78 @@ interface Tracking {
 }
 
 /**
+ * ແຖວມາຈາກຄົນອື່ນ (ຜູ້ອະນຸມັດ) ບໍ່ແມ່ນຈາກຜູ້ທີ່ກຳລັງເບິ່ງຢູ່ ຈຶ່ງຕ້ອງໂຫຼດເອງ.
+ * 15 ວິນາທີ ໄວພໍທີ່ຈະຮູ້ສຶກວ່າ "ຂຶ້ນເອງ" ແລະ ຊ້າພໍທີ່ຈະບໍ່ກວນ API.
+ */
+const LIVE_MS = 15_000;
+
+/** ນອກ component ເພື່ອໃຫ້ເປັນອ້າງອີງດຽວກັນທຸກຮອບ render. */
+const LIVE_KEYS = ['stock'] as const;
+
+type View = 'QUEUE' | 'HISTORY';
+
+/**
  * TOR §7.3 — ຕິດຕາມ Stock Out ໄປ FACTORY.
  *
  * A FACTORY OUT does not deduct stock when approved: it waits here until the
  * factory reports the assessed weight. Once Completed only Admin/Manager may
  * edit, which the API enforces regardless of what this page allows.
+ *
+ * ສອງທາງທີ່ຂໍ້ມູນມາຮອດໜ້ານີ້:
+ *
+ *  1. **ຄິວລໍຖ້າປະເມີນ** — ທຸກແຖວທີ່ຍັງຄ້າງ ບໍ່ວ່າອະນຸມັດມື້ໃດ, ໂຫຼດເອງ.
+ *     ນີ້ຄືທາງທີ່ຖືກຕ້ອງສຳລັບວຽກປະຈຳວັນ: ອະນຸມັດແລ້ວແຖວຂຶ້ນເອງ ບໍ່ຕ້ອງຄົ້ນຫາ.
+ *  2. **ປະຫວັດ** — ກອງຕາມຊ່ວງວັນທີ ສຳລັບການກວດຍ້ອນຫຼັງ.
+ *
+ * ແຕ່ກ່ອນມີແຕ່ທາງທີ 2 ແລະ ຄ່າເລີ່ມຕົ້ນເປັນ "ມື້ນີ້" — ແຖວທີ່ອະນຸມັດມື້ວານຈຶ່ງ
+ * ຫາຍໄປທັງທີ່ຍັງບໍ່ທັນໄດ້ເຮັດ, ແລະ ເບິ່ງຄືວ່າ "ອະນຸມັດແລ້ວຂໍ້ມູນບໍ່ຂຶ້ນ".
  */
 export default function FactoryTrackingPage() {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const [view, setView] = useState<View>('QUEUE');
   const [editing, setEditing] = useState<string | null>(null);
   const [weight, setWeight] = useState('');
   const [error, setError] = useState<string | null>(null);
   const user = getStoredUser();
   const isAdmin = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
-  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; ກວ້າງອອກໄດ້ຈາກແຖບ filter.
-  const history = useHistoryRange<Tracking>(['stock', 'factory'], '/stock/factory');
-  const rows = history.rows;
-  const rowsFailed = history.isError;
-  const rowsError = history.error;
-  const refetchRows = history.refetch;
+  /*
+   * ທາງທີ 1 — ຄິວ. ບໍ່ສົ່ງວັນທີມາເລີຍ: server ຕີຄວາມວ່າ "ທຸກແຖວທີ່ຍັງຄ້າງ".
+   * ຖາມຕໍ່ເນື່ອງເຖິງຈະຢູ່ແຖບປະຫວັດ ເພາະຕົວເລກເທິງແຖບຕ້ອງຖືກຕ້ອງຢູ່ສະເໝີ.
+   */
+  const queue = useQuery({
+    queryKey: ['stock', 'factory', 'queue'],
+    queryFn: () =>
+      api.get<PagedResult<Tracking>>('/stock/factory?status=AWAITING_ASSESSMENT&all=true'),
+    refetchInterval: LIVE_MS,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: true,
+    staleTime: 0,
+    placeholderData: keepPreviousData,
+  });
+
+  // ທາງທີ 2 — ປະຫວັດຕາມວັນທີ. ຖາມສະເພາະເມື່ອເປີດແຖບນີ້.
+  const history = useHistoryRange<Tracking>(['stock', 'factory', 'history'], '/stock/factory', {
+    enabled: view === 'HISTORY',
+    refetchInterval: LIVE_MS,
+  });
+
+  /*
+   * ແລະ ດ່ານທີ່ສາມ ທີ່ຜູ້ໃຊ້ບໍ່ເຫັນ: ເມື່ອຜູ້ອະນຸມັດກົດ Approve, server ແຈ້ງ
+   * ເຕືອນມາທາງ socket — ສາງຈະເຫັນແຖວໃໝ່ທັນທີ ບໍ່ຕ້ອງລໍຮອບຕໍ່ໄປ. ສາຍຫຼຸດກໍ່
+   * ຍັງມີການໂຫຼດຕາມເວລາຄໍ້າໄວ້.
+   */
+  useRealtimeInvalidate(LIVE_KEYS);
+
+  const queueRows = queue.data?.rows ?? [];
+  const onQueue = view === 'QUEUE';
+
+  const rows = onQueue ? queueRows : history.rows;
+  const rowsFailed = onQueue ? queue.isError : history.isError;
+  const rowsError = onQueue ? queue.error : history.error;
+  const refetchRows = onQueue ? () => void queue.refetch() : history.refetch;
+  const isFetching = onQueue ? queue.isFetching : history.isFetching;
 
   const save = useMutation({
     mutationFn: (id: string) =>
@@ -74,7 +130,6 @@ export default function FactoryTrackingPage() {
 
   const pager = usePagination(rows);
 
-
   return (
     <div className="space-y-6">
       <PageHead
@@ -92,8 +147,54 @@ export default function FactoryTrackingPage() {
       )}
 
       <div data-fade className="card">
-        <div className="card-header"><h2 className="card-title">ລາຍການຕິດຕາມ</h2></div>
-        <DateRangeFilter history={history} />
+        <div className="card-header flex-wrap">
+          <h2 className="card-title">ລາຍການຕິດຕາມ</h2>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="live-dot">
+              {isFetching ? 'ກຳລັງໂຫຼດ...' : 'ອັບເດດເອງ'}
+            </span>
+            <div className="seg" role="tablist" aria-label="ມຸມມອງ">
+              <button
+                type="button"
+                role="tab"
+                className="seg-btn"
+                aria-selected={onQueue}
+                onClick={() => setView('QUEUE')}
+              >
+                ລໍຖ້າປະເມີນ
+                {queueRows.length > 0 && <span className="seg-count">{queueRows.length}</span>}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                className="seg-btn"
+                aria-selected={!onQueue}
+                onClick={() => setView('HISTORY')}
+              >
+                ປະຫວັດ
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {onQueue ? (
+          <div className="filter-bar">
+            <span className="filter-select-label">
+              ທຸກລາຍການທີ່ຍັງລໍຖ້າ FACTORY ປະເມີນ — ບໍ່ຈຳກັດວັນທີ
+            </span>
+            <div className="filter-tail">
+              <button type="button" className="filter-clear" onClick={refetchRows}>
+                ໂຫຼດຄືນ
+              </button>
+              <span className="filter-note">
+                {queueRows.length.toLocaleString('en-US')} ລາຍການ
+              </span>
+            </div>
+          </div>
+        ) : (
+          <DateRangeFilter history={history} />
+        )}
+
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການຕິດຕາມ">
           <table className="table">
             <thead>
@@ -113,7 +214,14 @@ export default function FactoryTrackingPage() {
               </tr>
             </thead>
             <tbody>
-              <TableStateRow colSpan={12} isError={rowsFailed} error={rowsError} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRows()} />
+              <TableStateRow
+                colSpan={12}
+                isError={rowsFailed}
+                error={rowsError}
+                isEmpty={rows.length === 0}
+                emptyText={onQueue ? 'ບໍ່ມີລາຍການລໍຖ້າປະເມີນ' : 'ຍັງບໍ່ມີລາຍການ'}
+                onRetry={refetchRows}
+              />
               {pager.pageItems.map((row) => {
                 const locked = row.status === 'COMPLETED' && !isAdmin;
                 return (

@@ -721,6 +721,74 @@
     outline-offset: 2px;
   }
 
+  /* ສະຫຼັບມຸມມອງເໜືອຕາຕະລາງ — ຄິວທີ່ຍັງຄ້າງ ຫຼື ປະຫວັດຕາມວັນທີ. */
+  .seg {
+    @apply inline-flex items-center gap-1;
+    padding: 3px;
+    border-radius: 12px;
+    background: var(--recessed);
+    border: 1px solid var(--line);
+  }
+  .seg-btn {
+    @apply flex items-center gap-2 text-[13px] font-medium;
+    height: 32px;
+    padding: 0 12px;
+    border-radius: 9px;
+    color: var(--muted);
+    transition:
+      background-color 0.15s ease,
+      color 0.15s ease;
+  }
+  .seg-btn:hover:not([aria-selected='true']) {
+    color: var(--fg);
+  }
+  .seg-btn[aria-selected='true'] {
+    color: var(--gold);
+    background: var(--surface-solid);
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  }
+  .seg-btn:focus-visible {
+    outline: 2px solid var(--gold);
+    outline-offset: 2px;
+  }
+  .seg-count {
+    @apply num inline-flex items-center justify-center text-[11px] font-semibold;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--gold-tint);
+    color: var(--gold);
+  }
+
+  /* ຕົວບອກວ່າໜ້ານີ້ໂຫຼດເອງ — ຈຸດຂຽວເຕັ້ນເບົາໆ. */
+  .live-dot {
+    @apply inline-flex items-center gap-1.5 text-xs font-medium;
+    color: var(--muted);
+  }
+  .live-dot::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success, #16a34a);
+    animation: live-pulse 2s ease-in-out infinite;
+  }
+  @keyframes live-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .live-dot::before {
+      animation: none;
+    }
+  }
+
   /* 16px on phones, same reason as `.input`: iOS zooms anything smaller. */
   @media (max-width: 639.98px) {
     .filter-date {

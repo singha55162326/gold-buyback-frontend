@@ -34,10 +34,36 @@ export function canPickDates(): boolean {
   return getStoredUser()?.role !== 'VALUER';
 }
 
+/**
+ * ຊ່ວງວັນທີທີ່ຍິງໄດ້: ກອກຄົບທັງສອງຂອບ ແລະ ບໍ່ກັບຫົວກັບທ້າຍ.
+ *
+ * ຢູ່ບ່ອນດຽວເພາະໜ້າທີ່ບໍ່ໄດ້ໃຊ້ `useHistoryRange` ກໍ່ຕ້ອງການກົດອັນດຽວກັນ —
+ * ຊ່ອງ `<input type="date">` ລ້າງອອກໄດ້ດ້ວຍແປ້ນພິມ ແລະ ພິມເອງກໍ່ຂ້າມ
+ * `min`/`max` ໄດ້. ສະຕຣິງ `YYYY-MM-DD` ປຽບທຽບດ້ວຍ `<=` ໄດ້ໂດຍກົງ.
+ */
+export function isValidRange(from: string, to: string): boolean {
+  return Boolean(from) && Boolean(to) && from <= to;
+}
+
+/** ເຫດຜົນເປັນພາສາລາວ ວ່າເປັນຫຍັງຊ່ວງນີ້ຍິງບໍ່ໄດ້ (null = ຍິງໄດ້). */
+export function rangeProblem(from: string, to: string): string | null {
+  if (!from || !to) return 'ກອກທັງ ຈາກວັນທີ ແລະ ຫາວັນທີ';
+  if (from > to) return 'ຈາກວັນທີ ຕ້ອງບໍ່ຫຼັງ ຫາວັນທີ';
+  return null;
+}
+
 interface Options {
   /** Extra query params merged into the request, e.g. `{ status: 'HELD' }`. */
   params?: Record<string, string | number | undefined>;
   enabled?: boolean;
+  /**
+   * ໂຫຼດຄືນເອງທຸກໆ N ມິລລິວິນາທີ.
+   *
+   * ສຳລັບໜ້າຄິວທີ່ແຖວໃໝ່ມາຈາກຄົນອື່ນ (ຜູ້ອະນຸມັດ, ສາງ) ບໍ່ແມ່ນຈາກຜູ້ທີ່ກຳລັງ
+   * ເບິ່ງຢູ່. ຕັ້ງຄ່ານີ້ແລ້ວຈະເປີດການໂຫຼດຄືນຕອນກັບມາທີ່ໜ້າຕ່າງນຳ, ແລະ ຢຸດ
+   * ການໂຫຼດເມື່ອ tab ຖືກເຊື່ອງ — ເຄື່ອງ counter ບໍ່ຄວນຍິງຄຳຂໍຖິ້ມລ້າໆ.
+   */
+  refetchInterval?: number;
 }
 
 /**
@@ -53,7 +79,8 @@ interface Options {
  * showing a partial ledger as if it were the whole thing.
  */
 export function useHistoryRange<T>(queryKey: unknown[], path: string, options: Options = {}) {
-  const { params = {}, enabled = true } = options;
+  const { params = {}, enabled = true, refetchInterval } = options;
+  const live = refetchInterval !== undefined;
 
   const [draftFrom, setDraftFrom] = useState(today());
   const [draftTo, setDraftTo] = useState(today());
@@ -75,6 +102,12 @@ export function useHistoryRange<T>(queryKey: unknown[], path: string, options: O
     queryFn: () => api.get<PagedResult<T>>(`${path}?${search.toString()}`),
     enabled,
     placeholderData: keepPreviousData,
+    refetchInterval,
+    // ບໍ່ຍິງຄຳຂໍເມື່ອ tab ຖືກເຊື່ອງ; ກັບມາເບິ່ງເມື່ອໃດກໍ່ໂຫຼດຄືນໃຫ້ທັນທີ.
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: live,
+    // `staleTime` ລວມ 30 ວິນາທີ ຈະກືນການໂຫຼດຄືນຂອງໜ້າຄິວ.
+    ...(live ? { staleTime: 0 } : {}),
   });
 
   const data = query.data;
@@ -105,15 +138,11 @@ export function useHistoryRange<T>(queryKey: unknown[], path: string, options: O
     draftTo,
     setDraftFrom,
     setDraftTo,
-    /**
-     * ຊ່ວງທີ່ກອກບໍ່ຄົບ ຫຼື ກັບຫົວກັບທ້າຍ ຍິງບໍ່ໄດ້.
-     *
-     * ຊ່ອງວັນທີ ລ້າງອອກໄດ້ດ້ວຍແປ້ນພິມ ແລະ ພິມເອງກໍ່ຂ້າມ `min`/`max` ໄດ້ —
-     * ການຍິງຄຳຂໍທີ່ server ປະຕິເສດແນ່ນອນ ພຽງແຕ່ເຮັດໃຫ້ຕາຕະລາງຫວ່າງເປົ່າ.
-     */
-    canApply: Boolean(draftFrom) && Boolean(draftTo) && draftFrom <= draftTo,
+    /** ຊ່ວງທີ່ກອກບໍ່ຄົບ ຫຼື ກັບຫົວກັບທ້າຍ ຍິງບໍ່ໄດ້ — ເບິ່ງ `isValidRange`. */
+    canApply: isValidRange(draftFrom, draftTo),
+    problem: rangeProblem(draftFrom, draftTo),
     apply: () => {
-      if (!draftFrom || !draftTo || draftFrom > draftTo) return;
+      if (!isValidRange(draftFrom, draftTo)) return;
       setApplied({ from: draftFrom, to: draftTo });
     },
     reset: () => {
@@ -185,12 +214,8 @@ export function DateRangeFilter<T>({
       </div>
 
       <div className="filter-tail">
-        {!history.canApply && (
-          <span className="text-xs font-medium text-warning">
-            {!history.draftFrom || !history.draftTo
-              ? 'ກອກທັງ ຈາກວັນທີ ແລະ ຫາວັນທີ'
-              : 'ຈາກວັນທີ ຕ້ອງບໍ່ຫຼັງ ຫາວັນທີ'}
-          </span>
+        {history.problem && (
+          <span className="text-xs font-medium text-warning">{history.problem}</span>
         )}
         {history.truncated && (
           <span className="text-xs font-medium text-warning">
