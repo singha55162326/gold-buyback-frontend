@@ -61,11 +61,11 @@ export function useHistoryRange<T>(queryKey: unknown[], path: string, options: O
   // them would request a window nobody asked for.
   const [applied, setApplied] = useState({ from: today(), to: today() });
 
-  const search = new URLSearchParams({
-    from_date: applied.from,
-    to_date: applied.to,
-    all: 'true',
-  });
+  // ສົ່ງສະເພາະຂອບທີ່ມີຄ່າ: `?from_date=` ວ່າງເປັນ 400 ຢູ່ server ແລະ ຈະເຮັດໃຫ້
+  // ຕາຕະລາງຫວ່າງເປົ່າພ້ອມຂໍ້ຜິດພາດ ແທນທີ່ຈະສະແດງຊ່ວງເລີ່ມຕົ້ນ (= ມື້ນີ້).
+  const search = new URLSearchParams({ all: 'true' });
+  if (applied.from) search.set('from_date', applied.from);
+  if (applied.to) search.set('to_date', applied.to);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== '') search.set(k, String(v));
   }
@@ -105,7 +105,17 @@ export function useHistoryRange<T>(queryKey: unknown[], path: string, options: O
     draftTo,
     setDraftFrom,
     setDraftTo,
-    apply: () => setApplied({ from: draftFrom, to: draftTo }),
+    /**
+     * ຊ່ວງທີ່ກອກບໍ່ຄົບ ຫຼື ກັບຫົວກັບທ້າຍ ຍິງບໍ່ໄດ້.
+     *
+     * ຊ່ອງວັນທີ ລ້າງອອກໄດ້ດ້ວຍແປ້ນພິມ ແລະ ພິມເອງກໍ່ຂ້າມ `min`/`max` ໄດ້ —
+     * ການຍິງຄຳຂໍທີ່ server ປະຕິເສດແນ່ນອນ ພຽງແຕ່ເຮັດໃຫ້ຕາຕະລາງຫວ່າງເປົ່າ.
+     */
+    canApply: Boolean(draftFrom) && Boolean(draftTo) && draftFrom <= draftTo,
+    apply: () => {
+      if (!draftFrom || !draftTo || draftFrom > draftTo) return;
+      setApplied({ from: draftFrom, to: draftTo });
+    },
     reset: () => {
       setDraftFrom(today());
       setDraftTo(today());
@@ -163,7 +173,7 @@ export function DateRangeFilter<T>({
           type="button"
           className="btn-secondary h-9 py-0"
           onClick={history.apply}
-          disabled={!dirty || history.isFetching}
+          disabled={!dirty || !history.canApply || history.isFetching}
         >
           ຄົ້ນຫາ
         </button>
@@ -175,6 +185,13 @@ export function DateRangeFilter<T>({
       </div>
 
       <div className="filter-tail">
+        {!history.canApply && (
+          <span className="text-xs font-medium text-warning">
+            {!history.draftFrom || !history.draftTo
+              ? 'ກອກທັງ ຈາກວັນທີ ແລະ ຫາວັນທີ'
+              : 'ຈາກວັນທີ ຕ້ອງບໍ່ຫຼັງ ຫາວັນທີ'}
+          </span>
+        )}
         {history.truncated && (
           <span className="text-xs font-medium text-warning">
             ເກີນ {history.maxRows.toLocaleString('en-US')} ແຖວ — ແຄບຊ່ວງວັນທີລົງ
