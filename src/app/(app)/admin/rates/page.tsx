@@ -21,6 +21,7 @@ import { useChartTheme } from '@/lib/chart-theme';
 import { api, ApiError } from '@/lib/api';
 import { formatRate, formatDate } from '@/lib/format';
 import { StatCard } from '@/components/stat-card';
+import { isPositive } from '@/lib/validate';
 
 interface Rates {
   id: string;
@@ -122,7 +123,8 @@ export default function RatesPage() {
     });
   };
 
-  const complete = FIELDS.every((f) => clean(form[f.key]).length > 0);
+  // ອັດຕາ 0 ເຮັດໃຫ້ການຄິດໄລ່ທັງລະບົບເປັນ 0 — server ກໍປະຕິເສດ.
+  const complete = FIELDS.every((f) => isPositive(form[f.key] ?? ''));
 
   const chartData = series.map((p) => ({
     month: p.month,

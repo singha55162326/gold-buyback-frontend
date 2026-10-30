@@ -94,6 +94,7 @@ export const NAV: NavGroup[] = [
   {
     labelLo: 'ສາງຄຳ (Warehouse)',
     items: [
+      { href: '/stock/approvals', labelLo: 'ອະນຸມັດ ສາງຄຳ', section: '§7.2', roles: ['WAREHOUSE', 'ADMIN', 'MANAGER'], status: 'live' },
       { href: '/stock/new', labelLo: 'Stock (NEW) — ສາງຄຳໃໝ່', section: '§7.2', roles: ['WAREHOUSE', 'ADMIN', 'MANAGER'], status: 'live' },
       { href: '/stock/old', labelLo: 'Stock (OLD) — ສາງຄຳເກົ່າ', section: '§7.3', roles: ['WAREHOUSE', 'ADMIN', 'MANAGER'], status: 'live' },
       { href: '/stock/factory', labelLo: 'ຕິດຕາມ Stock Out ໄປ FACTORY', section: '§7.3', roles: ['WAREHOUSE', 'ADMIN', 'MANAGER'], status: 'live' },

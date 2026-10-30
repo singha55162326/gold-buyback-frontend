@@ -9,6 +9,7 @@ import { formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { TableStateRow } from '@/components/query-state';
 import type { Role } from '@/lib/nav';
+import { isPhoneOrBlank } from '@/lib/validate';
 
 interface User {
   id: string;
@@ -182,7 +183,10 @@ export default function UsersPage() {
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <button className="btn-primary"
-              disabled={!username || !fullName || newPassword.length < 8 || create.isPending}
+              disabled={
+                !username || !fullName || newPassword.length < 8 ||
+                !isPhoneOrBlank(phone) || !isPhoneOrBlank(whatsappNumber) || create.isPending
+              }
               onClick={() => create.mutate()}>
               {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
             </button>

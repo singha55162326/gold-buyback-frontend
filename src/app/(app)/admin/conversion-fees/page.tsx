@@ -11,6 +11,7 @@ import { TableStateRow } from '@/components/query-state';
 import { PageHead } from '@/components/page-head';
 import { NumberInput } from '@/components/number-input';
 import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
+import { isDecimal } from '@/lib/validate';
 
 interface Tier {
   labelLo: string;
@@ -292,7 +293,7 @@ function JewelryPanel({ rows, tiers, loading, query, onSaved, onError }: Jewelry
             </div>
             <button
               className="btn-primary"
-              disabled={!newTier || !good.trim() || !damaged.trim() || busy}
+              disabled={!newTier || !isDecimal(good) || !isDecimal(damaged) || busy}
               onClick={() => {
                 const tier = available.find((t) => t.tierCode === newTier);
                 if (tier) save.mutate({ tierCode: tier.tierCode, weightG: tier.exchangeWeightG });
@@ -365,7 +366,7 @@ function JewelryPanel({ rows, tiers, loading, query, onSaved, onError }: Jewelry
                       <button
                         className="btn-primary"
                         aria-label={`ບັນທຶກ ${row.tier.labelLo}`}
-                        disabled={!good.trim() || !damaged.trim() || busy}
+                        disabled={!isDecimal(good) || !isDecimal(damaged) || busy}
                         onClick={() =>
                           save.mutate({ tierCode: row.tierCode, weightG: row.weightG })
                         }

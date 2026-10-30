@@ -9,6 +9,7 @@ import { NumberInput } from './number-input';
 import { PageHead } from './page-head';
 import { StatCard } from './stat-card';
 import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
+import { isPositive } from '@/lib/validate';
 
 interface Total { currency: 'LAK' | 'THB' | 'USD'; opening: string; increases: string; decreases: string; net: string }
 interface PartnerRow {
@@ -181,7 +182,7 @@ export function ApArCashModule({
           </div>
           <div className="mt-4 flex gap-2">
             <button className="btn-primary"
-              disabled={!partnerId || !categoryId || !amount.trim() || add.isPending}
+              disabled={!partnerId || !categoryId || !isPositive(amount) || add.isPending}
               onClick={() => add.mutate()}>
               {add.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
             </button>
@@ -252,7 +253,7 @@ export function ApArCashModule({
                           placeholder={row.current} value={amount}
                           onValueChange={setAmount} autoFocus />
                         <button className="btn-ghost"
-                          onClick={() => settle.mutate(row)} disabled={settle.isPending || !amount.trim()}>
+                          onClick={() => settle.mutate(row)} disabled={settle.isPending || !isPositive(amount)}>
                           ຢືນຢັນ
                         </button>
                         <button className="btn-ghost !text-muted"

@@ -11,6 +11,7 @@ import { PageHead } from '@/components/page-head';
 import { TableStateRow } from '@/components/query-state';
 import { NumberInput } from '@/components/number-input';
 import { statusClass } from '@/lib/status';
+import { isPositive } from '@/lib/validate';
 
 interface Tracking {
   id: string;
@@ -150,7 +151,7 @@ export default function FactoryTrackingPage() {
                       {editing === row.id ? (
                         <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
                           <button className="btn-primary"
-                            onClick={() => save.mutate(row.id)} disabled={save.isPending || !weight.trim()}>
+                            onClick={() => save.mutate(row.id)} disabled={save.isPending || !isPositive(weight)}>
                             ບັນທຶກ
                           </button>
                           <button className="btn-secondary" onClick={() => setEditing(null)}>

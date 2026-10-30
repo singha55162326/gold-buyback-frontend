@@ -10,6 +10,7 @@ import { NumberInput } from '@/components/number-input';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { formatLak, formatDateTime } from '@/lib/format';
 import { AuditView } from '@/components/audit-view';
+import { isDecimal } from '@/lib/validate';
 
 interface SoftGoldFee {
   id: string;
@@ -98,7 +99,7 @@ export default function SoftGoldFeePage() {
           </div>
           <button
             className="btn-primary"
-            disabled={!value.trim() || save.isPending}
+            disabled={!isDecimal(value) || save.isPending}
             onClick={() => save.mutate()}
           >
             {save.isPending ? 'ກຳລັງບັນທຶກ...' : 'ອັບເດດຄ່າອ່ອນ'}

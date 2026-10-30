@@ -328,7 +328,7 @@ export function StockMovementDialog({
       {/* Repeatable lines with the TOR's Add button */}
       <div className="mt-5">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <span className="label mb-0">ລາຍການ</span>
+          <span className="label mb-0">ປະເພດຄຳ</span>
           <button className="btn-secondary"
             onClick={() => setLines((p) => [...p, emptyLine()])}>
             + Add
@@ -360,7 +360,7 @@ export function StockMovementDialog({
                   }}
                 />
               ) : (
-                <select className="input" aria-label="ປະເພດຄຳ" value={line.goldTypeId || goldTypeId}
+                <select className="input" aria-label="ນຳອອກ" value={line.goldTypeId || goldTypeId}
                   onChange={(e) => setLine(i, { goldTypeId: e.target.value })}>
                   <option value="">ປະເພດຄຳ</option>
                   {goldTypes.map((t) => <option key={t.id} value={t.id}>{t.nameLo}</option>)}

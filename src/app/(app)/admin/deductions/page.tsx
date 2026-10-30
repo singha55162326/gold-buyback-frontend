@@ -8,6 +8,7 @@ import { PageHead } from '@/components/page-head';
 import { TableStateRow } from '@/components/query-state';
 import { formatLak, formatWeight } from '@/lib/format';
 import { AuditView } from '@/components/audit-view';
+import { isDecimal, isPercent } from '@/lib/validate';
 
 interface Deduction {
   id: string;
@@ -56,6 +57,12 @@ export default function DeductionsPage() {
       toast.error('ບໍ່ສຳເລັດ', detail);
     },
   });
+
+  /**
+   * ຫັກອອກເປັນ % ຕ້ອງຢູ່ 0–100 (server ກໍບັງຄັບ); ລາຄາລົບອອກເປັນກີບ ເອົາແຕ່ຕົວເລກ.
+   */
+  const valueOk = (kind: 'PERCENT' | 'AMOUNT') =>
+    kind === 'PERCENT' ? isPercent(value) : isDecimal(value);
 
   const save = useMutation({
     mutationFn: (row: Deduction) =>
@@ -168,7 +175,7 @@ export default function DeductionsPage() {
                         <button
                           className="btn-primary"
                           onClick={() => save.mutate(row)}
-                          disabled={save.isPending}
+                          disabled={save.isPending || !valueOk(row.kind)}
                         >
                           ບັນທຶກ
                         </button>

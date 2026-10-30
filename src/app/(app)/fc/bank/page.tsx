@@ -12,6 +12,7 @@ import { BankBalanceCards } from '@/components/bank-balance-cards';
 import { NumberInput } from '@/components/number-input';
 import type { PagedResult } from '@/components/date-range';
 import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
+import { isPositive } from '@/lib/validate';
 
 interface BankBalance {
   bankAccountId: string; bankCode: string; bankNameLo: string;
@@ -173,7 +174,7 @@ export default function FcBankPage() {
         footer={
           <>
             <button className="btn-secondary" onClick={() => setShowForm(false)}>ຍົກເລີກ</button>
-            <button className="btn-primary" disabled={!bankAccountId || !amount.trim() || create.isPending}
+            <button className="btn-primary" disabled={!bankAccountId || !isPositive(amount) || create.isPending}
               onClick={() => create.mutate()}>
               {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
             </button>
