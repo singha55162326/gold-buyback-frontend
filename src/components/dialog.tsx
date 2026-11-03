@@ -27,7 +27,7 @@ export function Dialog({
   title: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  size?: 'md' | 'lg';
+  size?: 'md' | 'lg' | 'xl';
   /** Close on a click outside the panel. Off by default: a stray click must not discard a half-filled form. */
   dismissOnScrim?: boolean;
 }) {
@@ -113,7 +113,7 @@ export function Dialog({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`dialog-panel menu-panel ${size === 'lg' ? 'max-w-[760px]' : 'max-w-[560px]'}`}
+        className={`dialog-panel menu-panel ${size === 'xl' ? 'max-w-[960px]' : size === 'lg' ? 'max-w-[760px]' : 'max-w-[560px]'}`}
       >
         <div className="dialog-head">
           <h2 id={titleId} className="text-gold-gradient font-serif text-[22px] font-bold leading-[1.5]">

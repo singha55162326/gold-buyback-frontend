@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, getStoredUser, type SessionUser } from '@/lib/api';
 import { formatMoney, formatDateTime, formatByCurrency } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
@@ -12,6 +12,12 @@ import { NumberInput } from '@/components/number-input';
 import { MultiPayment, newPaymentLines, paymentPayload, type PaymentLine } from '@/components/multi-payment';
 import type { PagedResult } from '@/components/date-range';
 import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
+import { Dialog } from '@/components/dialog';
+import { isPositive } from '@/lib/validate';
+import {
+  IncomeExpenseSummaryCards,
+  type DailyIncomeExpenseSummary,
+} from '@/components/income-expense-summary-cards';
 
 interface Category { id: string; code: string; nameLo: string; kind: 'INCOME' | 'EXPENSE' }
 interface Bank { id: string; nameLo: string }
@@ -20,33 +26,74 @@ interface Row {
   createdBy: string;
   id: string; code: string; kind: 'INCOME' | 'EXPENSE'; currency: string;
   amount: string; method: string; note: string | null; createdAt: string;
-  category: { nameLo: string }; bankAccount: { nameLo: string } | null;
+  categoryId?: string;
+  category: { id?: string; nameLo: string };
+  bankAccountId?: string | null;
+  bankAccount: { id?: string; nameLo: string } | null;
 }
 
 /** TOR §3.7 — Module ຈັດການລາຍຮັບລາຍຈ່າຍ. */
 export default function IncomeExpensePage() {
   const queryClient = useQueryClient();
   const toast = useToast();
+
+  const [user, setUser] = useState<SessionUser | null>(null);
+  useEffect(() => {
+    setUser(getStoredUser());
+  }, []);
+  const isAdmin = user?.role === 'ADMIN';
+
   const [kind, setKind] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
   const [categoryId, setCategoryId] = useState('');
   // One expense may be settled part ສົດ and part ໂອນ, across currencies.
   const [payments, setPayments] = useState<PaymentLine[]>(newPaymentLines());
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+
+  // Edit and Delete state
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingRow, setEditingRow] = useState<Row | null>(null);
+  const [editKind, setEditKind] = useState<'INCOME' | 'EXPENSE'>('EXPENSE');
+  const [editCategoryId, setEditCategoryId] = useState('');
+  const [editMethod, setEditMethod] = useState<'CASH' | 'BANK'>('CASH');
+  const [editBankAccountId, setEditBankAccountId] = useState('');
+  const [editCurrency, setEditCurrency] = useState<'LAK' | 'THB' | 'USD'>('LAK');
+  const [editAmount, setEditAmount] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
 
   const categoriesQuery = useQuery({
     queryKey: ['finance', 'ie-categories', kind],
     queryFn: () => api.get<Category[]>(`/finance/income-expense/categories?kind=${kind}`),
   });
   const categories = categoriesQuery.data ?? [];
+
+  const editCategoriesQuery = useQuery({
+    queryKey: ['finance', 'ie-categories', editKind],
+    queryFn: () => api.get<Category[]>(`/finance/income-expense/categories?kind=${editKind}`),
+    enabled: Boolean(editingRow),
+  });
+  const editCategories = editCategoriesQuery.data ?? [];
+
   const banksQuery = useQuery({
     queryKey: ['catalog', 'bank-accounts'],
     queryFn: () => api.get<Bank[]>('/catalog/bank-accounts'),
   });
   const banks = banksQuery.data ?? [];
+
   // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
   const history = useHistoryRange<Row>(['finance', 'income-expense'], '/finance/income-expense');
   const rows = history.rows;
+
+  const summaryQuery = useQuery({
+    queryKey: ['finance', 'income-expense', 'summary', history.from, history.to],
+    queryFn: () =>
+      api.get<DailyIncomeExpenseSummary>(
+        `/finance/income-expense/summary?from_date=${history.from}&to_date=${history.to}`,
+      ),
+  });
+
   const formQuery = [categoriesQuery, banksQuery].find((q) => q.isError);
 
   const create = useMutation({
@@ -58,7 +105,8 @@ export default function IncomeExpensePage() {
       }),
     onSuccess: () => {
       toast.success('ດຳເນີນການສຳເລັດ');
-      setPayments(newPaymentLines()); setNote(''); setError(null);
+      setPayments(newPaymentLines()); setNote(''); setCategoryId(''); setError(null);
+      setIsCreateOpen(false);
       void queryClient.invalidateQueries({ queryKey: ['finance'] });
       void queryClient.invalidateQueries({ queryKey: ['cash'] });
       void queryClient.invalidateQueries({ queryKey: ['ledger'] });
@@ -70,6 +118,61 @@ export default function IncomeExpensePage() {
     },
   });
 
+  const update = useMutation({
+    mutationFn: () => {
+      if (!editingRow) throw new Error('No row selected');
+      return api.patch(`/finance/income-expense/${editingRow.id}`, {
+        categoryId: editCategoryId,
+        method: editMethod,
+        bankAccountId: editMethod === 'BANK' ? editBankAccountId : null,
+        currency: editCurrency,
+        amount: editAmount,
+        note: editNote || undefined,
+      });
+    },
+    onSuccess: () => {
+      toast.success('ແກ້ໄຂສຳເລັດ');
+      setEditingRow(null);
+      setEditError(null);
+      void queryClient.invalidateQueries({ queryKey: ['finance'] });
+      void queryClient.invalidateQueries({ queryKey: ['cash'] });
+      void queryClient.invalidateQueries({ queryKey: ['ledger'] });
+    },
+    onError: (e) => {
+      const detail = e instanceof ApiError ? e.message : 'ແກ້ໄຂບໍ່ສຳເລັດ';
+      setEditError(detail);
+      toast.error('ບໍ່ສຳເລັດ', detail);
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => api.delete(`/finance/income-expense/${id}`),
+    onSuccess: () => {
+      toast.success('ລຶບສຳເລັດ');
+      setDeletingId(null);
+      void queryClient.invalidateQueries({ queryKey: ['finance'] });
+      void queryClient.invalidateQueries({ queryKey: ['cash'] });
+      void queryClient.invalidateQueries({ queryKey: ['ledger'] });
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'deleted'] });
+    },
+    onError: (e) => {
+      setDeletingId(null);
+      toast.error('ລຶບບໍ່ສຳເລັດ', e instanceof ApiError ? e.message : 'ເກີດຂໍ້ຜິດພາດ');
+    },
+  });
+
+  function startEdit(row: Row) {
+    setEditingRow(row);
+    setEditKind(row.kind);
+    setEditCategoryId(row.categoryId || row.category?.id || '');
+    setEditMethod((row.method as 'CASH' | 'BANK') || 'CASH');
+    setEditBankAccountId(row.bankAccountId || row.bankAccount?.id || '');
+    setEditCurrency((row.currency as 'LAK' | 'THB' | 'USD') || 'LAK');
+    setEditAmount(row.amount);
+    setEditNote(row.note || '');
+    setEditError(null);
+  }
+
   // Every leg must name a bank when it is a transfer, and carry an amount.
   const canSave = Boolean(
     categoryId &&
@@ -77,72 +180,153 @@ export default function IncomeExpensePage() {
       payments.every((l) => l.method === 'CASH' || !l.amount.trim() || Boolean(l.bankAccountId)),
   );
 
-  const pager = usePagination(rows);
+  const canSaveEdit = Boolean(
+    editCategoryId &&
+      isPositive(editAmount) &&
+      (editMethod === 'CASH' || editBankAccountId),
+  );
 
+  const pager = usePagination(rows);
 
   return (
     <div className="space-y-6">
       <PageHead
         title="ຈັດການລາຍຮັບລາຍຈ່າຍ"
         subtitle="ບັນທຶກລາຍຮັບ / ລາຍຈ່າຍ ຜ່ານ Cash ຫຼື Bank (TOR §3.7)"
+        actions={
+          <button
+            type="button"
+            className="btn-primary flex items-center gap-2 cursor-pointer transition-colors duration-200"
+            onClick={() => {
+              setError(null);
+              setIsCreateOpen(true);
+            }}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            <span>+ ເພີ່ມລາຍຮັບ-ລາຍຈ່າຍ</span>
+          </button>
+        }
       />
 
       {formQuery && <QueryErrorNotice error={formQuery.error} onRetry={() => void formQuery.refetch()} />}
 
-      <div data-fade className="card p-5">
-        <div className="mb-4 flex flex-wrap gap-2">
-          <button
-            type="button" aria-pressed={kind === 'INCOME'}
-            className={kind === 'INCOME' ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => { setKind('INCOME'); setCategoryId(''); }}
-          >
-            ລາຍຮັບ
-          </button>
-          <button
-            type="button" aria-pressed={kind === 'EXPENSE'}
-            className={kind === 'EXPENSE' ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => { setKind('EXPENSE'); setCategoryId(''); }}
-          >
-            ລາຍຈ່າຍ
-          </button>
-        </div>
+      <IncomeExpenseSummaryCards
+        summary={summaryQuery.data}
+        isLoading={summaryQuery.isLoading}
+        onRefresh={() => void summaryQuery.refetch()}
+        isToday={history.isToday}
+        fromDate={history.from}
+        toDate={history.to}
+      />
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <div>
-            <label className="label" htmlFor="cat">ລາຍການ</label>
-            <select id="cat" className="input" value={categoryId}
-              onChange={(e) => setCategoryId(e.target.value)}>
-              <option value="">— ເລືອກລາຍການ —</option>
-              {categories.map((c) => <option key={c.id} value={c.id}>{c.nameLo}</option>)}
-            </select>
+      <Dialog
+        open={isCreateOpen}
+        onClose={() => {
+          setIsCreateOpen(false);
+          setError(null);
+        }}
+        title={`ບັນທຶກ${kind === 'INCOME' ? 'ລາຍຮັບ' : 'ລາຍຈ່າຍ'}`}
+        size="lg"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn-secondary cursor-pointer transition-colors duration-200"
+              onClick={() => {
+                setIsCreateOpen(false);
+                setError(null);
+              }}
+            >
+              ຍົກເລີກ
+            </button>
+            <button
+              type="button"
+              className="btn-primary cursor-pointer transition-colors duration-200"
+              disabled={!canSave || create.isPending}
+              onClick={() => create.mutate()}
+            >
+              {create.isPending ? 'ກຳລັງບັນທຶກ...' : `ບັນທຶກ${kind === 'INCOME' ? 'ລາຍຮັບ' : 'ລາຍຈ່າຍ'}`}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              aria-pressed={kind === 'INCOME'}
+              className={`cursor-pointer transition-colors duration-200 ${
+                kind === 'INCOME' ? 'btn-primary' : 'btn-secondary'
+              }`}
+              onClick={() => {
+                setKind('INCOME');
+                setCategoryId('');
+              }}
+            >
+              ລາຍຮັບ
+            </button>
+            <button
+              type="button"
+              aria-pressed={kind === 'EXPENSE'}
+              className={`cursor-pointer transition-colors duration-200 ${
+                kind === 'EXPENSE' ? 'btn-primary' : 'btn-secondary'
+              }`}
+              onClick={() => {
+                setKind('EXPENSE');
+                setCategoryId('');
+              }}
+            >
+              ລາຍຈ່າຍ
+            </button>
           </div>
-          <div className="sm:col-span-2">
-            <label className="label" htmlFor="note">Note</label>
-            <input id="note" className="input" value={note}
-              onChange={(e) => setNote(e.target.value)} />
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="cat">ລາຍການ</label>
+              <select
+                id="cat"
+                className="input cursor-pointer"
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+              >
+                <option value="">— ເລືອກລາຍການ —</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nameLo}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="label" htmlFor="note">Note</label>
+              <input
+                id="note"
+                className="input"
+                placeholder="ໝາຍເຫດເພີ່ມເຕີມ..."
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </div>
           </div>
-        </div>
 
-        <div className="mt-5 border-t border-line pt-5">
-          <MultiPayment
-            lines={payments}
-            onChange={setPayments}
-            direction={kind === 'INCOME' ? 'in' : 'out'}
-            labelLo={kind === 'INCOME' ? 'ຮັບເງິນ (ສົດ / ໂອນ)' : 'ຈ່າຍເງິນ (ສົດ / ໂອນ)'}
-          />
-        </div>
+          <div className="border-t border-line pt-4">
+            <MultiPayment
+              lines={payments}
+              onChange={setPayments}
+              direction={kind === 'INCOME' ? 'in' : 'out'}
+              labelLo={kind === 'INCOME' ? 'ຮັບເງິນ (ສົດ / ໂອນ)' : 'ຈ່າຍເງິນ (ສົດ / ໂອນ)'}
+            />
+          </div>
 
-        {error && (
-          <div id="ie-error" role="alert" className="notice status-danger mt-3">{error}</div>
-        )}
-
-        <div className="mt-4">
-          <button className="btn-primary min-h-[54px] w-full sm:w-auto sm:min-w-[240px]" disabled={!canSave || create.isPending}
-            onClick={() => create.mutate()}>
-            {create.isPending ? 'ກຳລັງບັນທຶກ...' : `ບັນທຶກ${kind === 'INCOME' ? 'ລາຍຮັບ' : 'ລາຍຈ່າຍ'}`}
-          </button>
+          {error && (
+            <div id="ie-error" role="alert" className="notice status-danger">
+              {error}
+            </div>
+          )}
         </div>
-      </div>
+      </Dialog>
 
       <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ປະຫວັດ</h2></div>
@@ -161,11 +345,12 @@ export default function IncomeExpensePage() {
                 <th className="text-right">ຈຳນວນເງິນ</th>
                 <th>ໝາຍເຫດ</th>
                 <th>ຜູ້ບັນທຶກ</th>
+                {isAdmin && <th className="text-right">Action</th>}
               </tr>
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={10}
+                colSpan={isAdmin ? 11 : 10}
                 isLoading={history.isLoading}
                 isError={history.isError}
                 error={history.error}
@@ -189,6 +374,47 @@ export default function IncomeExpensePage() {
                   <td className="num text-right font-medium">{formatByCurrency(row.amount, row.currency)}</td>
                   <td className="text-muted">{row.note ?? '—'}</td>
                   <td className="text-muted">{row.createdBy}</td>
+                  {isAdmin && (
+                    <td className="text-right">
+                      {deletingId === row.id ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            className="btn-danger text-xs px-2.5 py-1"
+                            disabled={remove.isPending}
+                            onClick={() => remove.mutate(row.id)}
+                          >
+                            {remove.isPending ? 'ກຳລັງລຶບ...' : 'ຢືນຢັນລຶບ'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-secondary text-xs px-2.5 py-1"
+                            disabled={remove.isPending}
+                            onClick={() => setDeletingId(null)}
+                          >
+                            ຍົກເລີກ
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            className="btn-ghost text-xs px-2.5 py-1"
+                            onClick={() => startEdit(row)}
+                          >
+                            ແກ້ໄຂ
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-ghost text-danger text-xs px-2.5 py-1"
+                            onClick={() => setDeletingId(row.id)}
+                          >
+                            ລຶບ
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -196,6 +422,159 @@ export default function IncomeExpensePage() {
         </div>
         <Pagination {...pager} />
       </div>
+
+      <Dialog
+        open={Boolean(editingRow)}
+        onClose={() => setEditingRow(null)}
+        title="ແກ້ໄຂລາຍການຮັບຈ່າຍ"
+        size="lg"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => setEditingRow(null)}
+            >
+              ຍົກເລີກ
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={!canSaveEdit || update.isPending}
+              onClick={() => update.mutate()}
+            >
+              {update.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              aria-pressed={editKind === 'INCOME'}
+              className={editKind === 'INCOME' ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => {
+                setEditKind('INCOME');
+                setEditCategoryId('');
+              }}
+            >
+              ລາຍຮັບ
+            </button>
+            <button
+              type="button"
+              aria-pressed={editKind === 'EXPENSE'}
+              className={editKind === 'EXPENSE' ? 'btn-primary' : 'btn-secondary'}
+              onClick={() => {
+                setEditKind('EXPENSE');
+                setEditCategoryId('');
+              }}
+            >
+              ລາຍຈ່າຍ
+            </button>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="label" htmlFor="edit-cat">ລາຍການ</label>
+              <select
+                id="edit-cat"
+                className="input"
+                value={editCategoryId}
+                onChange={(e) => setEditCategoryId(e.target.value)}
+              >
+                <option value="">— ເລືອກລາຍການ —</option>
+                {editingRow && editCategoryId && !editCategories.some((c) => c.id === editCategoryId) && (
+                  <option value={editCategoryId}>{editingRow.category.nameLo}</option>
+                )}
+                {editCategories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nameLo}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="label" htmlFor="edit-method">ຮູບແບບຈ່າຍ</label>
+              <select
+                id="edit-method"
+                className="input"
+                value={editMethod}
+                onChange={(e) => {
+                  const m = e.target.value as 'CASH' | 'BANK';
+                  setEditMethod(m);
+                  if (m === 'CASH') {
+                    setEditBankAccountId('');
+                  } else if (!editBankAccountId && banks.length > 0) {
+                    setEditBankAccountId(banks[0].id);
+                  }
+                }}
+              >
+                <option value="CASH">CASH (ເງິນສົດ)</option>
+                <option value="BANK">BANK (ເງິນໂອນ)</option>
+              </select>
+            </div>
+
+            {editMethod === 'BANK' && (
+              <div>
+                <label className="label" htmlFor="edit-bank">ທະນາຄານ</label>
+                <select
+                  id="edit-bank"
+                  className="input"
+                  value={editBankAccountId}
+                  onChange={(e) => setEditBankAccountId(e.target.value)}
+                >
+                  <option value="">— ເລືອກທະນາຄານ —</option>
+                  {editingRow && editBankAccountId && !banks.some((b) => b.id === editBankAccountId) && editingRow.bankAccount && (
+                    <option value={editBankAccountId}>{editingRow.bankAccount.nameLo}</option>
+                  )}
+                  {banks.map((b) => (
+                    <option key={b.id} value={b.id}>{b.nameLo}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="label" htmlFor="edit-cur">ສະກຸນເງິນ</label>
+              <select
+                id="edit-cur"
+                className="input"
+                value={editCurrency}
+                onChange={(e) => setEditCurrency(e.target.value as 'LAK' | 'THB' | 'USD')}
+              >
+                <option value="LAK">LAK</option>
+                <option value="THB">THB</option>
+                <option value="USD">USD</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="label" htmlFor="edit-amt">ຈຳນວນເງິນ</label>
+              <NumberInput
+                id="edit-amt"
+                className="input num"
+                decimals={editCurrency === 'LAK' ? 0 : 2}
+                value={editAmount}
+                onValueChange={setEditAmount}
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="label" htmlFor="edit-note">Note</label>
+              <input
+                id="edit-note"
+                className="input"
+                value={editNote}
+                onChange={(e) => setEditNote(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {editError && (
+            <div role="alert" className="notice status-danger">{editError}</div>
+          )}
+        </div>
+      </Dialog>
     </div>
   );
 }

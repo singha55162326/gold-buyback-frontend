@@ -15,13 +15,15 @@ export interface NumberInputProps
   /** Max fraction digits. 0 = integer only. */
   decimals?: number;
   allowNegative?: boolean;
+  /** Optional maximum numeric value allowed. */
+  max?: string | number;
   /** Optional trailing unit label inside the field ("LAK", "g"). */
   unit?: string;
 }
 
 export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
   function NumberInput(
-    { value, onValueChange, decimals = 0, allowNegative, unit, className, onPaste, ...rest },
+    { value, onValueChange, decimals = 0, allowNegative, max, unit, className, onPaste, ...rest },
     ref,
   ) {
     const innerRef = React.useRef<HTMLInputElement | null>(null);
@@ -45,7 +47,23 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
     });
 
     function apply(el: HTMLInputElement, text: string, caret: number) {
-      const raw = sanitizeNumeric(text, { decimals, allowNegative });
+      let raw = sanitizeNumeric(text, { decimals, allowNegative });
+      if (max !== undefined && max !== '' && raw !== '' && raw !== '-') {
+        const maxNum = Number(max);
+        if (Number.isFinite(maxNum) && maxNum >= 0) {
+          const cleanMax = String(maxNum);
+          const numericPart = raw.endsWith('.') ? raw.slice(0, -1) : raw;
+          const valNum = Number(numericPart);
+          if (Number.isFinite(valNum)) {
+            if (
+              valNum > maxNum ||
+              (raw.endsWith('.') && valNum === maxNum && Number.isInteger(maxNum))
+            ) {
+              raw = maxNum === 0 ? '0' : cleanMax;
+            }
+          }
+        }
+      }
       const nextDisplay = formatNumericDisplay(raw);
       const pos = caretAfterFormat(text, caret, nextDisplay);
       if (raw === value) {

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { dec, GRAMS_PER_BAHT } from '@kpv/domain';
+import { dec, GRAMS_PER_BAHT, type Decimal } from '@kpv/domain';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight } from '@/lib/format';
 import { Dialog } from './dialog';
@@ -10,6 +10,31 @@ import { NumberInput } from './number-input';
 import { QueryErrorNotice } from './query-state';
 
 export type MovementKind = 'IN' | 'OUT' | 'TRANSFER';
+
+export interface TypeBalance {
+  id: string;
+  goldTypeId?: string;
+  openingWeightG: string;
+  openingCost: string;
+  inG: string;
+  outG: string;
+  priceIn: string;
+  priceOut: string;
+  closingWeightG: string;
+  closingCost: string;
+  goldType: { id?: string; nameLo: string };
+}
+
+export interface SkuBalance {
+  id: string;
+  goldSkuId?: string;
+  openingQty: number;
+  inQty: number;
+  outQty: number;
+  balanceQty: number;
+  totalWeightG: string;
+  goldSku: { id: string; fullSkuName: string; weightG: string };
+}
 
 interface Sku { id: string; fullSkuName: string; weightG: string }
 interface GoldType { id: string; nameLo: string }
@@ -45,17 +70,22 @@ const qty = (value: string) => Math.max(1, Math.trunc(Number(value) || 0) || 1);
  *
  * Where the price comes from differs and matters:
  *  - IN  : the user enters ຕົ້ນທຶນຄໍາ, and ລາຄາ/g = ຕົ້ນທຶນຄໍາ / GOLD(g)
- *  - OUT and TRANSFER: ລາຄາ/g comes from the latest WAC, so cost of goods
- *    leaving reflects the blended acquisition price rather than a guess.
+ *  - OUT (OLD) and TRANSFER (OLD -> NEW): ລາຄາ/g comes from the cost of
+ *    Stock ຄຳເກົ່າ for the selected ປະເພດຄຳ (closingCost / closingWeightG).
+ *  - OUT (NEW) and TRANSFER (NEW -> OLD): ລາຄາ/g comes from the latest WAC.
  */
 export function StockMovementDialog({
   kind,
   scope,
   onClose,
+  initialBalances,
+  initialNewBalances,
 }: {
   kind: MovementKind;
   scope: 'NEW' | 'OLD';
   onClose: () => void;
+  initialBalances?: TypeBalance[];
+  initialNewBalances?: SkuBalance[];
 }) {
   const queryClient = useQueryClient();
   const [partnerId, setPartnerId] = useState('');
@@ -93,15 +123,78 @@ export function StockMovementDialog({
     queryKey: ['ledger', 'wac'],
     queryFn: () => api.get<Wac>('/ledger/wac'),
   });
+  const oldBalancesQ = useQuery({
+    queryKey: ['stock', 'old', 'balances'],
+    queryFn: () => api.get<TypeBalance[]>('/stock/old/balances'),
+    enabled: scope === 'OLD',
+    initialData: initialBalances,
+  });
+  const newBalancesQ = useQuery({
+    queryKey: ['stock', 'new', 'balances'],
+    queryFn: () => api.get<SkuBalance[]>('/stock/new/balances'),
+    enabled: scope === 'NEW',
+    initialData: initialNewBalances,
+  });
 
   const skus = skusQ.data ?? [];
   const goldTypes = goldTypesQ.data ?? [];
   const partners = partnersQ.data ?? [];
   const goldItems = goldItemsQ.data ?? [];
   const wac = wacQ.data;
-  const failedQuery = [skusQ, goldTypesQ, partnersQ, wacQ].find((q) => q.isError);
+  const oldBalances = oldBalancesQ.data ?? initialBalances ?? [];
+  const newBalances = newBalancesQ.data ?? initialNewBalances ?? [];
+  const failedQuery = [
+    skusQ,
+    goldTypesQ,
+    partnersQ,
+    wacQ,
+    ...(scope === 'OLD' ? [oldBalancesQ] : [newBalancesQ]),
+  ].find((q) => q.isError);
   const retryFailed = () => {
-    for (const q of [skusQ, goldTypesQ, partnersQ, wacQ]) if (q.isError) void q.refetch();
+    for (const q of [skusQ, goldTypesQ, partnersQ, wacQ, oldBalancesQ, newBalancesQ])
+      if (q.isError) void q.refetch();
+  };
+
+  /**
+   * ຕົ້ນທຶນ/g ຂອງຄຳເກົ່າແຍກຕາມ ປະເພດຄຳ (TOR §7.3).
+   * ໄລ່ຈາກ: ຕົ້ນທຶນຄົງເຫຼືອ (closingCost) / ນ້ຳໜັກຄົງເຫຼືອ (closingWeightG) ຂອງປະເພດຄຳນັ້ນ.
+   */
+  const getOldTypeRate = (typeId: string): Decimal => {
+    if (!typeId) return dec(0);
+    const bal = oldBalances.find((b) => b.goldTypeId === typeId || b.goldType?.id === typeId);
+    if (!bal) return dec(0);
+    const closingWeight = dec(bal.closingWeightG || 0);
+    const closingCost = dec(bal.closingCost || 0);
+    if (closingWeight.gt(0) && closingCost.gt(0)) {
+      return closingCost.div(closingWeight);
+    }
+    const opWeight = dec(bal.openingWeightG || 0);
+    const opCost = dec(bal.openingCost || 0);
+    if (opWeight.gt(0) && opCost.gt(0)) {
+      return opCost.div(opWeight);
+    }
+    return dec(0);
+  };
+
+  /**
+   * ນໍ້າໜັກ (g) ຄົງເຫຼືອ ຂອງ ປະເພດຄຳ ໃນ Stock ຄຳເກົ່າ.
+   */
+  const getOldTypeAvailableWeight = (typeId: string): Decimal => {
+    if (!typeId) return dec(0);
+    const bal = oldBalances.find((b) => b.goldTypeId === typeId || b.goldType?.id === typeId);
+    if (!bal) return dec(0);
+    return dec(bal.closingWeightG || 0);
+  };
+
+  /**
+   * ນ້ຳໜັກ g ລວມ (totalWeightG) ຂອງ SKU ໃນ Stock ຄຳໃໝ່ (Ready to Gold).
+   */
+  const getNewSkuAvailableWeight = (skuId: string): Decimal => {
+    if (!skuId) return dec(0);
+    const bal = newBalances.find((b) => b.goldSkuId === skuId || b.goldSku?.id === skuId);
+    if (!bal) return dec(0);
+    const w = dec(bal.totalWeightG || 0);
+    return w.gt(0) ? w : dec(0);
   };
 
   /**
@@ -133,36 +226,154 @@ export function StockMovementDialog({
   const isOldIn = kind === 'IN' && scope === 'OLD';
   /** ຄຳເກົ່າອອກ: ນັບເປັນນ້ຳໜັກລ້ວນ ບໍ່ມີຈຳນວນ ແລະ ບໍ່ເລືອກລາຍການຄຳ. */
   const isOldOut = kind === 'OUT' && scope === 'OLD';
+  const isTransferOld = kind === 'TRANSFER' && scope === 'OLD';
+  const isNewOut = kind === 'OUT' && scope === 'NEW';
+  const isTransferNew = kind === 'TRANSFER' && scope === 'NEW';
+
+  /**
+   * ຄຳນວນນ້ຳໜັກສູງສຸດ (g) ທີ່ແຖວທີ `rowIndex` ສາມາດປ້ອນໄດ້ ໂດຍຫັກນ້ຳໜັກທີ່ແຖວອື່ນ
+   * ທີ່ເລືອກ ປະເພດຄຳ ຫຼື SKU ດຽວກັນໃຊ້ໄປແລ້ວ ເພື່ອບໍ່ໃຫ້ລວມກັນເກີນ ນໍ້າໜັກຄົງເຫຼືອ / ນ້ຳໜັກ g ລວມ.
+   */
+  const getMaxWeightForLine = (rowIndex: number, targetId?: string, currentLines = lines): Decimal | null => {
+    if (isOldOut) {
+      const typeId = targetId ?? currentLines[rowIndex]?.goldTypeId ?? '';
+      if (!typeId) return null;
+      const available = getOldTypeAvailableWeight(typeId);
+      const otherUsed = currentLines.reduce((sum, l, idx) => {
+        if (idx === rowIndex || l.goldTypeId !== typeId) return sum;
+        const w = l.weightG.trim();
+        return /^\d+(\.\d+)?$/.test(w) ? sum.plus(dec(w)) : sum;
+      }, dec(0));
+      const rem = available.minus(otherUsed);
+      return rem.gt(0) ? rem : dec(0);
+    }
+    if (isTransferOld) {
+      const typeId = targetId ?? goldTypeId;
+      if (!typeId) return null;
+      const available = getOldTypeAvailableWeight(typeId);
+      const otherUsed = currentLines.reduce((sum, l, idx) => {
+        if (idx === rowIndex) return sum;
+        const w = l.weightG.trim();
+        return /^\d+(\.\d+)?$/.test(w) ? sum.plus(dec(w).mul(qty(l.quantity))) : sum;
+      }, dec(0));
+      const rem = available.minus(otherUsed);
+      const rowQty = qty(currentLines[rowIndex]?.quantity ?? '1');
+      return rem.gt(0) ? rem.div(rowQty).toDecimalPlaces(4) : dec(0);
+    }
+    if (isNewOut || isTransferNew) {
+      const skuId = targetId ?? currentLines[rowIndex]?.goldSkuId ?? '';
+      if (!skuId) return null;
+      const available = getNewSkuAvailableWeight(skuId);
+      const otherUsed = currentLines.reduce((sum, l, idx) => {
+        if (idx === rowIndex || l.goldSkuId !== skuId) return sum;
+        const w = l.weightG.trim();
+        return /^\d+(\.\d+)?$/.test(w) ? sum.plus(dec(w).mul(qty(l.quantity))) : sum;
+      }, dec(0));
+      const rem = available.minus(otherUsed);
+      const rowQty = qty(currentLines[rowIndex]?.quantity ?? '1');
+      return rem.gt(0) ? rem.div(rowQty).toDecimalPlaces(4) : dec(0);
+    }
+    return null;
+  };
 
   const totals = useMemo(() => {
     const goldG = lines.reduce((sum, l) => {
       const w = l.weightG.trim();
       if (!/^\d+(\.\d+)?$/.test(w)) return sum;
-      return sum.plus(dec(w).mul(qty(l.quantity)));
+      return sum.plus(isOldOut ? dec(w) : dec(w).mul(qty(l.quantity)));
     }, dec(0));
-    const quantity = lines.reduce((sum, l) => sum + qty(l.quantity), 0);
+    const quantity = lines.reduce((sum, l) => sum + (isOldOut ? 1 : qty(l.quantity)), 0);
 
-    // IN derives the rate from what was paid; OUT/TRANSFER use WAC.
-    const cost = totalCost.replace(/,/g, '').trim();
-    const perG =
-      kind === 'IN'
-        ? goldG.gt(0) && /^\d+(\.\d+)?$/.test(cost)
-          ? dec(cost).div(goldG)
-          : dec(0)
-        : dec(wac?.pricePerG ?? 0);
+    let perG = dec(0);
+    let goldCost = dec(0);
+
+    if (kind === 'IN') {
+      const cost = totalCost.replace(/,/g, '').trim();
+      goldCost = /^\d+(\.\d+)?$/.test(cost) ? dec(cost) : dec(0);
+      perG = goldG.gt(0) ? goldCost.div(goldG) : dec(0);
+    } else if (kind === 'OUT' && scope === 'OLD') {
+      // Stock OUT (OLD): ລາຄາ/g ຫານຈາກຕົ້ນທຶນຂອງ Stock ຄຳເກົ່າ ຕາມ ປະເພດຄຳ ທີ່ເລືອກ
+      let lineCostSum = dec(0);
+      for (const line of lines) {
+        const w = line.weightG.trim();
+        if (!/^\d+(\.\d+)?$/.test(w)) continue;
+        const lineWeight = dec(w);
+        const rate = getOldTypeRate(line.goldTypeId);
+        lineCostSum = lineCostSum.plus(lineWeight.mul(rate));
+      }
+      goldCost = lineCostSum;
+      if (goldG.gt(0)) {
+        perG = goldCost.div(goldG);
+      } else {
+        const firstSelected = lines.find((l) => Boolean(l.goldTypeId));
+        perG = firstSelected ? getOldTypeRate(firstSelected.goldTypeId) : dec(0);
+      }
+    } else if (kind === 'TRANSFER' && scope === 'OLD') {
+      // Transfer (OLD) ເປັນ (NEW): ລາຄາ/g ຫານຈາກຕົ້ນທຶນຂອງ Stock ຄຳເກົ່າ ຕາມ ປະເພດຄຳ ທີ່ເລືອກ
+      perG = getOldTypeRate(goldTypeId);
+      goldCost = goldG.mul(perG);
+    } else {
+      // Stock OUT (NEW) and Transfer (NEW -> OLD): use latest WAC
+      perG = dec(wac?.pricePerG ?? 0);
+      goldCost = goldG.mul(perG);
+    }
 
     return {
       goldG,
       quantity,
       pricePerG: perG,
       pricePerBaht: perG.mul(GRAMS_PER_BAHT),
-      goldCost: kind === 'IN' && /^\d+(\.\d+)?$/.test(cost) ? dec(cost) : goldG.mul(perG),
+      goldCost,
       expectedReturnG:
         isSmithOut && /^\d+(\.\d+)?$/.test(goldPercent.trim())
           ? goldG.mul(dec(goldPercent).div(100)).ceil()
           : null,
     };
-  }, [lines, totalCost, wac, kind, isSmithOut, goldPercent]);
+  }, [lines, totalCost, wac, kind, scope, goldTypeId, oldBalances, isOldOut, isSmithOut, goldPercent]);
+
+  /**
+   * ກວດສອບວ່ານ້ຳໜັກລວມທີ່ປ້ອນ ຫຼື ເລືອກ ບໍ່ເກີນ ນໍ້າໜັກ (g) ຄົງເຫຼືອ ຂອງປະເພດຄຳ ຫຼື ນ້ຳໜັກ g ລວມ ຂອງ SKU ນັ້ນ.
+   */
+  const overweightMessage = useMemo(() => {
+    if (isOldOut) {
+      const byType = new Map<string, Decimal>();
+      for (const l of lines) {
+        if (!l.goldTypeId) continue;
+        const w = l.weightG.trim();
+        if (!/^\d+(\.\d+)?$/.test(w)) continue;
+        byType.set(l.goldTypeId, (byType.get(l.goldTypeId) ?? dec(0)).plus(dec(w)));
+      }
+      for (const [typeId, requested] of byType) {
+        const available = getOldTypeAvailableWeight(typeId);
+        if (requested.gt(available)) {
+          const typeName = goldTypes.find((t) => t.id === typeId)?.nameLo ?? 'ປະເພດຄຳທີ່ເລືອກ';
+          return `ນ້ຳໜັກ ${typeName} ທີ່ປ້ອນ (${formatWeight(requested.toFixed())} g) ຫຼາຍກວ່ານ້ຳໜັກຄົງເຫຼືອ (${formatWeight(available.toFixed())} g)`;
+        }
+      }
+    } else if (isTransferOld && goldTypeId) {
+      const available = getOldTypeAvailableWeight(goldTypeId);
+      if (totals.goldG.gt(available)) {
+        const typeName = goldTypes.find((t) => t.id === goldTypeId)?.nameLo ?? 'ປະເພດຄຳທີ່ເລືອກ';
+        return `ນ້ຳໜັກ ${typeName} ທີ່ປ້ອນ (${formatWeight(totals.goldG.toFixed())} g) ຫຼາຍກວ່ານ້ຳໜັກຄົງເຫຼືອ (${formatWeight(available.toFixed())} g)`;
+      }
+    } else if (isNewOut || isTransferNew) {
+      const bySku = new Map<string, Decimal>();
+      for (const l of lines) {
+        if (!l.goldSkuId) continue;
+        const w = l.weightG.trim();
+        if (!/^\d+(\.\d+)?$/.test(w)) continue;
+        bySku.set(l.goldSkuId, (bySku.get(l.goldSkuId) ?? dec(0)).plus(dec(w).mul(qty(l.quantity))));
+      }
+      for (const [skuId, requested] of bySku) {
+        const available = getNewSkuAvailableWeight(skuId);
+        if (requested.gt(available)) {
+          const skuName = skus.find((s) => s.id === skuId)?.fullSkuName ?? 'SKU ທີ່ເລືອກ';
+          return `ນ້ຳໜັກ ${skuName} ທີ່ປ້ອນ (${formatWeight(requested.toFixed())} g) ຫຼາຍກວ່ານ້ຳໜັກ g ລວມ (${formatWeight(available.toFixed())} g)`;
+        }
+      }
+    }
+    return null;
+  }, [isOldOut, isTransferOld, isNewOut, isTransferNew, lines, goldTypeId, totals.goldG, oldBalances, newBalances, goldTypes, skus]);
 
   const setLine = (i: number, patch: Partial<Line>) =>
     setLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
@@ -170,13 +381,13 @@ export function StockMovementDialog({
   const submit = useMutation({
     mutationFn: () => {
       const payloadLines = lines
-        .filter((l) => Number(l.weightG) > 0 && (usesSku ? l.goldSkuId : true))
+        .filter((l) => Number(l.weightG) > 0 && (usesSku ? Boolean(l.goldSkuId) : Boolean(l.goldTypeId)))
         .map((l) => ({
           goldSkuId: usesSku ? l.goldSkuId : undefined,
-          goldTypeId: usesSku ? undefined : goldTypeId || l.goldTypeId,
+          goldTypeId: usesSku ? (kind === 'TRANSFER' ? goldTypeId : undefined) : l.goldTypeId,
           ...(isOldIn ? { oldCategory } : {}),
           weightG: l.weightG.trim(),
-          quantity: qty(l.quantity),
+          quantity: isOldOut ? 1 : qty(l.quantity),
           ...(scope === 'OLD' && l.goldItemId ? { goldItemId: l.goldItemId } : {}),
         }));
 
@@ -225,9 +436,12 @@ export function StockMovementDialog({
 
   const canSubmit =
     totals.goldG.gt(0) &&
-    (kind === 'TRANSFER' || isOldIn ? Boolean(goldTypeId) : Boolean(partnerId)) &&
+    !overweightMessage &&
+    (kind === 'TRANSFER' ? Boolean(goldTypeId) : isOldIn ? true : Boolean(partnerId)) &&
     (kind !== 'IN' || Number(totalCost.replace(/,/g, '')) > 0) &&
-    (usesSku ? lines.some((l) => l.goldSkuId) : Boolean(goldTypeId));
+    (usesSku
+      ? lines.some((l) => Boolean(l.goldSkuId) && Number(l.weightG) > 0)
+      : lines.length > 0 && lines.every((l) => Boolean(l.goldTypeId) && Number(l.weightG) > 0));
 
   const errorId = 'movement-error';
 
@@ -281,13 +495,45 @@ export function StockMovementDialog({
           </div>
         )}
 
-        {(!usesSku || kind === 'TRANSFER') && (
+        {/* ສະແດງ ປະເພດຄຳ ດ້ານເທິງສະເພາະ Transfer ເທົ່ານັ້ນ; ສ່ວນ IN ແລະ OUT ເລືອກຢູ່ລາຍການດ້ານລຸ່ມ */}
+        {kind === 'TRANSFER' && (
           <div>
             <label className="label" htmlFor="goldType">ປະເພດຄຳ</label>
-            <select id="goldType" className="input" value={goldTypeId}
-              onChange={(e) => setGoldTypeId(e.target.value)}>
+            <select
+              id="goldType"
+              className="input"
+              value={goldTypeId}
+              onChange={(e) => {
+                const nextTypeId = e.target.value;
+                setGoldTypeId(nextTypeId);
+                if (isTransferOld && nextTypeId) {
+                  let remaining = getOldTypeAvailableWeight(nextTypeId);
+                  setLines((prev) =>
+                    prev.map((l) => {
+                      const w = l.weightG.trim();
+                      if (!/^\d+(\.\d+)?$/.test(w)) return l;
+                      const q = qty(l.quantity);
+                      const maxUnit = remaining.gt(0) ? remaining.div(q).toDecimalPlaces(4) : dec(0);
+                      const clampedUnit = dec(w).gt(maxUnit) ? maxUnit : dec(w);
+                      const nextRem = remaining.minus(clampedUnit.mul(q));
+                      remaining = nextRem.gt(0) ? nextRem : dec(0);
+                      return dec(w).gt(maxUnit)
+                        ? { ...l, weightG: clampedUnit.gt(0) ? String(Number(clampedUnit.toFixed())) : '0' }
+                        : l;
+                    }),
+                  );
+                }
+              }}
+            >
               <option value="">— ເລືອກປະເພດຄຳ —</option>
-              {goldTypes.map((t) => <option key={t.id} value={t.id}>{t.nameLo}</option>)}
+              {goldTypes.map((t) => {
+                const avail = isTransferOld ? getOldTypeAvailableWeight(t.id) : null;
+                return (
+                  <option key={t.id} value={t.id}>
+                    {avail !== null ? `${t.nameLo} (ຄົງເຫຼືອ ${formatWeight(avail.toFixed())} g)` : t.nameLo}
+                  </option>
+                );
+              })}
             </select>
           </div>
         )}
@@ -335,81 +581,222 @@ export function StockMovementDialog({
           </button>
         </div>
         <div className="space-y-3">
-          {lines.map((line, i) => (
-            <div key={i} className={`grid gap-2 ${
-              isOldIn ? 'md:grid-cols-[1.4fr_1.4fr_1fr_0.8fr_1fr_auto]'
-                : isOldOut ? 'md:grid-cols-[2fr_1fr_auto]'
-                : 'md:grid-cols-[2fr_1fr_0.8fr_1fr_auto]'
-            }`}>
-              {usesSku ? (
-                /* ຂຽນຄົ້ນຫາໄດ້: ລາຍການ SKU ຍາວເກີນກວ່າຈະເລື່ອນຫາ. ໃຊ້ datalist
-                   ຂອງ browser ເອງ ຈຶ່ງໃຊ້ໄດ້ທັງແປ້ນພິມ ແລະ ຈໍສຳຜັດ ໂດຍບໍ່ຕ້ອງ
-                   ເພີ່ມ library. ພິມແລ້ວບໍ່ກົງກັບ SKU ໃດ = ຍັງບໍ່ໄດ້ເລືອກ. */
-                <input
-                  className="input"
-                  aria-label="full_sku_name"
-                  list={`sku-options-${i}`}
-                  placeholder="ພິມຄົ້ນຫາ full_sku_name"
-                  defaultValue={skus.find((s) => s.id === line.goldSkuId)?.fullSkuName ?? ''}
-                  onChange={(e) => {
-                    const sku = skus.find((s) => s.fullSkuName === e.target.value);
-                    setLine(i, {
-                      goldSkuId: sku?.id ?? '',
-                      weightG: sku ? String(Number(sku.weightG)) : line.weightG,
-                    });
-                  }}
-                />
-              ) : (
-                <select className="input" aria-label="ນຳອອກ" value={line.goldTypeId || goldTypeId}
-                  onChange={(e) => setLine(i, { goldTypeId: e.target.value })}>
-                  <option value="">ປະເພດຄຳ</option>
-                  {goldTypes.map((t) => <option key={t.id} value={t.id}>{t.nameLo}</option>)}
-                </select>
-              )}
-              {isOldIn && (
-                /* ຄຳເກົ່າບໍ່ມີ SKU ແຕ່ຍັງຕ້ອງຮູ້ວ່າເປັນສາຍແຂນ ຫຼື ແຫວນ. */
-                <select className="input" aria-label="ລາຍການຄຳ" value={line.goldItemId}
-                  onChange={(e) => setLine(i, { goldItemId: e.target.value })}>
-                  <option value="">ລາຍການຄຳ (ບໍ່ບັງຄັບ)</option>
-                  {goldItems.map((it) => <option key={it.id} value={it.id}>{it.nameLo}</option>)}
-                </select>
-              )}
-              {usesSku && (
-                <datalist id={`sku-options-${i}`}>
-                  {skus.map((s) => <option key={s.id} value={s.fullSkuName} />)}
-                </datalist>
-              )}
-              {usesSku && line.goldSkuId ? (
-                /* ນ້ຳໜັກມາຈາກ SKU ທີ່ເລືອກ — ແກ້ບໍ່ໄດ້, ບໍ່ດັ່ງນັ້ນນ້ຳໜັກໃນສາງ
-                   ຈະບໍ່ກົງກັບນິຍາມຂອງ SKU ນັ້ນອີກຕໍ່ໄປ. */
-                <div className="input num flex items-center justify-end text-muted"
-                  aria-label="weight_g" title="ນ້ຳໜັກມາຈາກ SKU ທີ່ເລືອກ">
-                  {formatWeight(line.weightG)}
-                </div>
-              ) : (
-                <NumberInput className="input num" aria-label="weight_g" decimals={4} placeholder="weight_g"
-                  value={line.weightG} onValueChange={(v) => setLine(i, { weightG: v })} />
-              )}
-              {!isOldOut && (
-                <>
-                  <input className="input num" aria-label="ຈຳນວນ" type="number" min={1}
-                    inputMode="numeric" placeholder="1" value={line.quantity}
-                    onChange={(e) => setLine(i, { quantity: e.target.value })} />
-                  <div className="input num flex items-center justify-end text-muted">
-                    {/^\d+(\.\d+)?$/.test(line.weightG)
-                      ? formatWeight(dec(line.weightG).mul(qty(line.quantity)).toFixed())
-                      : '—'}
+          {lines.map((line, i) => {
+            const lineW = line.weightG.trim();
+            const lineWeightG = /^\d+(\.\d+)?$/.test(lineW)
+              ? (isOldOut ? dec(lineW) : dec(lineW).mul(qty(line.quantity)))
+              : dec(0);
+
+            const lineUnitPrice = isOldOut
+              ? getOldTypeRate(line.goldTypeId)
+              : isTransferOld
+                ? getOldTypeRate(goldTypeId)
+                : dec(0);
+
+            const lineTotalCost = lineWeightG.mul(lineUnitPrice);
+            const maxLineWeight = getMaxWeightForLine(i);
+            const maxLineWeightStr = maxLineWeight !== null ? String(Number(maxLineWeight.toFixed())) : undefined;
+
+            return (
+              <div key={i} className={`grid gap-2 ${
+                isOldIn ? 'md:grid-cols-[1.4fr_1.4fr_1fr_0.8fr_1fr_auto]'
+                  : isOldOut ? 'md:grid-cols-[1.8fr_1.1fr_1.4fr_auto]'
+                  : isTransferOld ? 'md:grid-cols-[1.8fr_0.9fr_0.7fr_0.9fr_1.3fr_auto]'
+                  : 'md:grid-cols-[2fr_1fr_0.8fr_1fr_auto]'
+              }`}>
+                {usesSku ? (
+                  /* ຂຽນຄົ້ນຫາໄດ້: ລາຍການ SKU ຍາວເກີນກວ່າຈະເລື່ອນຫາ. ໃຊ້ datalist
+                     ຂອງ browser ເອງ ຈຶ່ງໃຊ້ໄດ້ທັງແປ້ນພິມ ແລະ ຈໍສຳຜັດ ໂດຍບໍ່ຕ້ອງ
+                     ເພີ່ມ library. ພິມແລ້ວບໍ່ກົງກັບ SKU ໃດ = ຍັງບໍ່ໄດ້ເລືອກ. */
+                  <input
+                    className="input"
+                    aria-label="full_sku_name"
+                    list={`sku-options-${i}`}
+                    placeholder="ພິມຄົ້ນຫາ full_sku_name"
+                    defaultValue={skus.find((s) => s.id === line.goldSkuId)?.fullSkuName ?? ''}
+                    onChange={(e) => {
+                      const sku = skus.find((s) => s.fullSkuName === e.target.value);
+                      if (!sku) {
+                        setLine(i, { goldSkuId: '' });
+                        return;
+                      }
+                      let nextWeight = String(Number(sku.weightG));
+                      if (isNewOut || isTransferNew) {
+                        const maxForSku = getMaxWeightForLine(i, sku.id);
+                        if (maxForSku !== null && dec(nextWeight).gt(maxForSku)) {
+                          nextWeight = maxForSku.gt(0) ? String(Number(maxForSku.toFixed())) : '0';
+                        }
+                      } else if (isTransferOld && goldTypeId) {
+                        const maxForType = getMaxWeightForLine(i, goldTypeId);
+                        if (maxForType !== null && dec(nextWeight).gt(maxForType)) {
+                          nextWeight = maxForType.gt(0) ? String(Number(maxForType.toFixed())) : '0';
+                        }
+                      }
+                      setLine(i, {
+                        goldSkuId: sku.id,
+                        weightG: nextWeight,
+                      });
+                    }}
+                  />
+                ) : (
+                  <select
+                    className="input"
+                    aria-label="ປະເພດຄຳ"
+                    value={line.goldTypeId}
+                    onChange={(e) => {
+                      const nextTypeId = e.target.value;
+                      if (isOldOut && nextTypeId) {
+                        const maxForNewType = getMaxWeightForLine(i, nextTypeId);
+                        const w = line.weightG.trim();
+                        if (maxForNewType !== null && /^\d+(\.\d+)?$/.test(w) && dec(w).gt(maxForNewType)) {
+                          setLine(i, {
+                            goldTypeId: nextTypeId,
+                            weightG: maxForNewType.gt(0) ? String(Number(maxForNewType.toFixed())) : '0',
+                          });
+                          return;
+                        }
+                      }
+                      setLine(i, { goldTypeId: nextTypeId });
+                    }}
+                  >
+                    <option value="">ປະເພດຄຳ</option>
+                    {goldTypes.map((t) => {
+                      const avail = isOldOut ? getOldTypeAvailableWeight(t.id) : null;
+                      return (
+                        <option key={t.id} value={t.id}>
+                          {avail !== null ? `${t.nameLo} (ຄົງເຫຼືອ ${formatWeight(avail.toFixed())} g)` : t.nameLo}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
+                {isOldIn && (
+                  /* ຄຳເກົ່າບໍ່ມີ SKU ແຕ່ຍັງຕ້ອງຮູ້ວ່າເປັນສາຍແຂນ ຫຼື ແຫວນ. */
+                  <select className="input" aria-label="ລາຍການຄຳ" value={line.goldItemId}
+                    onChange={(e) => setLine(i, { goldItemId: e.target.value })}>
+                    <option value="">ລາຍການຄຳ (ບໍ່ບັງຄັບ)</option>
+                    {goldItems.map((it) => <option key={it.id} value={it.id}>{it.nameLo}</option>)}
+                  </select>
+                )}
+                {usesSku && (
+                  <datalist id={`sku-options-${i}`}>
+                    {skus.map((s) => {
+                      const avail = isNewOut || isTransferNew ? getNewSkuAvailableWeight(s.id) : null;
+                      return (
+                        <option key={s.id} value={s.fullSkuName}>
+                          {avail !== null ? `ນ້ຳໜັກ g ລວມ: ${formatWeight(avail.toFixed())} g` : undefined}
+                        </option>
+                      );
+                    })}
+                  </datalist>
+                )}
+                {kind === 'IN' && usesSku && line.goldSkuId ? (
+                  /* ນ້ຳໜັກມາຈາກ SKU ທີ່ເລືອກ — ແກ້ບໍ່ໄດ້ໃນໂໝດ IN, ບໍ່ດັ່ງນັ້ນນ້ຳໜັກໃນສາງ
+                     ຈະບໍ່ກົງກັບນິຍາມຂອງ SKU ນັ້ນອີກຕໍ່ໄປ. */
+                  <div className="input num flex items-center justify-end text-muted"
+                    aria-label="weight_g" title="ນ້ຳໜັກມາຈາກ SKU ທີ່ເລືອກ">
+                    {formatWeight(line.weightG)}
                   </div>
-                </>
-              )}
-              <button className="btn-secondary" disabled={lines.length === 1}
-                onClick={() => setLines((p) => p.filter((_, idx) => idx !== i))}>
-                ລຶບ
-              </button>
-            </div>
-          ))}
+                ) : (
+                  <NumberInput
+                    className="input num"
+                    aria-label="weight_g"
+                    decimals={4}
+                    max={maxLineWeightStr}
+                    placeholder={
+                      maxLineWeight !== null
+                        ? `ສູງສຸດ ${formatWeight(maxLineWeight.toFixed())} g`
+                        : 'weight_g'
+                    }
+                    value={line.weightG}
+                    onValueChange={(v) => setLine(i, { weightG: v })}
+                  />
+                )}
+                {!isOldOut && (
+                  <>
+                    <input
+                      className="input num"
+                      aria-label="ຈຳນວນ"
+                      type="number"
+                      min={1}
+                      inputMode="numeric"
+                      placeholder="1"
+                      value={line.quantity}
+                      onChange={(e) => {
+                        const rawQty = e.target.value;
+                        if (isTransferOld && goldTypeId && /^\d+(\.\d+)?$/.test(lineW) && dec(lineW).gt(0)) {
+                          const totalAvail = getOldTypeAvailableWeight(goldTypeId);
+                          const otherUsed = lines.reduce((sum, l, idx) => {
+                            if (idx === i) return sum;
+                            const w = l.weightG.trim();
+                            return /^\d+(\.\d+)?$/.test(w) ? sum.plus(dec(w).mul(qty(l.quantity))) : sum;
+                          }, dec(0));
+                          const remDiff = totalAvail.minus(otherUsed);
+                          const rem = remDiff.gt(0) ? remDiff : dec(0);
+                          const maxQty = Math.max(1, Math.floor(Number(rem.div(dec(lineW)).toFixed())));
+                          if (Number(rawQty) > maxQty) {
+                            setLine(i, { quantity: String(maxQty) });
+                            return;
+                          }
+                        } else if (
+                          (isNewOut || isTransferNew) &&
+                          line.goldSkuId &&
+                          /^\d+(\.\d+)?$/.test(lineW) &&
+                          dec(lineW).gt(0)
+                        ) {
+                          const totalAvail = getNewSkuAvailableWeight(line.goldSkuId);
+                          const otherUsed = lines.reduce((sum, l, idx) => {
+                            if (idx === i || l.goldSkuId !== line.goldSkuId) return sum;
+                            const w = l.weightG.trim();
+                            return /^\d+(\.\d+)?$/.test(w) ? sum.plus(dec(w).mul(qty(l.quantity))) : sum;
+                          }, dec(0));
+                          const remDiff = totalAvail.minus(otherUsed);
+                          const rem = remDiff.gt(0) ? remDiff : dec(0);
+                          const maxQty = Math.max(1, Math.floor(Number(rem.div(dec(lineW)).toFixed())));
+                          if (Number(rawQty) > maxQty) {
+                            setLine(i, { quantity: String(maxQty) });
+                            return;
+                          }
+                        }
+                        setLine(i, { quantity: rawQty });
+                      }}
+                    />
+                    <div className="input num flex items-center justify-end text-muted">
+                      {/^\d+(\.\d+)?$/.test(line.weightG)
+                        ? formatWeight(dec(line.weightG).mul(qty(line.quantity)).toFixed())
+                        : '—'}
+                    </div>
+                  </>
+                )}
+                {(isOldOut || isTransferOld) && (
+                  <div
+                    className="input num flex items-center justify-end font-semibold text-gold-light"
+                    aria-label="ຍອດລວມລາຍການ"
+                    title={lineUnitPrice.gt(0) ? `ລາຄາ/g: ${formatLak(lineUnitPrice.toFixed())} LAK` : 'ລາຄາລວມຂອງລາຍການນີ້'}
+                  >
+                    {lineTotalCost.gt(0) ? `${formatLak(lineTotalCost.toFixed())} LAK` : '—'}
+                  </div>
+                )}
+                <button className="btn-secondary" disabled={lines.length === 1}
+                  onClick={() => setLines((p) => p.filter((_, idx) => idx !== i))}>
+                  ລຶບ
+                </button>
+              </div>
+            );
+          })}
         </div>
-        <p className="mt-2 text-xs text-muted">GOLD (g) = weight_g × ຈຳນວນ</p>
+        <p className="mt-2 text-xs text-muted">
+          {isOldOut
+            ? 'ຍອດລວມຕໍ່ລາຍການ = weight_g × ລາຄາ/g (ຫານຈາກຕົ້ນທຶນຄຳເກົ່າຕາມປະເພດຄຳທີ່ເລືອກ)'
+            : isTransferOld
+              ? 'GOLD (g) = weight_g × ຈຳນວນ · ຍອດລວມ = GOLD (g) × ລາຄາ/g ຕາມປະເພດຄຳທີ່ເລືອກ'
+              : 'GOLD (g) = weight_g × ຈຳນວນ'}
+        </p>
+        {overweightMessage && (
+          <div role="alert" className="notice status-danger mt-2">
+            {overweightMessage}
+          </div>
+        )}
       </div>
 
       {kind === 'IN' && (

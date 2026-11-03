@@ -8,21 +8,28 @@ import { Decimal, dec, GRAMS_PER_BAHT, RATE_DECIMALS, trimTrailingZeros } from '
  * to the screen converts to `number` first.
  */
 
-/** 45859000 -> "45,859,000" */
-export function formatLak(value: string | number | Decimal | null | undefined): string {
-  if (value === null || value === undefined || value === '') return '—';
-  const d = dec(value as never);
-  if (!d.isFinite()) return '—';
-  return addThousands(d.toDecimalPlaces(0).toFixed());
+function cleanDecimalInput(
+  value: string | number | Decimal | null | undefined,
+): string | number | Decimal | null | undefined {
+  if (typeof value === 'string') {
+    return value.replace(/,/g, '').trim();
+  }
+  return value;
 }
 
-/**
- * Money formatted for the currency it is in.
- *
- * ກີບ has no subunit in practice — the shop does not deal in att — so a LAK
- * figure shown as "50,000.00" is two digits of noise on every row. THB and
- * USD keep their two places.
- */
+export function formatLak(value: string | number | Decimal | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const clean = cleanDecimalInput(value);
+  if (clean === '') return '—';
+  try {
+    const d = dec(clean as never);
+    if (!d.isFinite()) return '—';
+    return addThousands(d.toDecimalPlaces(0).toFixed());
+  } catch {
+    return '—';
+  }
+}
+
 export function formatByCurrency(
   value: string | number | Decimal | null | undefined,
   currency: string | null | undefined,
@@ -30,16 +37,21 @@ export function formatByCurrency(
   return currency === 'LAK' ? formatLak(value) : formatMoney(value);
 }
 
-/** Money with decimals kept, for foreign currency. */
 export function formatMoney(
   value: string | number | Decimal | null | undefined,
   decimals = 2,
 ): string {
   if (value === null || value === undefined || value === '') return '—';
-  const d = dec(value as never);
-  if (!d.isFinite()) return '—';
-  const [whole, frac] = d.toDecimalPlaces(decimals).toFixed(decimals).split('.');
-  return frac ? `${addThousands(whole!)}.${frac}` : addThousands(whole!);
+  const clean = cleanDecimalInput(value);
+  if (clean === '') return '—';
+  try {
+    const d = dec(clean as never);
+    if (!d.isFinite()) return '—';
+    const [whole, frac] = d.toDecimalPlaces(decimals).toFixed(decimals).split('.');
+    return frac ? addThousands(whole) + '.' + frac : addThousands(whole);
+  } catch {
+    return '—';
+  }
 }
 
 /**

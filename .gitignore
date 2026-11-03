@@ -11,3 +11,8 @@ shared/dist/
 test-results/
 playwright-report/
 e2e/__screenshots__/
+
+# Antigravity agent skills
+.agent/
+.agents/
+.shared/

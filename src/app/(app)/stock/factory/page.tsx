@@ -16,7 +16,8 @@ import { PageHead } from '@/components/page-head';
 import { TableStateRow } from '@/components/query-state';
 import { NumberInput } from '@/components/number-input';
 import { statusClass } from '@/lib/status';
-import { isPositive } from '@/lib/validate';
+import { isPositive, clean } from '@/lib/validate';
+import { dec } from '@kpv/domain';
 
 interface Tracking {
   id: string;
@@ -112,7 +113,7 @@ export default function FactoryTrackingPage() {
 
   const save = useMutation({
     mutationFn: (id: string) =>
-      api.post(`/stock/factory/${id}/assessment`, { factoryAssessedG: weight.trim() }),
+      api.post(`/stock/factory/${id}/assessment`, { factoryAssessedG: clean(weight) }),
     onSuccess: () => {
       toast.success('ດຳເນີນການສຳເລັດ');
       setEditing(null);
@@ -127,6 +128,22 @@ export default function FactoryTrackingPage() {
       toast.error('ບໍ່ສຳເລັດ', detail);
     },
   });
+
+  const handleSave = (row: Tracking) => {
+    const raw = clean(weight);
+    if (!isPositive(raw)) {
+      setError('ກະລຸນາປ້ອນນ້ຳໜັກທີ່ຖືກຕ້ອງ');
+      return;
+    }
+    if (dec(raw).gt(dec(row.goldOutG))) {
+      const msg = `ນ້ຳໜັກທີ່ FACTORY ປະເມີນ ຕ້ອງບໍ່ເກີນ ຄຳເກົ່າອອກລວມ (${formatWeight(row.goldOutG)} g)`;
+      setError(msg);
+      toast.error('ບໍ່ສຳເລັດ', msg);
+      return;
+    }
+    setError(null);
+    save.mutate(row.id);
+  };
 
   const pager = usePagination(rows);
 
@@ -204,7 +221,7 @@ export default function FactoryTrackingPage() {
                 <th>ແຫຼ່ງສົ່ງອອກ</th>
                 <th>ປະເພດຄຳ</th>
                 <th>ແປງສະພາບ</th>
-                <th className="text-right">ຄຳເກົ່າອອກ (g)</th>
+                <th className="text-right">ຄຳເກົ່າອອກ (g) ລວມ</th>
                 <th className="text-right">ນ້ຳໜັກ (g) FACTORY ປະເມີນ</th>
                 <th className="text-right">ຕົ້ນທຶນຄຳ</th>
                 <th>ຜູ້ບັນທຶກ</th>
@@ -224,6 +241,11 @@ export default function FactoryTrackingPage() {
               />
               {pager.pageItems.map((row) => {
                 const locked = row.status === 'COMPLETED' && !isAdmin;
+                const isEditing = editing === row.id;
+                const rawWeight = clean(weight);
+                const isOverMax = isEditing && isPositive(rawWeight) && dec(rawWeight).gt(dec(row.goldOutG));
+                const canSave = isEditing && isPositive(rawWeight) && !isOverMax;
+
                 return (
                   <tr key={row.id}>
                     <td className="font-mono text-xs">{row.movement.code}</td>
@@ -233,16 +255,37 @@ export default function FactoryTrackingPage() {
                     <td className="text-muted">{row.movement.transformType ?? '—'}</td>
                     <td className="num text-right">{formatWeight(row.goldOutG)}</td>
                     <td className="num text-right">
-                      {editing === row.id ? (
-                        <NumberInput
-                          className="input num w-36 text-right"
-                          aria-label={`ນໍ້າໜັກg FACTORY ປະເມີນ ${row.movement.code}`}
-                          aria-describedby={error ? 'factory-error' : undefined}
-                          decimals={4}
-                          value={weight}
-                          onValueChange={setWeight}
-                          autoFocus
-                        />
+                      {isEditing ? (
+                        <div className="flex flex-col items-end">
+                          <NumberInput
+                            className={`input num w-36 text-right ${isOverMax ? '!border-danger text-danger' : ''}`}
+                            aria-label={`ນໍ້າໜັກg FACTORY ປະເມີນ ${row.movement.code}`}
+                            aria-describedby={error ? 'factory-error' : undefined}
+                            decimals={4}
+                            max={row.goldOutG}
+                            placeholder={`ສູງສຸດ ${formatWeight(row.goldOutG)} g`}
+                            value={weight}
+                            onValueChange={(v) => {
+                              setWeight(v);
+                              if (error) setError(null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && canSave && !save.isPending) {
+                                e.preventDefault();
+                                handleSave(row);
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <span className="text-[11px] text-muted whitespace-nowrap mt-0.5">
+                            ສູງສຸດ: {formatWeight(row.goldOutG)} g
+                          </span>
+                          {isOverMax && (
+                            <span className="text-[11px] text-danger whitespace-nowrap">
+                              ເກີນຄຳເກົ່າອອກລວມ
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         formatWeight(row.factoryAssessedG)
                       )}
@@ -256,22 +299,37 @@ export default function FactoryTrackingPage() {
                       </span>
                     </td>
                     <td className="text-right">
-                      {editing === row.id ? (
+                      {isEditing ? (
                         <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
-                          <button className="btn-primary"
-                            onClick={() => save.mutate(row.id)} disabled={save.isPending || !isPositive(weight)}>
+                          <button
+                            className="btn-primary"
+                            onClick={() => handleSave(row)}
+                            disabled={save.isPending || !canSave}
+                          >
                             ບັນທຶກ
                           </button>
-                          <button className="btn-secondary" onClick={() => setEditing(null)}>
+                          <button
+                            className="btn-secondary"
+                            onClick={() => {
+                              setEditing(null);
+                              setError(null);
+                            }}
+                          >
                             ຍົກເລີກ
                           </button>
                         </div>
                       ) : locked ? (
                         <span className="text-xs text-muted">ສະເພາະ Admin</span>
                       ) : (
-                        <button className="btn-ghost"
+                        <button
+                          className="btn-ghost"
                           aria-label={`${row.status === 'COMPLETED' ? 'ແກ້ໄຂ' : 'ອັບເດດ'} ${row.movement.code}`}
-                          onClick={() => { setEditing(row.id); setWeight(row.factoryAssessedG ?? ''); }}>
+                          onClick={() => {
+                            setEditing(row.id);
+                            setWeight(row.factoryAssessedG ?? '');
+                            setError(null);
+                          }}
+                        >
                           {row.status === 'COMPLETED' ? 'ແກ້ໄຂ' : 'ອັບເດດ'}
                         </button>
                       )}
