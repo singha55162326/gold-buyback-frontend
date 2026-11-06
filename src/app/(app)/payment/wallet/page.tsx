@@ -4,13 +4,14 @@ import { useState } from 'react';
 import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError } from '@/lib/api';
+import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatMoney, formatDateTime } from '@/lib/format';
 import { NumberInput } from '@/components/number-input';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import { StatCard } from '@/components/stat-card';
+import { useRealtime } from '@/lib/realtime';
 
 interface Balance { currency: 'LAK' | 'THB' | 'USD'; inflow: string; outflow: string; balance: string }
 interface Wallet { shiftId: string | null; openedAt: string | null; balances: Balance[] }
@@ -18,6 +19,8 @@ interface Request {
   id: string; direction: 'WITHDRAW' | 'HANDOVER'; status: string;
   note: string | null; createdAt: string;
   lines: Array<{ id: string; currency: string; amount: string }>;
+  requestedById: string;
+  rejectReason?: string | null;
   /** ຜູ້ບັນທຶກ (ຜູ້ຮ້ອງຂໍ) ແລະ ມືສຸດທ້າຍ (ຜູ້ອະນຸມັດ). */
   createdBy: string;
   updatedBy: string;
@@ -40,12 +43,15 @@ const STATUS: Record<string, { lo: string }> = {
 export default function WalletPage() {
   const queryClient = useQueryClient();
   const toast = useToast();
+  const currentUser = getStoredUser();
+
   const [direction, setDirection] = useState<'WITHDRAW' | 'HANDOVER'>('WITHDRAW');
   const [lak, setLak] = useState('');
   const [thb, setThb] = useState('');
   const [usd, setUsd] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [completingId, setCompletingId] = useState<string | null>(null);
 
   /*
    * ຍອດໃນກະເປົ໋າ ບໍ່ແມ່ນຍອດເງິນສົດຂອງຮ້ານ.
@@ -67,6 +73,11 @@ export default function WalletPage() {
     void queryClient.invalidateQueries({ queryKey: ['cash'] });
     void queryClient.invalidateQueries({ queryKey: ['ledger'] });
   };
+
+  // ຮັບ event ຈາກ WebSocket ເມື່ອ FC ອະນຸມັດ ຫຼື ມີການປ່ຽນແປງ
+  useRealtime(() => {
+    invalidate();
+  });
 
   const create = useMutation({
     mutationFn: () => {
@@ -91,9 +102,18 @@ export default function WalletPage() {
   });
 
   const complete = useMutation({
-    mutationFn: (id: string) => api.post(`/cash/requests/${id}/complete`),
-    onSuccess: () => { setError(null); invalidate(); },
+    mutationFn: (id: string) => {
+      setCompletingId(id);
+      return api.post(`/cash/requests/${id}/complete`);
+    },
+    onSuccess: () => {
+      setCompletingId(null);
+      setError(null);
+      toast.success('ຢືນຢັນສຳເລັດ');
+      invalidate();
+    },
     onError: (e) => {
+      setCompletingId(null);
       const detail = e instanceof ApiError ? e.message : 'ຢືນຢັນບໍ່ສຳເລັດ';
       setError(detail);
       toast.error('ບໍ່ສຳເລັດ', detail);
@@ -103,10 +123,35 @@ export default function WalletPage() {
   const amountFor = (lines: Array<{ currency: string; amount: string }>, currency: string) =>
     formatMoney(lines.find((l) => l.currency === currency)?.amount ?? '0');
 
-  const canSave = [lak, thb, usd].some((v) => v.trim() && Number(v.replace(/,/g, '')) > 0);
+  const getBalanceNum = (curr: 'LAK' | 'THB' | 'USD') => {
+    const b = balances.find((x) => x.currency === curr);
+    return Number(b?.balance ?? '0');
+  };
+
+  const lakNum = Number(lak.replace(/,/g, '') || '0');
+  const thbNum = Number(thb.replace(/,/g, '') || '0');
+  const usdNum = Number(usd.replace(/,/g, '') || '0');
+
+  const exceedsBalance = direction === 'HANDOVER' && (
+    (lakNum > 0 && lakNum > getBalanceNum('LAK')) ||
+    (thbNum > 0 && thbNum > getBalanceNum('THB')) ||
+    (usdNum > 0 && usdNum > getBalanceNum('USD'))
+  );
+
+  const hasPositiveAmount = [lak, thb, usd].some((v) => v.trim() && Number(v.replace(/,/g, '')) > 0);
+  const canSave = Boolean(wallet?.shiftId) && !exceedsBalance && hasPositiveAmount;
 
   const pager = usePagination(requests);
 
+  const pendingApprovedCount = requests.filter(
+    (r) => r.status === 'APPROVED' && (!currentUser || r.requestedById === currentUser.id || ['ADMIN', 'MANAGER'].includes(currentUser.role)),
+  ).length;
+
+  const canCompleteRow = (row: Request) => {
+    if (row.status !== 'APPROVED') return false;
+    if (!currentUser) return true;
+    return row.requestedById === currentUser.id || ['ADMIN', 'MANAGER'].includes(currentUser.role);
+  };
 
   return (
     <div className="space-y-6">
@@ -122,6 +167,12 @@ export default function WalletPage() {
         </div>
       )}
 
+      {pendingApprovedCount > 0 && (
+        <div data-fade className="notice status-info">
+          ມີ <strong>{pendingApprovedCount}</strong> ລາຍການເບີກ/ມອບເງິນທີ່ໄດ້ຮັບການອະນຸມັດແລ້ວ — ກະລຸນາກົດປຸ່ມ <strong>"ຢືນຢັນ Completed"</strong> ຢູ່ຕາຕະລາງດ້ານລຸ່ມ ເພື່ອໃຫ້ຍອດເງິນເຄື່ອນໄຫວເຂົ້າ/ອອກກະເປົ໋າຕົວຈິງ
+        </div>
+      )}
+
       <div className="stat-grid">
         {balances.map((b) => (
           <StatCard key={b.currency} label={`ຍອດຄົງເຫຼືອ ${b.currency}`} value={formatMoney(b.balance)}
@@ -133,16 +184,22 @@ export default function WalletPage() {
         <div id="wallet-error" role="alert" className="notice status-danger">{error}</div>
       )}
 
+      {exceedsBalance && (
+        <div role="alert" className="notice status-warning">
+          ຈຳນວນເງິນທີ່ຕ້ອງການມອບເກີນຍອດຄົງເຫຼືອໃນກະເປົ໋າ ກະລຸນາກວດສອບຄືນ
+        </div>
+      )}
+
       <div data-fade className="card p-5">
         <div className="mb-4 flex flex-wrap gap-2">
           <button type="button" aria-pressed={direction === 'WITHDRAW'}
             className={direction === 'WITHDRAW' ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => setDirection('WITHDRAW')}>
+            onClick={() => { setDirection('WITHDRAW'); setError(null); }}>
             ເບີກເງິນ (+)
           </button>
           <button type="button" aria-pressed={direction === 'HANDOVER'}
             className={direction === 'HANDOVER' ? 'btn-primary' : 'btn-secondary'}
-            onClick={() => setDirection('HANDOVER')}>
+            onClick={() => { setDirection('HANDOVER'); setError(null); }}>
             ມອບເງິນ (−)
           </button>
         </div>
@@ -165,14 +222,20 @@ export default function WalletPage() {
           </div>
           <div>
             <label className="label" htmlFor="note">Note</label>
-            <input id="note" className="input input-lg" value={note} onChange={(e) => setNote(e.target.value)} />
+            <input id="note" className="input input-lg" maxLength={500} value={note} onChange={(e) => setNote(e.target.value)} />
           </div>
         </div>
 
         <div className="mt-4">
           <button className="btn-primary min-h-[54px] w-full sm:w-auto sm:min-w-[240px]" disabled={!canSave || create.isPending}
             onClick={() => create.mutate()}>
-            {create.isPending ? 'ກຳລັງສົ່ງ...' : `ສົ່ງຄຳຮ້ອງ${direction === 'WITHDRAW' ? 'ເບີກເງິນ' : 'ມອບເງິນ'}`}
+            {!wallet?.shiftId
+              ? 'ກະລຸນາເປີດກະກ່ອນ'
+              : exceedsBalance
+              ? 'ຍອດເງິນບໍ່ພໍສຳລັບມອບເງິນ'
+              : create.isPending
+              ? 'ກຳລັງສົ່ງ...'
+              : `ສົ່ງຄຳຮ້ອງ${direction === 'WITHDRAW' ? 'ເບີກເງິນ' : 'ມອບເງິນ'}`}
           </button>
         </div>
       </div>
@@ -196,32 +259,49 @@ export default function WalletPage() {
             </thead>
             <tbody>
               <TableStateRow colSpan={9} isError={requestsFailed} error={requestsError} isEmpty={requests.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRequests()} />
-              {pager.pageItems.map((row) => (
-                <tr key={row.id}>
-                  <td>{formatDateTime(row.createdAt)}</td>
-                  <td>{row.direction === 'WITHDRAW' ? 'ເບີກເງິນ (+)' : 'ມອບເງິນ (−)'}</td>
-                  <td className="num text-right">{amountFor(row.lines, 'LAK')}</td>
-                  <td className="num text-right">{amountFor(row.lines, 'THB')}</td>
-                  <td className="num text-right">{amountFor(row.lines, 'USD')}</td>
-                  <td className="text-muted">{row.note ?? '—'}</td>
-                  <td>
-                    <span className={statusClass(row.status)}>
-                      {STATUS[row.status]?.lo ?? row.status}
-                    </span>
-                  </td>
-                  <td className="text-muted">{row.createdBy}</td>
-                  <td className="text-right">
-                    {row.status === 'APPROVED' ? (
-                      <button className="btn-primary"
-                        onClick={() => complete.mutate(row.id)} disabled={complete.isPending}>
-                        ຢືນຢັນ Completed
-                      </button>
-                    ) : (
-                      <span className="text-xs text-muted">—</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {pager.pageItems.map((row) => {
+                const isApproved = row.status === 'APPROVED';
+                const canComplete = canCompleteRow(row);
+                const isThisCompleting = completingId === row.id;
+
+                return (
+                  <tr key={row.id}>
+                    <td>{formatDateTime(row.createdAt)}</td>
+                    <td>{row.direction === 'WITHDRAW' ? 'ເບີກເງິນ (+)' : 'ມອບເງິນ (−)'}</td>
+                    <td className="num text-right">{amountFor(row.lines, 'LAK')}</td>
+                    <td className="num text-right">{amountFor(row.lines, 'THB')}</td>
+                    <td className="num text-right">{amountFor(row.lines, 'USD')}</td>
+                    <td className="text-muted">{row.note ?? '—'}</td>
+                    <td>
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className={statusClass(row.status)}>
+                          {STATUS[row.status]?.lo ?? row.status}
+                        </span>
+                        {row.status === 'REJECTED' && row.rejectReason && (
+                          <span className="text-xs text-danger" title={row.rejectReason}>
+                            ເຫດຜົນ: {row.rejectReason}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="text-muted">{row.createdBy}</td>
+                    <td className="text-right">
+                      {isApproved ? (
+                        canComplete ? (
+                          <button className="btn-primary"
+                            onClick={() => complete.mutate(row.id)} disabled={isThisCompleting}>
+                            {isThisCompleting ? 'ກຳລັງຢືນຢັນ...' : 'ຢືນຢັນ Completed'}
+                          </button>
+                        ) : (
+                          <span className="text-xs text-muted">ລໍຖ້າຜູ້ຮ້ອງຂໍຢືນຢັນ</span>
+                        )
+                      ) : (
+                        <span className="text-xs text-muted">—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -230,4 +310,3 @@ export default function WalletPage() {
     </div>
   );
 }
-

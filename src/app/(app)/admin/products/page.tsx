@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
@@ -8,6 +8,7 @@ import { PageHead } from '@/components/page-head';
 import { NumberInput } from '@/components/number-input';
 import { TableStateRow } from '@/components/query-state';
 import { PriceChart, type PricePoint } from '@/components/price-chart';
+import { Dialog } from '@/components/dialog';
 import { formatLak, formatWeight, formatDate, formatDateTime } from '@/lib/format';
 
 interface PriceLine {
@@ -56,8 +57,8 @@ export default function ProductsPage() {
   const toast = useToast();
   const [input, setInput] = useState('');
   const [showSteps, setShowSteps] = useState(false);
-  // ແຖວປະຫວັດທີ່ກຳລັງກາງອອກເບິ່ງລາຄາຕໍ່ນ້ຳໜັກ.
-  const [viewing, setViewing] = useState<string | null>(null);
+  // Snapshot row ທີ່ກຳລັງເປີດ pop up modal ເບິ່ງລາຄາຕໍ່ນ້ຳໜັກ.
+  const [viewingRow, setViewingRow] = useState<HistoryRow | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const { data: current, isError: currentFailedRaw, error: currentError, refetch: refetchCurrent } = useQuery({
@@ -235,7 +236,7 @@ export default function ProductsPage() {
         <p className="border-b border-line px-5 py-3 text-xs text-muted">
           ທຸກຄັ້ງທີ່ລາຄາປ່ຽນ — ທັງຈາກການຕັ້ງ ລາຄາຂາຍ 1 ບາດ ແລະ ຈາກການແກ້ ຫັກອອກ (%) /
           ລາຄາລົບອອກ ຢູ່ໜ້າ ຈັດການ ຄ່າຫັກ — ຈະບັນທຶກເປັນແຖວໃໝ່ພ້ອມລາຄາຊື້ຄືນຂອງທຸກນ້ຳໜັກ.
-          ກົດ View ເພື່ອເບິ່ງລາຄາຂອງເວລານັ້ນ.
+          ກົດ View ເພື່ອເປີດ modal ເບິ່ງລາຄາ snapshot ຂອງເວລານັ້ນ.
         </p>
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Products">
           <table className="table">
@@ -265,8 +266,7 @@ export default function ProductsPage() {
                 // ທີ່ພະນັກງານເບິ່ງຫຼາຍທີ່ສຸດ ຈຶ່ງເອົາຂຶ້ນມາເປັນຖັນ.
                 const oneBaht = row.lines?.find((l) => Number(l.displayWeightG) === 15);
                 return (
-                <Fragment key={row.id}>
-                  <tr>
+                  <tr key={row.id}>
                     <td>{formatDateTime(row.date)}</td>
                     <td className="num text-right">{formatLak(row.price1Baht)}</td>
                     <td className="num text-right font-medium">
@@ -275,50 +275,146 @@ export default function ProductsPage() {
                     <td>{row.updatedBy}</td>
                     <td className="text-muted">{row.note ?? '—'}</td>
                     <td className="text-right">
-                      <button className="btn-ghost" aria-expanded={viewing === row.id}
-                        aria-label={`ລາຄາທຸກນ້ຳໜັກ ${formatDateTime(row.date)}`}
+                      <button
+                        type="button"
+                        className="btn-ghost inline-flex items-center gap-1.5"
+                        aria-haspopup="dialog"
+                        aria-label={`ເບິ່ງລາຄາ snapshot ${formatDateTime(row.date)}`}
                         disabled={(row.lines?.length ?? 0) === 0}
-                        onClick={() => setViewing(viewing === row.id ? null : row.id)}>
-                        {viewing === row.id ? 'ປິດ' : 'View'}
+                        onClick={() => setViewingRow(row)}
+                      >
+                        <svg
+                          width="15"
+                          height="15"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                          <circle cx="12" cy="12" r="3" />
+                        </svg>
+                        <span>View</span>
                       </button>
                     </td>
                   </tr>
-                  {viewing === row.id && (
-                    <tr>
-                      <td colSpan={6} className="bg-recessed p-4">
-                        <div className="table-wrap" tabIndex={0} role="region"
-                          aria-label={`ລາຄາທຸກນ້ຳໜັກ ${formatDateTime(row.date)}`}>
-                          <table className="table">
-                            <thead>
-                              <tr>
-                                <th>ໝວດ / ລາຍການ</th>
-                                <th className="text-right">ນ້ຳໜັກ (g)</th>
-                                <th className="text-right">ລາຄາຂາຍ (LAK)</th>
-                                <th className="text-right">ລາຄາຊື້ຄືນ (LAK)</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {row.lines.map((line) => (
-                                <tr key={line.tierCode}>
-                                  <td>{line.labelLo}</td>
-                                  <td className="num text-right">{formatWeight(line.displayWeightG)}</td>
-                                  <td className="num text-right">{formatLak(line.sellPrice)}</td>
-                                  <td className="num text-right font-medium">{formatLak(line.buybackPrice)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
                 );
               })}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Modal ເບິ່ງລາຄາ snapshot ທຸກນ້ຳໜັກ */}
+      <Dialog
+        open={viewingRow !== null}
+        onClose={() => setViewingRow(null)}
+        dismissOnScrim
+        size="lg"
+        title="ລາຍລະອຽດລາຄາ snapshot"
+        footer={
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => setViewingRow(null)}
+          >
+            ປິດ
+          </button>
+        }
+      >
+        {viewingRow && (
+          <div className="space-y-4">
+            {/* ສະຫຼຸບຂໍ້ມູນ Snapshot */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="card p-3">
+                <div className="text-xs text-muted">ວັນທີ ແລະ ເວລາ</div>
+                <div className="mt-1 text-sm font-medium">{formatDateTime(viewingRow.date)}</div>
+              </div>
+              <div className="card p-3">
+                <div className="text-xs text-muted">ຜູ້ແກ້ໄຂ</div>
+                <div className="mt-1 text-sm font-medium">{viewingRow.updatedBy || '—'}</div>
+              </div>
+              <div className="card p-3">
+                <div className="text-xs text-muted">ລາຄາຂາຍ 1 ບາດ</div>
+                <div className="mt-1 text-sm font-semibold text-gold num">{formatLak(viewingRow.price1Baht)} LAK</div>
+              </div>
+              <div className="card p-3">
+                <div className="text-xs text-muted">ລາຄາຊື້ຄືນ 1 ບາດ</div>
+                <div className="mt-1 text-sm font-semibold num">
+                  {(() => {
+                    const oneBaht = viewingRow.lines?.find((l) => Number(l.displayWeightG) === 15);
+                    return oneBaht ? `${formatLak(oneBaht.buybackPrice)} LAK` : '—';
+                  })()}
+                </div>
+              </div>
+            </div>
+
+            {viewingRow.note && (
+              <div className="notice status-warning">
+                <span className="font-medium">ໝາຍເຫດ:</span> {viewingRow.note}
+              </div>
+            )}
+
+            {/* ຕາຕະລາງລາຄາແຕ່ລະນ້ຳໜັກ */}
+            <div
+              className="table-wrap"
+              tabIndex={0}
+              role="region"
+              aria-label={`ລາຄາທຸກນ້ຳໜັກ ${formatDateTime(viewingRow.date)}`}
+            >
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>ໝວດ / ລາຍການ</th>
+                    <th>ປະເພດ</th>
+                    <th className="text-right">ນ້ຳໜັກ (g)</th>
+                    <th className="text-right">ລາຄາຂາຍ (LAK)</th>
+                    <th className="text-right">ລາຄາຊື້ຄືນ (LAK)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(viewingRow.lines ?? []).length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-6 text-center text-sm text-muted">
+                        ບໍ່ມີຂໍ້ມູນລາຄາໃນ snapshot ນີ້
+                      </td>
+                    </tr>
+                  ) : (
+                    viewingRow.lines.map((line) => {
+                      const isOneBaht = Number(line.displayWeightG) === 15;
+                      return (
+                        <tr key={line.tierCode} className={isOneBaht ? 'bg-gold-tint font-medium' : undefined}>
+                          <td className="font-medium">
+                            <div className="flex items-center gap-2">
+                              <span>{line.labelLo}</span>
+                              {isOneBaht && (
+                                <span className="badge text-[10px]">
+                                  1 ບາດ
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="badge text-[11px] text-muted">
+                              {line.category === 'BAR' ? 'ຄຳແທ່ງ' : 'ຮູບປະພັນ'}
+                            </span>
+                          </td>
+                          <td className="num text-right text-muted">{formatWeight(line.displayWeightG)}</td>
+                          <td className="num sell-price text-right">{formatLak(line.sellPrice)}</td>
+                          <td className="num text-right font-medium">{formatLak(line.buybackPrice)}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </Dialog>
     </div>
   );
 }

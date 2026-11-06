@@ -21,7 +21,8 @@ import { useChartTheme } from '@/lib/chart-theme';
 import { api, ApiError } from '@/lib/api';
 import { formatRate, formatDate } from '@/lib/format';
 import { StatCard } from '@/components/stat-card';
-import { isPositive } from '@/lib/validate';
+import { isPositive, clean } from '@/lib/validate';
+import { Dialog } from '@/components/dialog';
 
 interface Rates {
   id: string;
@@ -71,6 +72,7 @@ export default function RatesPage() {
     usdBuybackRate: '',
   });
   const [error, setError] = useState<string | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   const { data: current, isError: currentFailedRaw, error: currentError, refetch: refetchCurrent } = useQuery({
     queryKey: ['rates', 'current'],
@@ -91,18 +93,34 @@ export default function RatesPage() {
   // 404 on /rates/current means "no rates set yet", not a failure.
   const currentFailed = currentFailedRaw && !(currentError instanceof ApiError && currentError.status === 404);
 
+  /**
+   * ດຶງຄ່າອັດຕາແລກປ່ຽນ: ຖ້າຜູ້ໃຊ້ປ້ອນຄ່າໃໝ່ຈະໃຊ້ຄ່ານັ້ນ,
+   * ແຕ່ຖ້າປະວ່າງໄວ້ ລະບົບຈະດຶງຄ່າເດີມ (current) ມາໃຊ້ແທນ.
+   */
+  const getEffectiveRate = (key: FieldKey): string => {
+    const val = clean(form[key] ?? '');
+    if (val !== '') return val;
+    if (current && current[key]) return clean(current[key]);
+    return '';
+  };
+
+  const hasAnyInput = FIELDS.some((f) => clean(form[f.key] ?? '') !== '');
+  const allRatesValid = FIELDS.every((f) => isPositive(getEffectiveRate(f.key)));
+  const canSubmit = allRatesValid && (current ? hasAnyInput : true);
+
   const save = useMutation({
     mutationFn: () =>
       api.post('/rates/update', {
-        thbSellRate: clean(form.thbSellRate),
-        usdSellRate: clean(form.usdSellRate),
-        thbBuybackRate: clean(form.thbBuybackRate),
-        usdBuybackRate: clean(form.usdBuybackRate),
+        thbSellRate: getEffectiveRate('thbSellRate'),
+        usdSellRate: getEffectiveRate('usdSellRate'),
+        thbBuybackRate: getEffectiveRate('thbBuybackRate'),
+        usdBuybackRate: getEffectiveRate('usdBuybackRate'),
       }),
     onSuccess: () => {
       toast.success('ດຳເນີນການສຳເລັດ');
       setForm({ thbSellRate: '', usdSellRate: '', thbBuybackRate: '', usdBuybackRate: '' });
       setError(null);
+      setIsModalOpen(false);
       void queryClient.invalidateQueries({ queryKey: ['rates'] });
     },
     onError: (e) => {
@@ -111,6 +129,23 @@ export default function RatesPage() {
       toast.error('ບໍ່ສຳເລັດ', detail);
     },
   });
+
+  const handleOpenModal = () => {
+    setForm({
+      thbSellRate: '',
+      usdSellRate: '',
+      thbBuybackRate: '',
+      usdBuybackRate: '',
+    });
+    setError(null);
+    setIsModalOpen(true);
+  };
+
+  const handleCloseModal = () => {
+    if (save.isPending) return;
+    setIsModalOpen(false);
+    setError(null);
+  };
 
   /** Prefill the form from the live rates so only what changed is retyped. */
   const prefill = () => {
@@ -121,10 +156,8 @@ export default function RatesPage() {
       thbBuybackRate: current.thbBuybackRate,
       usdBuybackRate: current.usdBuybackRate,
     });
+    setError(null);
   };
-
-  // ອັດຕາ 0 ເຮັດໃຫ້ການຄິດໄລ່ທັງລະບົບເປັນ 0 — server ກໍປະຕິເສດ.
-  const complete = FIELDS.every((f) => isPositive(form[f.key] ?? ''));
 
   const chartData = series.map((p) => ({
     month: p.month,
@@ -136,12 +169,33 @@ export default function RatesPage() {
 
   const pager = usePagination(history);
 
-
   return (
     <div className="space-y-6">
       <PageHead
         title="ຈັດການ Price Rate"
         subtitle="ອັດຕາແລກປ່ຽນ Sell ແລະ Buyback ສຳລັບ THB ແລະ USD (TOR §3.3)"
+        actions={
+          <button
+            type="button"
+            className="btn-primary inline-flex items-center gap-1.5"
+            onClick={handleOpenModal}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+            Update Price Rate
+          </button>
+        }
       />
 
       {currentFailed && <QueryErrorNotice error={currentError} onRetry={() => void refetchCurrent()} />}
@@ -153,48 +207,94 @@ export default function RatesPage() {
         <StatCard label="USD Buyback" value={current?.usdBuybackRate ? formatRate(current.usdBuybackRate) : '—'} sub="LAK/USD" />
       </div>
 
-      <div data-fade className="card p-5">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="card-title">ອັບເດດ Price Rate</h2>
-          <button className="btn-secondary" onClick={prefill} disabled={!current}>
-            ໃສ່ຄ່າປັດຈຸບັນ
-          </button>
-        </div>
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {FIELDS.map((field) => (
-            <div key={field.key}>
-              <label className="label" htmlFor={field.key}>
-                {field.labelLo}
-              </label>
-              <NumberInput
-                id={field.key}
-                className="input num"
-                decimals={2}
-                value={form[field.key]}
-                aria-describedby={error ? 'rates-error' : undefined}
-                onValueChange={(v) => setForm((f) => ({ ...f, [field.key]: v }))}
-              />
-            </div>
-          ))}
-        </div>
-
-        {error && (
-          <div id="rates-error" role="alert" className="notice status-danger mt-3">
-            {error}
+      <Dialog
+        open={isModalOpen}
+        onClose={handleCloseModal}
+        size="lg"
+        title="ອັບເດດ Price Rate"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn-secondary mr-auto"
+              onClick={prefill}
+              disabled={!current || save.isPending}
+            >
+              ໃສ່ຄ່າປັດຈຸບັນທັງໝົດ
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={handleCloseModal}
+              disabled={save.isPending}
+            >
+              ຍົກເລີກ
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={!canSubmit || save.isPending}
+              onClick={() => save.mutate()}
+            >
+              {save.isPending ? 'ກຳລັງບັນທຶກ...' : 'Update Price Rate'}
+            </button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-line bg-recessed p-3.5 text-xs leading-relaxed text-muted">
+            <span className="font-semibold text-fg">💡 ຄຳແນະນຳ:</span> ທ່ານສາມາດປ້ອນສະເພາະຫ້ອງທີ່ຕ້ອງການປ່ຽນແປງໄດ້. ສຳລັບຫ້ອງໃດທີ່ປະວ່າງໄວ້ ລະບົບຈະດຶງຄ່າເດີມສົ່ງໄປແທນໂດຍອັດຕະໂນມັດ.
           </div>
-        )}
 
-        <div className="mt-4">
-          <button
-            className="btn-primary"
-            disabled={!complete || save.isPending}
-            onClick={() => save.mutate()}
-          >
-            {save.isPending ? 'ກຳລັງບັນທຶກ...' : 'Update Price Rate'}
-          </button>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {FIELDS.map((field) => {
+              const currentVal = current ? current[field.key] : null;
+              const isCustomEntered = clean(form[field.key]) !== '';
+              const isUsingFallback = !isCustomEntered && Boolean(currentVal);
+
+              return (
+                <div key={field.key} className="space-y-1.5">
+                  <label className="label mb-0" htmlFor={`modal-${field.key}`}>
+                    {field.labelLo}
+                  </label>
+                  <NumberInput
+                    id={`modal-${field.key}`}
+                    className="input num"
+                    decimals={2}
+                    value={form[field.key]}
+                    placeholder={currentVal ? formatRate(currentVal) : '0.00'}
+                    aria-describedby={error ? 'rates-modal-error' : undefined}
+                    onValueChange={(v) => {
+                      setForm((f) => ({ ...f, [field.key]: v }));
+                      if (error) setError(null);
+                    }}
+                  />
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted">
+                      ຄ່າເດີມ: {currentVal ? <span className="font-mono font-medium text-fg">{formatRate(currentVal)}</span> : '—'}
+                    </span>
+                    {isUsingFallback ? (
+                      <span className="text-gold text-[11px] font-medium">
+                        (ຈະດຶງຄ່າເດີມ)
+                      </span>
+                    ) : isCustomEntered ? (
+                      <span className="text-success text-[11px] font-medium">
+                        (ກຳນົດຄ່າໃໝ່)
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {error && (
+            <div id="rates-modal-error" role="alert" className="notice status-danger">
+              {error}
+            </div>
+          )}
         </div>
-      </div>
+      </Dialog>
 
       {seriesFailed && <QueryErrorNotice error={seriesError} onRetry={() => void refetchSeries()} />}
 
@@ -264,9 +364,7 @@ export default function RatesPage() {
   );
 }
 
-function clean(value: string): string {
-  return value.replace(/,/g, '').trim();
-}
+
 
 
 /** Distinct dash + marker per series so lines read without relying on colour. */

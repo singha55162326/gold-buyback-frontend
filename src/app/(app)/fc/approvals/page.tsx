@@ -4,10 +4,20 @@ import { useState } from 'react';
 import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
-import { formatMoney, formatDateTime, formatByCurrency } from '@/lib/format';
+import { formatDateTime, formatByCurrency } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
+import { StatCard } from '@/components/stat-card';
+import { useRealtime } from '@/lib/realtime';
+
+interface Balance {
+  currency: 'LAK' | 'THB' | 'USD';
+  opening: string;
+  inflow: string;
+  outflow: string;
+  balance: string;
+}
 
 interface CashRequest {
   id: string; direction: 'WITHDRAW' | 'HANDOVER'; status: string;
@@ -30,6 +40,11 @@ export default function FcApprovalsPage() {
   const [reason, setReason] = useState('');
   const [rejecting, setRejecting] = useState<string | null>(null);
 
+  const { data: cashBalances = [] } = useQuery({
+    queryKey: ['cash', 'balances'],
+    queryFn: () => api.get<Balance[]>('/cash/balances'),
+  });
+
   const { data: requests = [], isError: requestsError, error: requestsErr, refetch: refetchRequests } = useQuery({
     queryKey: ['cash', 'requests', 'PENDING'],
     queryFn: () => api.get<CashRequest[]>('/cash/requests?status=PENDING'),
@@ -44,6 +59,10 @@ export default function FcApprovalsPage() {
     void queryClient.invalidateQueries({ queryKey: ['shifts'] });
     void queryClient.invalidateQueries({ queryKey: ['notifications'] });
   };
+
+  useRealtime(() => {
+    invalidate();
+  });
 
   const reviewRequest = useMutation({
     mutationFn: (input: { id: string; decision: 'APPROVED' | 'REJECTED'; reason?: string }) =>
@@ -74,6 +93,19 @@ export default function FcApprovalsPage() {
   const amountFor = (lines: Array<{ currency: string; amount: string }>, currency: string) =>
     formatByCurrency(lines.find((l) => l.currency === currency)?.amount ?? '0', currency);
 
+  const getCashBalance = (curr: string) => {
+    const b = cashBalances.find((x) => x.currency === curr);
+    return Number(b?.balance ?? '0');
+  };
+
+  const isInsufficientForRequest = (row: CashRequest) => {
+    if (row.direction !== 'WITHDRAW') return false;
+    return row.lines.some((line) => {
+      const amount = Number(line.amount.replace(/,/g, '') || '0');
+      return amount > getCashBalance(line.currency);
+    });
+  };
+
   const total = requests.length + shifts.length;
 
   return (
@@ -86,6 +118,18 @@ export default function FcApprovalsPage() {
       {error && (
         <div id="fc-approvals-error" role="alert" className="notice status-danger">{error}</div>
       )}
+
+      {/* ຍອດເງິນສົດໃນຮ້ານ (Module Cash) ໃຫ້ FC ເຫັນກ່ອນ Approve */}
+      <div className="stat-grid">
+        {cashBalances.map((b) => (
+          <StatCard
+            key={b.currency}
+            label={`ເງິນສົດໃນຮ້ານ ${b.currency}`}
+            value={formatByCurrency(b.balance, b.currency)}
+            sub={`(+) ${formatByCurrency(b.inflow, b.currency)} · (−) ${formatByCurrency(b.outflow, b.currency)}`}
+          />
+        ))}
+      </div>
 
       {requestsError && <QueryErrorNotice error={requestsErr} onRetry={() => void refetchRequests()} />}
       {shiftsError && <QueryErrorNotice error={shiftsErr} onRetry={() => void refetchShifts()} />}
@@ -115,49 +159,65 @@ export default function FcApprovalsPage() {
                 </tr>
               </thead>
               <tbody>
-                {requests.map((row) => (
-                  <tr key={row.id}>
-                    <td>
-                      {formatDateTime(row.createdAt)}
-                      <div><span className={statusClass(row.status)}>{row.status}</span></div>
-                    </td>
-                    <td>
-                      <span className="badge recessed text-fg">
-                        {row.direction === 'WITHDRAW' ? 'ເບີກເງິນ (+)' : 'ມອບເງິນ (−)'}
-                      </span>
-                    </td>
-                    <td>{row.shift.user.fullName}</td>
-                    <td className="num text-right">{amountFor(row.lines, 'LAK')}</td>
-                    <td className="num text-right">{amountFor(row.lines, 'THB')}</td>
-                    <td className="num text-right">{amountFor(row.lines, 'USD')}</td>
-                    <td className="text-muted">{row.note ?? '—'}</td>
-                    <td className="text-right">
-                      {rejecting === row.id ? (
-                        <div className="flex flex-wrap items-center justify-end gap-2">
-                          <input className="input w-44" aria-label="ເຫດຜົນ" aria-describedby={error ? 'fc-approvals-error' : undefined} placeholder="ເຫດຜົນ"
-                            value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
-                          <button className="btn-danger" aria-label={`ຢືນຢັນ ${row.shift.user.fullName}`}
-                            onClick={() => reviewRequest.mutate({ id: row.id, decision: 'REJECTED', reason })}
-                            disabled={reviewRequest.isPending}>
-                            ຢືນຢັນ
-                          </button>
-                          <button className="btn-secondary" aria-label={`ຍົກເລີກ ${row.shift.user.fullName}`}
-                            onClick={() => setRejecting(null)}>ຍົກເລີກ</button>
+                {requests.map((row) => {
+                  const insufficient = isInsufficientForRequest(row);
+
+                  return (
+                    <tr key={row.id}>
+                      <td>
+                        {formatDateTime(row.createdAt)}
+                        <div><span className={statusClass(row.status)}>{row.status}</span></div>
+                      </td>
+                      <td>
+                        <div className="flex flex-col gap-1 items-start">
+                          <span className="badge recessed text-fg">
+                            {row.direction === 'WITHDRAW' ? 'ເບີກເງິນ (+)' : 'ມອບເງິນ (−)'}
+                          </span>
+                          {insufficient && (
+                            <span className="badge status-danger text-xs">
+                              ເງິນສົດໃນຮ້ານບໍ່ພໍ
+                            </span>
+                          )}
                         </div>
-                      ) : (
-                        <div className="flex justify-end gap-6">
-                          <button className="btn-primary" aria-label={`Approve ${row.shift.user.fullName}`} aria-describedby={error ? 'fc-approvals-error' : undefined}
-                            onClick={() => reviewRequest.mutate({ id: row.id, decision: 'APPROVED' })}
-                            disabled={reviewRequest.isPending}>
-                            Approve
-                          </button>
-                          <button className="btn-danger" aria-label={`Reject ${row.shift.user.fullName}`} aria-describedby={error ? 'fc-approvals-error' : undefined}
-                            onClick={() => setRejecting(row.id)}>Reject</button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td>{row.shift.user.fullName}</td>
+                      <td className="num text-right">{amountFor(row.lines, 'LAK')}</td>
+                      <td className="num text-right">{amountFor(row.lines, 'THB')}</td>
+                      <td className="num text-right">{amountFor(row.lines, 'USD')}</td>
+                      <td className="text-muted">{row.note ?? '—'}</td>
+                      <td className="text-right">
+                        {rejecting === row.id ? (
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <input className="input w-44" aria-label="ເຫດຜົນ" aria-describedby={error ? 'fc-approvals-error' : undefined} placeholder="ເຫດຜົນ"
+                              value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
+                            <button className="btn-danger" aria-label={`ຢືນຢັນ ${row.shift.user.fullName}`}
+                              onClick={() => reviewRequest.mutate({ id: row.id, decision: 'REJECTED', reason })}
+                              disabled={reviewRequest.isPending}>
+                              ຢືນຢັນ
+                            </button>
+                            <button className="btn-secondary" aria-label={`ຍົກເລີກ ${row.shift.user.fullName}`}
+                              onClick={() => setRejecting(null)}>ຍົກເລີກ</button>
+                          </div>
+                        ) : (
+                          <div className="flex justify-end gap-6">
+                            <button
+                              className="btn-primary"
+                              aria-label={`Approve ${row.shift.user.fullName}`}
+                              aria-describedby={error ? 'fc-approvals-error' : undefined}
+                              onClick={() => reviewRequest.mutate({ id: row.id, decision: 'APPROVED' })}
+                              disabled={reviewRequest.isPending || insufficient}
+                              title={insufficient ? 'ເງິນສົດໃນຮ້ານ (Module Cash) ບໍ່ພໍສຳລັບການເບີກ' : undefined}
+                            >
+                              Approve
+                            </button>
+                            <button className="btn-danger" aria-label={`Reject ${row.shift.user.fullName}`} aria-describedby={error ? 'fc-approvals-error' : undefined}
+                              onClick={() => setRejecting(row.id)}>Reject</button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

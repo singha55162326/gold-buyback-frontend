@@ -8,6 +8,7 @@ import { formatLak, formatWeight } from '@/lib/format';
 import { Dialog } from './dialog';
 import { NumberInput } from './number-input';
 import { QueryErrorNotice } from './query-state';
+import { useToast } from './toast';
 
 export type MovementKind = 'IN' | 'OUT' | 'TRANSFER';
 
@@ -40,10 +41,11 @@ interface Sku { id: string; fullSkuName: string; weightG: string }
 interface GoldType { id: string; nameLo: string }
 interface GoldItem { id: string; nameLo: string }
 interface Partner { id: string; nameLo: string; code: string; direction: string }
-interface Wac { pricePerG: string; pricePerBaht: string }
+interface Wac { newWeightG: string; newCost: string; pricePerG: string; pricePerBaht: string }
 
 interface Line {
   goldSkuId: string;
+  skuQuery?: string;
   goldTypeId: string;
   /** ລາຍການຄຳ — Stock (OLD) ເທົ່ານັ້ນ. */
   goldItemId: string;
@@ -55,7 +57,7 @@ interface Line {
 }
 
 const emptyLine = (): Line => ({
-  goldSkuId: '', goldTypeId: '', goldItemId: '', oldCategory: 'JEWELRY', weightG: '', quantity: '1',
+  goldSkuId: '', skuQuery: '', goldTypeId: '', goldItemId: '', oldCategory: 'JEWELRY', weightG: '', quantity: '1',
 });
 
 /** ຈຳນວນທີ່ພິມຍັງບໍ່ຄົບ ("" ຫຼື "0") ນັບເປັນ 1 ຕອນຄຳນວນ ແລະ ຕອນບັນທຶກ. */
@@ -88,6 +90,7 @@ export function StockMovementDialog({
   initialNewBalances?: SkuBalance[];
 }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [partnerId, setPartnerId] = useState('');
   const [goldTypeId, setGoldTypeId] = useState('');
   const [transferDirection, setTransferDirection] = useState<'NEW_TO_OLD' | 'OLD_TO_NEW'>(
@@ -313,8 +316,10 @@ export function StockMovementDialog({
       perG = getOldTypeRate(goldTypeId);
       goldCost = goldG.mul(perG);
     } else {
-      // Stock OUT (NEW) and Transfer (NEW -> OLD): use latest WAC
-      perG = dec(wac?.pricePerG ?? 0);
+      // Stock OUT (NEW) and Transfer (NEW -> OLD): ລາຄາ/g = ຕົ້ນທຶນຄຳ NEW ປັດຈຸບັນ / GOLD (g) NEW ປັດຈຸບັນ
+      const newWeightG = dec(wac?.newWeightG ?? 0);
+      const newCost = dec(wac?.newCost ?? 0);
+      perG = newWeightG.gt(0) ? newCost.div(newWeightG) : dec(0);
       goldCost = goldG.mul(perG);
     }
 
@@ -380,18 +385,16 @@ export function StockMovementDialog({
 
   const submit = useMutation({
     mutationFn: () => {
-      const payloadLines = lines
-        .filter((l) => Number(l.weightG) > 0 && (usesSku ? Boolean(l.goldSkuId) : Boolean(l.goldTypeId)))
-        .map((l) => ({
-          goldSkuId: usesSku ? l.goldSkuId : undefined,
-          goldTypeId: usesSku ? (kind === 'TRANSFER' ? goldTypeId : undefined) : l.goldTypeId,
-          ...(isOldIn ? { oldCategory } : {}),
-          weightG: l.weightG.trim(),
-          quantity: isOldOut ? 1 : qty(l.quantity),
-          ...(scope === 'OLD' && l.goldItemId ? { goldItemId: l.goldItemId } : {}),
-        }));
-
       if (kind === 'TRANSFER') {
+        const payloadLines = lines
+          .filter((l) => Number(l.weightG) > 0 && (usesSku ? Boolean(l.goldSkuId) : Boolean(l.goldTypeId)))
+          .map((l) => ({
+            goldSkuId: usesSku ? l.goldSkuId : undefined,
+            goldTypeId: usesSku ? goldTypeId : l.goldTypeId,
+            weightG: l.weightG.trim(),
+            quantity: isOldOut ? 1 : qty(l.quantity),
+            ...(scope === 'OLD' && l.goldItemId ? { goldItemId: l.goldItemId } : {}),
+          }));
         return api.post('/stock/transfer', {
           direction: transferDirection,
           goldTypeId,
@@ -400,6 +403,16 @@ export function StockMovementDialog({
         });
       }
       if (kind === 'IN') {
+        const payloadLines = lines
+          .filter((l) => Number(l.weightG) > 0 && (usesSku ? Boolean(l.goldSkuId) : true))
+          .map((l) => ({
+            goldSkuId: usesSku ? l.goldSkuId : undefined,
+            goldTypeId: goldTypeId || l.goldTypeId || undefined,
+            ...(isOldIn ? { oldCategory } : {}),
+            weightG: l.weightG.trim(),
+            quantity: isOldOut ? 1 : qty(l.quantity),
+            ...(scope === 'OLD' && l.goldItemId ? { goldItemId: l.goldItemId } : {}),
+          }));
         return api.post('/stock/in', {
           scope,
           // ຄຳເກົ່າ: ບໍ່ສົ່ງແຫຼ່ງທີ່ມາ ແລະ ບໍ່ມີຄ່າແຮງ.
@@ -410,6 +423,15 @@ export function StockMovementDialog({
           note: note || undefined,
         });
       }
+      const payloadLines = lines
+        .filter((l) => Number(l.weightG) > 0 && (usesSku ? Boolean(l.goldSkuId) : Boolean(l.goldTypeId)))
+        .map((l) => ({
+          goldSkuId: usesSku ? l.goldSkuId : undefined,
+          goldTypeId: usesSku ? undefined : l.goldTypeId,
+          weightG: l.weightG.trim(),
+          quantity: isOldOut ? 1 : qty(l.quantity),
+          ...(scope === 'OLD' && l.goldItemId ? { goldItemId: l.goldItemId } : {}),
+        }));
       return api.post('/stock/out', {
         scope,
         partnerId,
@@ -420,6 +442,14 @@ export function StockMovementDialog({
       });
     },
     onSuccess: () => {
+      toast.success(
+        kind === 'IN'
+          ? 'ບັນທຶກຮັບຄຳເຂົ້າສາງສຳເລັດ'
+          : kind === 'OUT'
+            ? 'ບັນທຶກຈ່າຍຄຳອອກສາງສຳເລັດ'
+            : 'ບັນທຶກໂອນຍ້າຍສາງສຳເລັດ',
+        `${titleLo} · ${formatWeight(totals.goldG.toFixed())} g`,
+      );
       void queryClient.invalidateQueries({ queryKey: ['stock'] });
       void queryClient.invalidateQueries({ queryKey: ['ledger'] });
       onClose();
@@ -437,11 +467,14 @@ export function StockMovementDialog({
   const canSubmit =
     totals.goldG.gt(0) &&
     !overweightMessage &&
-    (kind === 'TRANSFER' ? Boolean(goldTypeId) : isOldIn ? true : Boolean(partnerId)) &&
+    (kind === 'TRANSFER' || kind === 'IN' ? Boolean(goldTypeId) : true) &&
+    (kind === 'TRANSFER' || isOldIn ? true : Boolean(partnerId)) &&
     (kind !== 'IN' || Number(totalCost.replace(/,/g, '')) > 0) &&
     (usesSku
       ? lines.some((l) => Boolean(l.goldSkuId) && Number(l.weightG) > 0)
-      : lines.length > 0 && lines.every((l) => Boolean(l.goldTypeId) && Number(l.weightG) > 0));
+      : isOldIn
+        ? lines.length > 0 && lines.every((l) => Number(l.weightG) > 0)
+        : lines.length > 0 && lines.every((l) => Boolean(l.goldTypeId) && Number(l.weightG) > 0));
 
   const errorId = 'movement-error';
 
@@ -467,7 +500,7 @@ export function StockMovementDialog({
           <QueryErrorNotice error={failedQuery.error} onRetry={retryFailed} />
         </div>
       )}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className={`grid gap-4 ${isOldIn ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
         {kind === 'TRANSFER' ? (
           /* ທິດທາງ ຕາມສາງທີ່ກົດເຂົ້າມາ ແລະ ເລືອກບໍ່ໄດ້: ຢູ່ສາງຄຳໃໝ່ ມີແຕ່
              (NEW) → (OLD), ຢູ່ສາງຄຳເກົ່າ ມີແຕ່ (OLD) → (NEW). */
@@ -495,8 +528,8 @@ export function StockMovementDialog({
           </div>
         )}
 
-        {/* ສະແດງ ປະເພດຄຳ ດ້ານເທິງສະເພາະ Transfer ເທົ່ານັ້ນ; ສ່ວນ IN ແລະ OUT ເລືອກຢູ່ລາຍການດ້ານລຸ່ມ */}
-        {kind === 'TRANSFER' && (
+        {/* ສະແດງ ປະເພດຄຳ ດ້ານເທິງສຳລັບ Transfer ແລະ Stock IN (ເພີ່ມ/ເລືອກຄັ້ງດຽວໃນຟອມ) */}
+        {(kind === 'TRANSFER' || kind === 'IN') && (
           <div>
             <label className="label" htmlFor="goldType">ປະເພດຄຳ</label>
             <select
@@ -574,7 +607,9 @@ export function StockMovementDialog({
       {/* Repeatable lines with the TOR's Add button */}
       <div className="mt-5">
         <div className="mb-2 flex items-center justify-between gap-3">
-          <span className="label mb-0">ປະເພດຄຳ</span>
+          <span className="label mb-0 font-semibold text-fg">
+            {usesSku ? 'ລາຍການ SKU' : isOldIn ? 'ລາຍການຄຳ' : 'ປະເພດຄຳ'}
+          </span>
           <button className="btn-secondary"
             onClick={() => setLines((p) => [...p, emptyLine()])}>
             + Add
@@ -599,8 +634,7 @@ export function StockMovementDialog({
 
             return (
               <div key={i} className={`grid gap-2 ${
-                isOldIn ? 'md:grid-cols-[1.4fr_1.4fr_1fr_0.8fr_1fr_auto]'
-                  : isOldOut ? 'md:grid-cols-[1.8fr_1.1fr_1.4fr_auto]'
+                isOldOut ? 'md:grid-cols-[1.8fr_1.1fr_1.4fr_auto]'
                   : isTransferOld ? 'md:grid-cols-[1.8fr_0.9fr_0.7fr_0.9fr_1.3fr_auto]'
                   : 'md:grid-cols-[2fr_1fr_0.8fr_1fr_auto]'
               }`}>
@@ -613,11 +647,12 @@ export function StockMovementDialog({
                     aria-label="full_sku_name"
                     list={`sku-options-${i}`}
                     placeholder="ພິມຄົ້ນຫາ full_sku_name"
-                    defaultValue={skus.find((s) => s.id === line.goldSkuId)?.fullSkuName ?? ''}
+                    value={line.skuQuery ?? (skus.find((s) => s.id === line.goldSkuId)?.fullSkuName ?? '')}
                     onChange={(e) => {
-                      const sku = skus.find((s) => s.fullSkuName === e.target.value);
+                      const val = e.target.value;
+                      const sku = skus.find((s) => s.fullSkuName === val);
                       if (!sku) {
-                        setLine(i, { goldSkuId: '' });
+                        setLine(i, { skuQuery: val, goldSkuId: '' });
                         return;
                       }
                       let nextWeight = String(Number(sku.weightG));
@@ -633,11 +668,27 @@ export function StockMovementDialog({
                         }
                       }
                       setLine(i, {
+                        skuQuery: val,
                         goldSkuId: sku.id,
                         weightG: nextWeight,
                       });
                     }}
                   />
+                ) : isOldIn ? (
+                  /* ຄຳເກົ່າບໍ່ມີ SKU — ເລືອກລາຍການຄຳ (ສາຍແຂນ, ແຫວນ ...). ປະເພດຄຳຖືກເລືອກຄັ້ງດຽວຢູ່ດ້ານເທິງຟອມແລ້ວ */
+                  <select
+                    className="input"
+                    aria-label="ລາຍການຄຳ"
+                    value={line.goldItemId}
+                    onChange={(e) => setLine(i, { goldItemId: e.target.value })}
+                  >
+                    <option value="">ລາຍການຄຳ (ບໍ່ບັງຄັບ)</option>
+                    {goldItems.map((it) => (
+                      <option key={it.id} value={it.id}>
+                        {it.nameLo}
+                      </option>
+                    ))}
+                  </select>
                 ) : (
                   <select
                     className="input"
@@ -668,14 +719,6 @@ export function StockMovementDialog({
                         </option>
                       );
                     })}
-                  </select>
-                )}
-                {isOldIn && (
-                  /* ຄຳເກົ່າບໍ່ມີ SKU ແຕ່ຍັງຕ້ອງຮູ້ວ່າເປັນສາຍແຂນ ຫຼື ແຫວນ. */
-                  <select className="input" aria-label="ລາຍການຄຳ" value={line.goldItemId}
-                    onChange={(e) => setLine(i, { goldItemId: e.target.value })}>
-                    <option value="">ລາຍການຄຳ (ບໍ່ບັງຄັບ)</option>
-                    {goldItems.map((it) => <option key={it.id} value={it.id}>{it.nameLo}</option>)}
                   </select>
                 )}
                 {usesSku && (

@@ -224,14 +224,18 @@ export default function StockNewPage() {
   });
 
   const isEditIn = editingRow?.movement?.type === 'IN' || Boolean(editingRow?.typeLabel.includes('IN'));
+  const isEditNewStockIn =
+    isEditIn ||
+    (editingRow?.movement?.type === 'TRANSFER' && editingRow?.movement?.scope === 'OLD') ||
+    Boolean(editingRow?.typeLabel.includes('OLD→NEW'));
 
   const getEditSkuAvailableWeight = (skuId: string): Decimal => {
     if (!skuId) return dec(0);
     const bal = balances.find((b) => b.goldSkuId === skuId || b.goldSku?.id === skuId);
     const currentAvail = bal ? dec(bal.totalWeightG || 0) : dec(0);
-    // If editing an already-completed OUT/TRANSFER movement, add back its original weight for this SKU
+    // If editing an already-completed OUT/TRANSFER (NEW->OLD) movement, add back its original weight for this SKU
     const mov = editingRow?.movement;
-    if (mov && mov.type !== 'IN' && (mov.status === 'COMPLETED' || mov.status === 'APPROVED')) {
+    if (mov && !isEditNewStockIn && (mov.status === 'COMPLETED' || mov.status === 'APPROVED')) {
       const origWeight = (mov.lines ?? []).reduce((sum, l) => {
         if (l.goldSkuId !== skuId) return sum;
         return sum.plus(dec(l.weightG || 0).mul(l.quantity || 1));
@@ -242,7 +246,7 @@ export default function StockNewPage() {
   };
 
   const getEditMaxWeightForLine = (rowIndex: number, targetSkuId?: string, currentLines = editLines): Decimal | null => {
-    if (!editingRow || isEditIn) return null;
+    if (!editingRow || isEditNewStockIn) return null;
     const skuId = targetSkuId ?? currentLines[rowIndex]?.goldSkuId ?? '';
     if (!skuId) return null;
     const available = getEditSkuAvailableWeight(skuId);
@@ -268,11 +272,17 @@ export default function StockNewPage() {
     const quantity = editLines.reduce((sum, l) => sum + Math.max(1, Math.trunc(Number(l.quantity) || 0) || 1), 0);
 
     const cost = editTotalCost.replace(/,/g, '').trim();
+    const newStockRatePerG =
+      wac && dec(wac.newWeightG || 0).gt(0)
+        ? dec(wac.newCost || 0).div(dec(wac.newWeightG))
+        : dec(0);
     const perG = isEditIn
       ? goldG.gt(0) && /^\d+(\.\d+)?$/.test(cost)
         ? dec(cost).div(goldG)
         : dec(0)
-      : dec(editingRow?.movement?.pricePerG ?? wac?.pricePerG ?? 0);
+      : editingRow?.movement?.pricePerG
+        ? dec(editingRow.movement.pricePerG)
+        : newStockRatePerG;
 
     return {
       goldG,
@@ -547,7 +557,11 @@ export default function StockNewPage() {
               <button
                 className="btn-primary"
                 onClick={() => updateMovement.mutate()}
-                disabled={updateMovement.isPending || editTotals.goldG.lte(0)}
+                disabled={
+                  updateMovement.isPending ||
+                  editTotals.goldG.lte(0) ||
+                  (isEditIn && (!editTotalCost.trim() || Number(editTotalCost.replace(/,/g, '')) <= 0))
+                }
               >
                 {updateMovement.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກການແກ້ໄຂ'}
               </button>
@@ -616,7 +630,7 @@ export default function StockNewPage() {
                             const nextSkuId = e.target.value;
                             const selectedSku = skus.find((s) => s.id === nextSkuId);
                             let nextWeight = selectedSku ? String(Number(selectedSku.weightG)) : line.weightG;
-                            if (!isEditIn && nextSkuId && selectedSku) {
+                            if (!isEditNewStockIn && nextSkuId && selectedSku) {
                               const maxForSku = getEditMaxWeightForLine(idx, nextSkuId);
                               if (maxForSku !== null && dec(nextWeight).gt(maxForSku)) {
                                 nextWeight = maxForSku.gt(0) ? String(Number(maxForSku.toFixed())) : '0';
@@ -637,7 +651,7 @@ export default function StockNewPage() {
                         >
                           <option value="">— ເລືອກ SKU —</option>
                           {skus.map((s) => {
-                            const avail = !isEditIn ? getEditSkuAvailableWeight(s.id) : null;
+                            const avail = !isEditNewStockIn ? getEditSkuAvailableWeight(s.id) : null;
                             return (
                               <option key={s.id} value={s.id}>
                                 {avail !== null
@@ -650,22 +664,31 @@ export default function StockNewPage() {
                       </div>
 
                       <div className="w-28">
-                        <NumberInput
-                          decimals={4}
-                          max={maxEditWeightStr}
-                          className="input text-sm py-1.5 text-right num"
-                          placeholder={
-                            maxEditWeight !== null
-                              ? `ສູງສຸດ ${formatWeight(maxEditWeight.toFixed())} g`
-                              : 'ນ້ຳໜັກ g'
-                          }
-                          value={line.weightG}
-                          onValueChange={(v) =>
-                            setEditLines((p) =>
-                              p.map((l, i) => (i === idx ? { ...l, weightG: v } : l)),
-                            )
-                          }
-                        />
+                        {isEditIn && line.goldSkuId ? (
+                          <div
+                            className="input text-sm py-1.5 text-right num flex items-center justify-end text-muted bg-recessed cursor-not-allowed"
+                            title="ນ້ຳໜັກມາຈາກ SKU ທີ່ເລືອກ"
+                          >
+                            {formatWeight(line.weightG)}
+                          </div>
+                        ) : (
+                          <NumberInput
+                            decimals={4}
+                            max={maxEditWeightStr}
+                            className="input text-sm py-1.5 text-right num"
+                            placeholder={
+                              maxEditWeight !== null
+                                ? `ສູງສຸດ ${formatWeight(maxEditWeight.toFixed())} g`
+                                : 'ນ້ຳໜັກ g'
+                            }
+                            value={line.weightG}
+                            onValueChange={(v) =>
+                              setEditLines((p) =>
+                                p.map((l, i) => (i === idx ? { ...l, weightG: v } : l)),
+                              )
+                            }
+                          />
+                        )}
                       </div>
 
                       <div className="w-20">
@@ -679,7 +702,7 @@ export default function StockNewPage() {
                             const rawQty = e.target.value;
                             const lineW = line.weightG.trim();
                             if (
-                              !isEditIn &&
+                              !isEditNewStockIn &&
                               line.goldSkuId &&
                               /^\d+(\.\d+)?$/.test(lineW) &&
                               dec(lineW).gt(0)
@@ -786,6 +809,14 @@ export default function StockNewPage() {
               <div className="flex justify-between">
                 <span className="text-muted">ຈຳນວນລວມໃໝ່:</span>
                 <span className="font-semibold num">{editTotals.quantity} ຊິ້ນ</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">ລາຄາ/g:</span>
+                <span className="font-semibold num">{formatLak(editTotals.pricePerG.toFixed())} LAK</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">ລາຄາ/ບາດ:</span>
+                <span className="font-semibold num">{formatLak(editTotals.pricePerBaht.toFixed())} LAK</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted">ຕົ້ນທຶນຄຳລວມໃໝ່:</span>
@@ -899,76 +930,92 @@ export default function StockNewPage() {
       {/* ========================================================================= */}
       {/* 5. EDIT SKU BALANCE DIALOG (Ready to Gold)                                */}
       {/* ========================================================================= */}
-      {editingBalance && (
-        <Dialog
-          open
-          onClose={() => setEditingBalance(null)}
-          size="md"
-          title={`ແກ້ໄຂຈຳນວນຕັ້ງຕົ້ນ — ${editingBalance.goldSku.fullSkuName}`}
-          footer={
-            <>
-              <button className="btn-secondary" onClick={() => setEditingBalance(null)} disabled={updateBalance.isPending}>
-                ຍົກເລີກ
-              </button>
-              <button
-                className="btn-primary"
-                onClick={() => updateBalance.mutate()}
-                disabled={updateBalance.isPending}
-              >
-                {updateBalance.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-4">
-            {editBalanceError && (
-              <div className="notice status-danger">
-                <div>{editBalanceError}</div>
-              </div>
-            )}
+      {editingBalance && (() => {
+        const previewBalanceQty =
+          Math.max(0, Math.trunc(Number(editOpeningQty) || 0)) +
+          editingBalance.inQty -
+          editingBalance.outQty;
+        const isNegativeBalance = previewBalanceQty < 0;
+        return (
+          <Dialog
+            open
+            onClose={() => setEditingBalance(null)}
+            size="md"
+            title={`ແກ້ໄຂຈຳນວນຕັ້ງຕົ້ນ — ${editingBalance.goldSku.fullSkuName}`}
+            footer={
+              <>
+                <button className="btn-secondary" onClick={() => setEditingBalance(null)} disabled={updateBalance.isPending}>
+                  ຍົກເລີກ
+                </button>
+                <button
+                  className="btn-primary"
+                  onClick={() => updateBalance.mutate()}
+                  disabled={updateBalance.isPending || isNegativeBalance}
+                >
+                  {updateBalance.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
+                </button>
+              </>
+            }
+          >
+            <div className="space-y-4">
+              {editBalanceError && (
+                <div className="notice status-danger">
+                  <div>{editBalanceError}</div>
+                </div>
+              )}
 
-            <div>
-              <label className="label" htmlFor="edit-opening-qty">ຈຳນວນຕັ້ງຕົ້ນ (Opening Qty)</label>
-              <input
-                id="edit-opening-qty"
-                type="number"
-                min="0"
-                className="input num font-semibold text-base"
-                value={editOpeningQty}
-                onChange={(e) => setEditOpeningQty(e.target.value)}
-              />
-            </div>
+              {isNegativeBalance && (
+                <div className="notice status-danger">
+                  <div>
+                    ຍອດເຫຼືອບໍ່ສາມາດຕິດລົບໄດ້ (ຕ້ອງຕັ້ງຕົ້ນຢ່າງໜ້ອຍ{' '}
+                    {Math.max(0, editingBalance.outQty - editingBalance.inQty)} ຊິ້ນ)
+                  </div>
+                </div>
+              )}
 
-            <div className="p-3 bg-recessed rounded-xl border border-line text-sm space-y-1.5">
-              <div className="flex justify-between">
-                <span className="text-muted">ຍອດເຂົ້າ (IN):</span>
-                <span className="num text-success">+{editingBalance.inQty}</span>
+              <div>
+                <label className="label" htmlFor="edit-opening-qty">ຈຳນວນຕັ້ງຕົ້ນ (Opening Qty)</label>
+                <input
+                  id="edit-opening-qty"
+                  type="number"
+                  min={Math.max(0, editingBalance.outQty - editingBalance.inQty)}
+                  className="input num font-semibold text-base"
+                  value={editOpeningQty}
+                  onChange={(e) => setEditOpeningQty(e.target.value)}
+                />
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted">ຍອດອອກ (OUT):</span>
-                <span className="num text-danger">-{editingBalance.outQty}</span>
-              </div>
-              <div className="flex justify-between font-semibold border-t border-line/60 pt-1.5">
-                <span>ຍອດເຫຼືອໃໝ່ (Balance):</span>
-                <span className="num text-[var(--gold)]">
-                  {Math.max(0, Number(editOpeningQty) || 0) + editingBalance.inQty - editingBalance.outQty}
-                </span>
-              </div>
-              <div className="flex justify-between text-xs text-muted">
-                <span>ນ້ຳໜັກ g ລວມໃໝ່:</span>
-                <span className="num">
-                  {formatWeight(
-                    dec(editingBalance.goldSku.weightG)
-                      .mul(Math.max(0, Number(editOpeningQty) || 0) + editingBalance.inQty - editingBalance.outQty)
-                      .toFixed(),
-                  )}{' '}
-                  g
-                </span>
+
+              <div className="p-3 bg-recessed rounded-xl border border-line text-sm space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-muted">ຍອດເຂົ້າ (IN):</span>
+                  <span className="num text-success">+{editingBalance.inQty}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted">ຍອດອອກ (OUT):</span>
+                  <span className="num text-danger">-{editingBalance.outQty}</span>
+                </div>
+                <div className="flex justify-between font-semibold border-t border-line/60 pt-1.5">
+                  <span>ຍອດເຫຼືອໃໝ່ (Balance):</span>
+                  <span className={`num ${isNegativeBalance ? 'text-danger' : 'text-[var(--gold)]'}`}>
+                    {previewBalanceQty}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs text-muted">
+                  <span>ນ້ຳໜັກ g ລວມໃໝ່:</span>
+                  <span className="num">
+                    {formatWeight(
+                      dec(editingBalance.goldSku.weightG)
+                        .mul(previewBalanceQty)
+                        .toFixed(),
+                    )}{' '}
+                    g
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
-        </Dialog>
-      )}
+          </Dialog>
+        );
+      })()}
     </div>
   );
 }
@@ -1020,71 +1067,74 @@ function LedgerTable({
           </thead>
           <tbody>
             <TableStateRow colSpan={11} isError={isError} error={error} isEmpty={rows.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={onRetry} />
-            {rows.map((row) => (
-              <tr key={row.id}>
-                <td>{formatDate(row.businessDate)}</td>
-                <td>{row.partnerLabel ?? row.movement?.partner?.nameLo ?? '—'}</td>
-                <td className="text-muted">{row.typeLabel}</td>
-                <td className="num text-right text-success">{formatWeight(row.goldInG)}</td>
-                <td className="num text-right text-danger">{formatWeight(row.goldOutG)}</td>
-                <td className="num text-right font-medium">{formatWeight(row.weightG)}</td>
-                <td className="num text-right">{formatLak(row.priceIn)}</td>
-                <td className="num text-right">{formatLak(row.priceOut)}</td>
-                <td className="num text-right font-medium">{formatLak(row.cost)}</td>
-                <td className="text-muted">{row.createdBy}</td>
-                <td className="text-right">
-                  <div className="flex flex-nowrap items-center justify-end gap-1 whitespace-nowrap">
-                    {/* View Button */}
-                    <button
-                      type="button"
-                      className="btn-ghost p-1.5 h-8 w-8 rounded-lg flex items-center justify-center text-muted hover:text-fg hover:bg-line/40 transition-colors"
-                      title="ເບິ່ງລາຍລະອຽດ"
-                      aria-label={`View ${row.typeLabel}`}
-                      onClick={() => onView(row)}
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                        <circle cx="12" cy="12" r="3" />
-                      </svg>
-                    </button>
-
-                    {/* Edit Button */}
-                    {canManage && (
+            {rows.map((row) => {
+              const hasMovement = Boolean(row.movementId || row.movement?.id);
+              return (
+                <tr key={row.id}>
+                  <td>{formatDate(row.businessDate)}</td>
+                  <td>{row.partnerLabel ?? row.movement?.partner?.nameLo ?? '—'}</td>
+                  <td className="text-muted">{row.typeLabel}</td>
+                  <td className="num text-right text-success">{formatWeight(row.goldInG)}</td>
+                  <td className="num text-right text-danger">{formatWeight(row.goldOutG)}</td>
+                  <td className="num text-right font-medium">{formatWeight(row.weightG)}</td>
+                  <td className="num text-right">{formatLak(row.priceIn)}</td>
+                  <td className="num text-right">{formatLak(row.priceOut)}</td>
+                  <td className="num text-right font-medium">{formatLak(row.cost)}</td>
+                  <td className="text-muted">{row.createdBy}</td>
+                  <td className="text-right">
+                    <div className="flex flex-nowrap items-center justify-end gap-1 whitespace-nowrap">
+                      {/* View Button */}
                       <button
                         type="button"
-                        className="btn-ghost p-1.5 h-8 w-8 rounded-lg flex items-center justify-center text-[var(--gold)] hover:bg-[var(--gold)]/10 transition-colors"
-                        title="ແກ້ໄຂລາຍການ"
-                        aria-label={`Edit ${row.typeLabel}`}
-                        onClick={() => onEdit(row)}
+                        className="btn-ghost p-1.5 h-8 w-8 rounded-lg flex items-center justify-center text-muted hover:text-fg hover:bg-line/40 transition-colors"
+                        title="ເບິ່ງລາຍລະອຽດ"
+                        aria-label={`View ${row.typeLabel}`}
+                        onClick={() => onView(row)}
                       >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                          <circle cx="12" cy="12" r="3" />
                         </svg>
                       </button>
-                    )}
 
-                    {/* Delete Button */}
-                    {canManage && (
-                      <button
-                        type="button"
-                        className="btn-ghost p-1.5 h-8 w-8 rounded-lg flex items-center justify-center text-danger hover:bg-danger/10 transition-colors"
-                        title="ລຶບລາຍການ"
-                        aria-label={`Delete ${row.typeLabel}`}
-                        onClick={() => onDelete(row)}
-                      >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          <line x1="10" y1="11" x2="10" y2="17" />
-                          <line x1="14" y1="11" x2="14" y2="17" />
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+                      {/* Edit Button */}
+                      {canManage && hasMovement && (
+                        <button
+                          type="button"
+                          className="btn-ghost p-1.5 h-8 w-8 rounded-lg flex items-center justify-center text-[var(--gold)] hover:bg-[var(--gold)]/10 transition-colors"
+                          title="ແກ້ໄຂລາຍການ"
+                          aria-label={`Edit ${row.typeLabel}`}
+                          onClick={() => onEdit(row)}
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                          </svg>
+                        </button>
+                      )}
+
+                      {/* Delete Button */}
+                      {canManage && hasMovement && (
+                        <button
+                          type="button"
+                          className="btn-ghost p-1.5 h-8 w-8 rounded-lg flex items-center justify-center text-danger hover:bg-danger/10 transition-colors"
+                          title="ລຶບລາຍການ"
+                          aria-label={`Delete ${row.typeLabel}`}
+                          onClick={() => onDelete(row)}
+                        >
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6" />
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            <line x1="10" y1="11" x2="10" y2="17" />
+                            <line x1="14" y1="11" x2="14" y2="17" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

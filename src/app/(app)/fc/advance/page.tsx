@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -33,6 +33,14 @@ interface OrderLineItem {
   goldItem?: { nameLo: string } | null;
 }
 
+interface OrderSummary {
+  currency: string;
+  totalAmount: string;
+  balanceAmount: string;
+  isBalanceZero: boolean;
+  cleanNote: string;
+}
+
 interface Row {
   id: string;
   businessDate: string;
@@ -48,10 +56,14 @@ interface Row {
   note: string | null;
   /** ຜູ້ບັນທຶກລາຍການນີ້. */
   createdBy: string;
+  orderSummary?: OrderSummary;
   order: {
     id: string; code: string; billNo: string; productType: string;
     staffName: string; weightG: string; quantity: number;
     totalAmount: string; balanceAmount: string; status: string;
+    currency?: string;
+    originalTotalAmount?: string | null;
+    exchangeRate?: string | null;
     sentToSmithAt?: string | null;
     receivedFromSmithAt: string | null; customerPickupAt: string | null;
     completedAt?: string | null;
@@ -74,6 +86,29 @@ interface Row {
  * ດຶງຂໍ້ມູນສະກຸນເງິນ ແລະ ຍອດ Order ໃນສະກຸນເງິນທີ່ລູກຄ້າຈ່າຍຕົວຈິງ
  */
 function getOrderCurrencyInfo(row: Row, rates: Rates | null) {
+  // 1. ບຸລິມະສິດທີ 1: ຖ້າ server ຄຳນວນ orderSummary ມາໃຫ້ແລ້ວ ໃຊ້ອັນນັ້ນໂດຍກົງ (Financial Consistency)
+  if (row.orderSummary) {
+    const cur = row.orderSummary.currency;
+    const isZero = row.orderSummary.isBalanceZero;
+    const totalDisplay = cur === 'LAK'
+      ? `${formatLak(row.orderSummary.totalAmount)} LAK`
+      : `${formatByCurrency(row.orderSummary.totalAmount, cur)} ${cur}`;
+    const balanceDisplay = isZero
+      ? (cur !== 'LAK' ? `0.00 ${cur}` : '0 LAK')
+      : (cur !== 'LAK'
+          ? `${formatByCurrency(row.orderSummary.balanceAmount, cur)} ${cur}`
+          : `${formatLak(row.orderSummary.balanceAmount)} LAK`);
+
+    return {
+      orderCurrency: cur,
+      totalDisplay,
+      balanceDisplay,
+      isBalanceZero: isZero,
+      cleanNote: row.orderSummary.cleanNote,
+    };
+  }
+
+  // 2. Fallback ສຳລັບຂໍ້ມູນເກົ່າ (Legacy Compatibility)
   const noteText = row.order.note ?? row.note ?? '';
   const match = noteText.match(/\[TOTAL:\s*([\d,.]+)\s*(THB|USD|LAK)\]/);
 
@@ -140,8 +175,180 @@ function getOrderCurrencyInfo(row: Row, rates: Rates | null) {
   };
 }
 
+/** Query Key Factories for standardized cache keys */
+const advanceKeys = {
+  all: ['finance', 'advance'] as const,
+  summary: () => [...advanceKeys.all, 'summary'] as const,
+  history: () => ['finance', 'advance', 'history'],
+};
+
+const ratesKeys = {
+  current: ['rates', 'current'] as const,
+};
+
 /**
- * TOR §7 — Module Advace.
+ * ປ້າຍກຳກັບວິທີຊຳລະ / ປະເພດທຸລະກຳ ເພື່ອໃຫ້ຜູ້ກວດສອບແຍກແຍະໄດ້ງ່າຍ
+ */
+function getTransactionTypeBadge(row: Row) {
+  const isOut = Number(row.amountOut) > 0;
+  const isIn = Number(row.amountIn) > 0;
+
+  if (isOut) {
+    if (row.method === 'CASH') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 whitespace-nowrap">
+          <span aria-hidden="true">💵</span>
+          <span>ຄືນເງິນສົດ</span>
+        </span>
+      );
+    }
+    if (row.method === 'BANK') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 whitespace-nowrap">
+          <span aria-hidden="true">🏦</span>
+          <span>ຄືນເງິນໂອນ{row.bankAccount?.nameLo ? ` (${row.bankAccount.nameLo})` : ''}</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap">
+        <span aria-hidden="true">📦</span>
+        <span>ຕັດມັດຈຳ (ຮັບຄຳແລ້ວ)</span>
+      </span>
+    );
+  }
+
+  if (isIn) {
+    if (row.method === 'CASH') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
+          <span aria-hidden="true">💵</span>
+          <span>ເງິນສົດ</span>
+        </span>
+      );
+    }
+    if (row.method === 'BANK') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 whitespace-nowrap">
+          <span aria-hidden="true">🏦</span>
+          <span>ເງິນໂອນ{row.bankAccount?.nameLo ? ` (${row.bankAccount.nameLo})` : ''}</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 whitespace-nowrap">
+        <span aria-hidden="true">📥</span>
+        <span>ຮັບມັດຈຳ</span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted/10 text-muted border border-line whitespace-nowrap">
+      <span aria-hidden="true">📝</span>
+      <span>ສ້າງ Order (ບໍ່ມີມັດຈຳ)</span>
+    </span>
+  );
+}
+
+interface GroupedRow extends Row {
+  isGrouped: true;
+  methods: string[];
+  bankNames: string[];
+  refundMethods: string[];
+  hasSettlement: boolean;
+  entries: Row[];
+  primaryRow: Row;
+}
+
+/**
+ * ປ້າຍກຳກັບວິທີຊຳລະແບບລວມຕາມ Order (ສະແດງທຸກຊ່ອງທາງທີ່ Order ນັ້ນໃຊ້)
+ */
+function getGroupedPaymentBadge(group: GroupedRow) {
+  const badges = [];
+
+  if (group.methods.includes('CASH')) {
+    badges.push(
+      <span
+        key="cash"
+        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 whitespace-nowrap"
+      >
+        <span aria-hidden="true">💵</span>
+        <span>ເງິນສົດ</span>
+      </span>
+    );
+  }
+
+  if (group.methods.includes('BANK')) {
+    const bankDesc = group.bankNames.length > 0 ? ` (${group.bankNames.join(', ')})` : '';
+    badges.push(
+      <span
+        key="bank"
+        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 whitespace-nowrap"
+      >
+        <span aria-hidden="true">🏦</span>
+        <span>ເງິນໂອນ{bankDesc}</span>
+      </span>
+    );
+  }
+
+  if (Number(group.amountIn) === 0 && Number(group.amountOut) === 0) {
+    badges.push(
+      <span
+        key="zero"
+        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted/10 text-muted border border-line whitespace-nowrap"
+      >
+        <span aria-hidden="true">📝</span>
+        <span>ບໍ່ມີມັດຈຳ</span>
+      </span>
+    );
+  }
+
+  if (group.refundMethods.includes('CASH')) {
+    badges.push(
+      <span
+        key="ref-cash"
+        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30 whitespace-nowrap"
+      >
+        <span aria-hidden="true">💵</span>
+        <span>ຄືນເງິນສົດ</span>
+      </span>
+    );
+  }
+
+  if (group.refundMethods.includes('BANK')) {
+    badges.push(
+      <span
+        key="ref-bank"
+        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30 whitespace-nowrap"
+      >
+        <span aria-hidden="true">🏦</span>
+        <span>ຄືນເງິນໂອນ</span>
+      </span>
+    );
+  }
+
+  if (group.hasSettlement) {
+    badges.push(
+      <span
+        key="settle"
+        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap"
+      >
+        <span aria-hidden="true">📦</span>
+        <span>ຕັດມັດຈຳ (ຮັບຄຳແລ້ວ)</span>
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {badges}
+    </div>
+  );
+}
+
+/**
+ * TOR §7 — Module Advance.
  *
  * ເງິນມັດຈໍາ Order ຮັບລ່ວໜ້າ has its own ledger in the updated TOR, separate
  * from AP (Cash). COH Cash subtracts the net, so a deposit sitting in the
@@ -149,52 +356,155 @@ function getOrderCurrencyInfo(row: Row, rates: Rates | null) {
  */
 export default function AdvancePage() {
   const [viewingRow, setViewingRow] = useState<Row | null>(null);
+  const [viewingEntries, setViewingEntries] = useState<Row[]>([]);
+  const [groupByOrder, setGroupByOrder] = useState(true);
 
   const ratesQuery = useQuery({
-    queryKey: ['rates', 'current'],
+    queryKey: ratesKeys.current,
     queryFn: () => api.get<Rates>('/rates/current'),
+    staleTime: 5 * 60 * 1000,
   });
   const rates = ratesQuery.data ?? null;
 
   const summaryQuery = useQuery({
-    queryKey: ['finance', 'advance'],
+    queryKey: advanceKeys.summary(),
     queryFn: () => api.get<Summary>('/finance/advance'),
+    staleTime: 30 * 1000,
   });
   const summary = summaryQuery.data;
   // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; ກວ້າງອອກໄດ້ຈາກແຖບ filter.
-  const history = useHistoryRange<Row>(['finance', 'advance', 'history'], '/finance/advance/history');
+  const history = useHistoryRange<Row>(advanceKeys.history(), '/finance/advance/history');
   const rows = history.rows;
 
-  const pager = usePagination(rows);
+  // ຈັດກຸ່ມຕາມ Order: 1 Order = 1 ແຖວ ພ້ອມລວມຍອດຮັບ, ຕັດຊຳລະ ແລະ ສຸດທິ
+  const groupedRows = useMemo<GroupedRow[]>(() => {
+    const map = new Map<string, GroupedRow>();
+
+    for (const row of rows) {
+      const orderId = row.order?.id || row.id;
+      const existing = map.get(orderId);
+      const inAmt = Number(row.amountIn) || 0;
+      const outAmt = Number(row.amountOut) || 0;
+
+      if (!existing) {
+        map.set(orderId, {
+          ...row,
+          isGrouped: true,
+          amountIn: String(inAmt),
+          amountOut: String(outAmt),
+          netAmount: String(inAmt - outAmt),
+          methods: inAmt > 0 && row.method ? [row.method] : [],
+          bankNames: inAmt > 0 && row.bankAccount?.nameLo ? [row.bankAccount.nameLo] : [],
+          refundMethods: outAmt > 0 && row.method ? [row.method] : [],
+          hasSettlement: outAmt > 0 && !row.method,
+          entries: [row],
+          primaryRow: row,
+        });
+      } else {
+        const nextIn = (Number(existing.amountIn) || 0) + inAmt;
+        const nextOut = (Number(existing.amountOut) || 0) + outAmt;
+        existing.amountIn = String(nextIn);
+        existing.amountOut = String(nextOut);
+        existing.netAmount = String(nextIn - nextOut);
+
+        if (inAmt > 0 && row.method && !existing.methods.includes(row.method)) {
+          existing.methods.push(row.method);
+        }
+        if (inAmt > 0 && row.bankAccount?.nameLo && !existing.bankNames.includes(row.bankAccount.nameLo)) {
+          existing.bankNames.push(row.bankAccount.nameLo);
+        }
+        if (outAmt > 0 && row.method && !existing.refundMethods.includes(row.method)) {
+          existing.refundMethods.push(row.method);
+        }
+        if (outAmt > 0 && !row.method) {
+          existing.hasSettlement = true;
+        }
+        existing.entries.push(row);
+        if (!existing.orderSummary && row.orderSummary) {
+          existing.orderSummary = row.orderSummary;
+          existing.primaryRow = row;
+        }
+      }
+    }
+
+    return Array.from(map.values());
+  }, [rows]);
+
+  const displayRows = groupByOrder ? groupedRows : rows;
+  const pager = usePagination(displayRows);
 
   const viewingOrderInfo = viewingRow ? getOrderCurrencyInfo(viewingRow, rates) : null;
+  const modalTotalIn = viewingEntries.length > 0
+    ? viewingEntries.reduce((s, e) => s + (Number(e.amountIn) || 0), 0)
+    : (viewingRow ? Number(viewingRow.amountIn) || 0 : 0);
+  const modalTotalOut = viewingEntries.length > 0
+    ? viewingEntries.reduce((s, e) => s + (Number(e.amountOut) || 0), 0)
+    : (viewingRow ? Number(viewingRow.amountOut) || 0 : 0);
+  const modalNet = modalTotalIn - modalTotalOut;
 
   return (
     <div className="space-y-6">
       <PageHead
-        title="Module Advace"
+        title="Module Advance"
         subtitle="ເງິນມັດຈໍາ Order ຮັບລ່ວງໜ້າ — ຫັກອອກຈາກ COH Cash ຈົນກວ່າລູກຄ້າຮັບເຄື່ອງ (TOR §7)"
       />
 
       {summaryQuery.isError && (
         <QueryErrorNotice error={summaryQuery.error} onRetry={() => void summaryQuery.refetch()} />
       )}
+      {ratesQuery.isError && (
+        <QueryErrorNotice error={ratesQuery.error} onRetry={() => void ratesQuery.refetch()} />
+      )}
 
       <div className="stat-grid">
-        {(summary?.totals ?? []).map((t) => (
-          <StatCard key={t.currency} label={`ລວມຍອດເງິນ Advace (${t.currency})`} value={formatByCurrency(t.net, t.currency)} />
-        ))}
-        <StatCard
-          label="ລວມຈຳນວນບິນ"
-          value={String(summary?.billCount ?? '—')}
-          sub="Order ທີ່ຍັງບໍ່ Completed"
-        />
+        {summaryQuery.isLoading ? (
+          <>
+            <div className="card p-4 animate-pulse"><div className="h-4 bg-line rounded w-24 mb-2" /><div className="h-7 bg-line rounded w-32" /></div>
+            <div className="card p-4 animate-pulse"><div className="h-4 bg-line rounded w-24 mb-2" /><div className="h-7 bg-line rounded w-32" /></div>
+            <div className="card p-4 animate-pulse"><div className="h-4 bg-line rounded w-24 mb-2" /><div className="h-7 bg-line rounded w-32" /></div>
+            <div className="card p-4 animate-pulse"><div className="h-4 bg-line rounded w-24 mb-2" /><div className="h-7 bg-line rounded w-16" /></div>
+          </>
+        ) : (
+          <>
+            {(summary?.totals ?? []).map((t) => (
+              <StatCard key={t.currency} label={`ລວມຍອດເງິນ Advance (${t.currency})`} value={formatByCurrency(t.net, t.currency)} />
+            ))}
+            <StatCard
+              label="ລວມຈຳນວນບິນ"
+              value={String(summary?.billCount ?? '—')}
+              sub="Order ທີ່ຍັງບໍ່ Completed"
+            />
+          </>
+        )}
       </div>
 
       <div data-fade className="card">
-        <div className="card-header"><h2 className="card-title">ປະຫວັດ Module Advace</h2></div>
+        <div className="card-header flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h2 className="card-title">ປະຫວັດ Module Advance</h2>
+            <span className="text-xs text-muted">
+              ({displayRows.length} {groupByOrder ? 'Order' : 'ລາຍການ'})
+            </span>
+          </div>
+          <div className="flex items-center gap-1 bg-recessed p-0.5 rounded-lg border border-line text-xs">
+            <button
+              type="button"
+              className={`px-2.5 py-1 rounded-md transition-colors ${groupByOrder ? 'bg-surface font-semibold text-fg shadow-sm' : 'text-muted hover:text-fg'}`}
+              onClick={() => setGroupByOrder(true)}
+            >
+              ສະຫຼຸບຕາມ Order
+            </button>
+            <button
+              type="button"
+              className={`px-2.5 py-1 rounded-md transition-colors ${!groupByOrder ? 'bg-surface font-semibold text-fg shadow-sm' : 'text-muted hover:text-fg'}`}
+              onClick={() => setGroupByOrder(false)}
+            >
+              ແຍກລາຍການເຄື່ອນໄຫວ
+            </button>
+          </div>
+        </div>
         <DateRangeFilter history={history} />
-        <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Module Advace">
+        <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Module Advance">
           <table className="table">
             <thead>
               <tr>
@@ -203,6 +513,7 @@ export default function AdvancePage() {
                 <th>ເບີໂທ</th>
                 <th>ເລກບິນ</th>
                 <th>ປະເພດສິນຄ້າ</th>
+                <th>ວິທີຊຳລະ / ທຸລະກຳ</th>
                 <th className="text-right">ຍອດເງິນທີ່ໄດ້ຮັບ</th>
                 <th className="text-right">ຍອດເງິນຕັດຊຳລະ</th>
                 <th className="text-right">ຍອດເງິນສຸດທິ</th>
@@ -213,56 +524,71 @@ export default function AdvancePage() {
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={11}
+                colSpan={12}
                 isLoading={history.isLoading}
                 isError={history.isError}
                 error={history.error}
-                isEmpty={rows.length === 0}
+                isEmpty={displayRows.length === 0}
                 emptyText="ຍັງບໍ່ມີລາຍການ"
                 onRetry={() => void history.refetch()}
               />
-              {pager.pageItems.map((row) => (
-                <tr key={row.id}>
-                  <td className="font-mono text-xs">{row.order.code}</td>
-                  <td>{formatDate(row.businessDate)}</td>
-                  <td className="num">{row.order.customer.phone}</td>
-                  <td className="font-mono text-xs">{row.order.billNo}</td>
-                  <td>
-                    {row.order.productType}
-                    {(row.order.lines?.length ?? 0) > 1 && (
-                      <span className="ml-1.5 text-xs text-muted">({row.order.lines?.length} ລາຍການ)</span>
-                    )}
-                  </td>
-                  <td className="num text-right text-success whitespace-nowrap font-medium">
-                    {formatByCurrency(row.amountIn, row.currency)} {row.currency}
-                  </td>
-                  <td className="num text-right text-danger whitespace-nowrap font-medium">
-                    {formatByCurrency(row.amountOut, row.currency)} {row.currency}
-                  </td>
-                  <td className="num text-right font-medium">{formatLak(row.netAmount)}</td>
-                  <td>
-                    <span className={statusClass(row.order.status)}>{row.order.status}</span>
-                  </td>
-                  <td className="text-muted">{row.createdBy}</td>
-                  <td className="text-right">
-                    <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
-                      {Number(row.order.balanceAmount) > 0 && (
-                        <Link href="/fc/orders" className="btn-ghost text-success" aria-label={`Payment ${row.order.code}`}>
-                          Payment
-                        </Link>
+              {pager.pageItems.map((row) => {
+                const isGroupedRow = 'isGrouped' in row && row.isGrouped;
+                const grouped = isGroupedRow ? (row as GroupedRow) : null;
+
+                return (
+                  <tr key={row.id}>
+                    <td className="font-mono text-xs">{row.order.code}</td>
+                    <td>{formatDate(row.businessDate)}</td>
+                    <td className="num">{row.order.customer.phone}</td>
+                    <td className="font-mono text-xs">{row.order.billNo}</td>
+                    <td>
+                      {row.order.productType}
+                      {(row.order.lines?.length ?? 0) > 1 && (
+                        <span className="ml-1.5 text-xs text-muted">({row.order.lines?.length} ລາຍການ)</span>
                       )}
-                      <button
-                        type="button"
-                        className="btn-ghost cursor-pointer"
-                        aria-label={`View ${row.order.code}`}
-                        onClick={() => setViewingRow(row)}
-                      >
-                        View
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>{grouped ? getGroupedPaymentBadge(grouped) : getTransactionTypeBadge(row)}</td>
+                    <td className="num text-right text-success whitespace-nowrap font-medium">
+                      {formatByCurrency(row.amountIn, row.currency)} {row.currency}
+                    </td>
+                    <td className="num text-right text-danger whitespace-nowrap font-medium">
+                      {formatByCurrency(row.amountOut, row.currency)} {row.currency}
+                    </td>
+                    <td className={`num text-right font-medium whitespace-nowrap ${Number(row.netAmount) < 0 ? 'text-danger' : Number(row.netAmount) > 0 ? 'text-success' : 'text-muted'}`}>
+                      {formatByCurrency(row.netAmount, row.currency)} {row.currency}
+                    </td>
+                    <td>
+                      <span className={statusClass(row.order.status)}>{row.order.status}</span>
+                    </td>
+                    <td className="text-muted">{row.createdBy}</td>
+                    <td className="text-right">
+                      <div className="flex flex-nowrap justify-end gap-2 whitespace-nowrap">
+                        {Number(row.order.balanceAmount) > 0 && (
+                          <Link
+                            href={`/fc/orders?search=${encodeURIComponent(row.order.billNo || row.order.code)}`}
+                            className="btn-ghost text-success"
+                            aria-label={`Payment ${row.order.code}`}
+                          >
+                            Payment
+                          </Link>
+                        )}
+                        <button
+                          type="button"
+                          className="btn-ghost cursor-pointer"
+                          aria-label={`View ${row.order.code}`}
+                          onClick={() => {
+                            setViewingRow(row);
+                            setViewingEntries('entries' in row ? (row as GroupedRow).entries : [row]);
+                          }}
+                        >
+                          View
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -285,7 +611,7 @@ export default function AdvancePage() {
             <div className="flex items-center gap-2">
               {viewingRow && Number(viewingRow.order.balanceAmount) > 0 && (
                 <Link
-                  href="/fc/orders"
+                  href={`/fc/orders?search=${encodeURIComponent(viewingRow.order.billNo || viewingRow.order.code)}`}
                   className="btn-primary"
                   aria-label={`ໄປໜ້າຊຳລະເງິນ Order ${viewingRow.order.code}`}
                 >
@@ -331,10 +657,13 @@ export default function AdvancePage() {
                   </span>
                 </div>
                 <div className="num text-lg font-bold text-success">
-                  {formatByCurrency(viewingRow.amountIn, viewingRow.currency)} {viewingRow.currency}
+                  {formatByCurrency(modalTotalIn, viewingRow.currency)} {viewingRow.currency}
                 </div>
                 <div className="text-[11px] text-muted mt-1 truncate">
-                  {viewingRow.method ?? '—'}{viewingRow.bankAccount?.nameLo ? ` · ${viewingRow.bankAccount.nameLo}` : ''}
+                  {viewingEntries.length > 1
+                    ? `${viewingEntries.filter((e) => Number(e.amountIn) > 0).length} ລາຍການຮັບ`
+                    : (viewingRow.method ?? '—')}
+                  {viewingRow.bankAccount?.nameLo ? ` · ${viewingRow.bankAccount.nameLo}` : ''}
                 </div>
               </div>
 
@@ -346,11 +675,11 @@ export default function AdvancePage() {
                     OUT
                   </span>
                 </div>
-                <div className={`num text-lg font-bold ${Number(viewingRow.amountOut) > 0 ? 'text-danger' : 'text-muted'}`}>
-                  {formatByCurrency(viewingRow.amountOut, viewingRow.currency)} {viewingRow.currency}
+                <div className={`num text-lg font-bold ${modalTotalOut > 0 ? 'text-danger' : 'text-muted'}`}>
+                  {formatByCurrency(modalTotalOut, viewingRow.currency)} {viewingRow.currency}
                 </div>
                 <div className="text-[11px] text-muted mt-1">
-                  {Number(viewingRow.amountOut) > 0 ? 'ຕັດຊຳລະອອກແລ້ວ' : 'ບໍ່ມີການຕັດຊຳລະ'}
+                  {modalTotalOut > 0 ? 'ຕັດຊຳລະອອກແລ້ວ' : 'ບໍ່ມີການຕັດຊຳລະ'}
                 </div>
               </div>
 
@@ -363,7 +692,7 @@ export default function AdvancePage() {
                   </span>
                 </div>
                 <div className="num text-lg font-bold text-fg-strong">
-                  {formatByCurrency(viewingRow.balance, viewingRow.currency)} {viewingRow.currency}
+                  {formatByCurrency(modalNet, viewingRow.currency)} {viewingRow.currency}
                 </div>
                 <div className="text-[11px] text-muted mt-1">
                   ຍອດເຫຼືອ Advance ({viewingRow.currency})
@@ -462,6 +791,60 @@ export default function AdvancePage() {
                 <DetailItem labelLo="ວັນທີລູກຄ້າມາຮັບເຄື່ອງ" value={formatDate(viewingRow.order.customerPickupAt || viewingRow.order.completedAt)} />
               </div>
             </div>
+
+            {/* ລາຍລະອຽດການເຄື່ອນໄຫວ Advance (Ledger Movements History) */}
+            {viewingEntries.length > 0 && (
+              <div className="rounded-xl border border-line bg-recessed/40 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-fg uppercase tracking-wider">
+                    <svg className="w-4 h-4 text-primary shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    ປະຫວັດການເຄື່ອນໄຫວ Advance ໃນບິນນີ້
+                  </div>
+                  <span className="text-xs text-muted font-medium">
+                    {viewingEntries.length} ລາຍການ
+                  </span>
+                </div>
+
+                <div className="table-wrap rounded-lg border border-line bg-surface">
+                  <table className="table text-xs">
+                    <thead>
+                      <tr>
+                        <th>ປະເພດ / ວິທີຊຳລະ</th>
+                        <th className="text-right">ຍອດເງິນ</th>
+                        <th>ວັນທີທຸລະກຳ</th>
+                        <th>ຜູ້ບັນທຶກ</th>
+                        <th>ໝາຍເຫດ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewingEntries.map((entry) => (
+                        <tr key={entry.id}>
+                          <td>{getTransactionTypeBadge(entry)}</td>
+                          <td className="num text-right font-medium">
+                            {Number(entry.amountOut) > 0 ? (
+                              <span className="text-danger font-semibold">
+                                −{formatByCurrency(entry.amountOut, entry.currency)} {entry.currency}
+                              </span>
+                            ) : Number(entry.amountIn) > 0 ? (
+                              <span className="text-success font-semibold">
+                                +{formatByCurrency(entry.amountIn, entry.currency)} {entry.currency}
+                              </span>
+                            ) : (
+                              <span className="text-muted">0 {entry.currency}</span>
+                            )}
+                          </td>
+                          <td>{formatDate(entry.businessDate)}</td>
+                          <td className="text-muted">{entry.createdBy}</td>
+                          <td className="text-muted truncate max-w-[200px]">{entry.note ?? '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* ໝາຍເຫດ (ຖ້າມີ) */}
             {viewingOrderInfo.cleanNote && (
