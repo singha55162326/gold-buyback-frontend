@@ -13,16 +13,16 @@ import { StatCard } from '@/components/stat-card';
 import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 import { Dialog } from '@/components/dialog';
 
-interface Rates {
-  thbBuybackRate: string;
-  thbSellRate: string;
-  usdBuybackRate: string;
-  usdSellRate: string;
-}
-
 interface Summary {
   totals: Array<{ currency: 'LAK' | 'THB' | 'USD'; net: string }>;
   billCount: number;
+}
+
+interface CurrencyTotal {
+  currency: string;
+  amountIn: number;
+  amountOut: number;
+  netAmount: number;
 }
 
 interface OrderLineItem {
@@ -85,7 +85,7 @@ interface Row {
 /**
  * ດຶງຂໍ້ມູນສະກຸນເງິນ ແລະ ຍອດ Order ໃນສະກຸນເງິນທີ່ລູກຄ້າຈ່າຍຕົວຈິງ
  */
-function getOrderCurrencyInfo(row: Row, rates: Rates | null) {
+function getOrderCurrencyInfo(row: Row) {
   // 1. ບຸລິມະສິດທີ 1: ຖ້າ server ຄຳນວນ orderSummary ມາໃຫ້ແລ້ວ ໃຊ້ອັນນັ້ນໂດຍກົງ (Financial Consistency)
   if (row.orderSummary) {
     const cur = row.orderSummary.currency;
@@ -108,59 +108,30 @@ function getOrderCurrencyInfo(row: Row, rates: Rates | null) {
     };
   }
 
-  // 2. Fallback ສຳລັບຂໍ້ມູນເກົ່າ (Legacy Compatibility)
+  // 2. Fallback ສຳລັບຂໍ້ມູນທີ່ບໍ່ມີ orderSummary (ເຊັ່ນ mock ຫຼື legacy)
   const noteText = row.order.note ?? row.note ?? '';
   const match = noteText.match(/\[TOTAL:\s*([\d,.]+)\s*(THB|USD|LAK)\]/);
+  const orderCurrency = row.order.currency && row.order.currency !== 'LAK'
+    ? row.order.currency
+    : match
+      ? match[2]
+      : 'LAK';
 
-  // ສະກຸນເງິນທີ່ລູກຄ້າໃຊ້ຊຳລະ
-  const orderCurrency = match
-    ? match[2]
-    : (row.currency && row.currency !== 'LAK' ? row.currency : 'LAK');
+  const rawTotal = orderCurrency !== 'LAK' && row.order.originalTotalAmount
+    ? row.order.originalTotalAmount
+    : match && orderCurrency !== 'LAK'
+      ? match[1].replace(/,/g, '')
+      : row.order.totalAmount;
 
-  const rateForCur = (cur: string): number => {
-    if (cur === 'LAK') return 1;
-    if (!rates) return 0;
-    const key = `${cur.toLowerCase()}SellRate` as keyof Rates;
-    return Number(rates[key] ?? 0);
-  };
+  const totalDisplay = orderCurrency === 'LAK'
+    ? `${formatLak(rawTotal)} LAK`
+    : `${formatByCurrency(rawTotal, orderCurrency)} ${orderCurrency}`;
 
-  const rate = rateForCur(orderCurrency);
-
-  // 1. ຍອດລວມ Order
-  let totalDisplay = `${formatLak(row.order.totalAmount)} LAK`;
-  let totalInCur = 0;
-
-  if (orderCurrency !== 'LAK') {
-    if (match) {
-      totalDisplay = `${match[1]} ${match[2]}`;
-      totalInCur = Number(match[1].replace(/,/g, '')) || 0;
-    } else if (rate > 0) {
-      totalInCur = Math.round((Number(row.order.totalAmount) / rate) * 100) / 100;
-      totalDisplay = `${formatByCurrency(totalInCur, orderCurrency)} ${orderCurrency}`;
-    }
-  }
-
-  // 2. ຍອດຄົງເຫຼືອ Order
   const balanceLak = Number(row.order.balanceAmount) || 0;
-  let balanceDisplay = `${formatLak(row.order.balanceAmount)} LAK`;
   const isBalanceZero = balanceLak <= 0;
-
-  if (isBalanceZero) {
-    balanceDisplay = orderCurrency !== 'LAK' ? `0.00 ${orderCurrency}` : '0 LAK';
-  } else if (orderCurrency !== 'LAK') {
-    if (totalInCur > 0) {
-      const rcvdInCur = (row.order.receipts ?? [])
-        .filter((r) => !r.isRefund && r.currency === orderCurrency)
-        .reduce((s, r) => s + (Number(r.amount) || 0), 0);
-
-      const effectiveRcvd = rcvdInCur > 0 ? rcvdInCur : (row.currency === orderCurrency ? Number(row.amountIn) || 0 : 0);
-      const bal = Math.max(0, Math.round((totalInCur - effectiveRcvd) * 100) / 100);
-      balanceDisplay = `${formatByCurrency(bal, orderCurrency)} ${orderCurrency}`;
-    } else if (rate > 0) {
-      const balInCur = Math.round((balanceLak / rate) * 100) / 100;
-      balanceDisplay = `${formatByCurrency(balInCur, orderCurrency)} ${orderCurrency}`;
-    }
-  }
+  const balanceDisplay = isBalanceZero
+    ? (orderCurrency !== 'LAK' ? `0.00 ${orderCurrency}` : '0 LAK')
+    : `${formatLak(row.order.balanceAmount)} LAK`;
 
   const cleanNote = noteText
     .replace(/\[TOTAL:\s*[\d,.]+\s*(THB|USD|LAK)\]\s*/g, '')
@@ -175,15 +146,46 @@ function getOrderCurrencyInfo(row: Row, rates: Rates | null) {
   };
 }
 
+/**
+ * ລວມຍອດຮັບເຂົ້າ / ຕັດຊຳລະ / ສຸດທິ ແຍກຕາມສະກຸນເງິນ ເພື່ອປ້ອງກັນການບວກຂ້າມສະກຸນເງິນ
+ */
+function summarizeByCurrency(entries: Row[], fallbackCurrency = 'LAK'): CurrencyTotal[] {
+  const nonZero = entries.filter(
+    (e) => (Number(e.amountIn) || 0) > 0 || (Number(e.amountOut) || 0) > 0,
+  );
+  const source = nonZero.length > 0 ? nonZero : entries;
+  const map = new Map<string, CurrencyTotal>();
+
+  for (const e of source) {
+    const cur = e.currency || fallbackCurrency;
+    const inAmt = Number(e.amountIn) || 0;
+    const outAmt = Number(e.amountOut) || 0;
+    const prev = map.get(cur);
+    if (!prev) {
+      map.set(cur, {
+        currency: cur,
+        amountIn: inAmt,
+        amountOut: outAmt,
+        netAmount: Math.round((inAmt - outAmt) * 100) / 100,
+      });
+    } else {
+      prev.amountIn = Math.round((prev.amountIn + inAmt) * 100) / 100;
+      prev.amountOut = Math.round((prev.amountOut + outAmt) * 100) / 100;
+      prev.netAmount = Math.round((prev.amountIn - prev.amountOut) * 100) / 100;
+    }
+  }
+
+  if (map.size === 0) {
+    return [{ currency: fallbackCurrency, amountIn: 0, amountOut: 0, netAmount: 0 }];
+  }
+  return Array.from(map.values());
+}
+
 /** Query Key Factories for standardized cache keys */
 const advanceKeys = {
   all: ['finance', 'advance'] as const,
   summary: () => [...advanceKeys.all, 'summary'] as const,
   history: () => ['finance', 'advance', 'history'],
-};
-
-const ratesKeys = {
-  current: ['rates', 'current'] as const,
 };
 
 /**
@@ -259,6 +261,7 @@ interface GroupedRow extends Row {
   hasSettlement: boolean;
   entries: Row[];
   primaryRow: Row;
+  currencyTotals: CurrencyTotal[];
 }
 
 /**
@@ -292,7 +295,8 @@ function getGroupedPaymentBadge(group: GroupedRow) {
     );
   }
 
-  if (Number(group.amountIn) === 0 && Number(group.amountOut) === 0) {
+  const hasAnyMovement = group.currencyTotals.some((t) => t.amountIn > 0 || t.amountOut > 0);
+  if (!hasAnyMovement) {
     badges.push(
       <span
         key="zero"
@@ -359,13 +363,6 @@ export default function AdvancePage() {
   const [viewingEntries, setViewingEntries] = useState<Row[]>([]);
   const [groupByOrder, setGroupByOrder] = useState(true);
 
-  const ratesQuery = useQuery({
-    queryKey: ratesKeys.current,
-    queryFn: () => api.get<Rates>('/rates/current'),
-    staleTime: 5 * 60 * 1000,
-  });
-  const rates = ratesQuery.data ?? null;
-
   const summaryQuery = useQuery({
     queryKey: advanceKeys.summary(),
     queryFn: () => api.get<Summary>('/finance/advance'),
@@ -376,7 +373,7 @@ export default function AdvancePage() {
   const history = useHistoryRange<Row>(advanceKeys.history(), '/finance/advance/history');
   const rows = history.rows;
 
-  // ຈັດກຸ່ມຕາມ Order: 1 Order = 1 ແຖວ ພ້ອມລວມຍອດຮັບ, ຕັດຊຳລະ ແລະ ສຸດທິ
+  // ຈັດກຸ່ມຕາມ Order: 1 Order = 1 ແຖວ ພ້ອມລວມຍອດຮັບ, ຕັດຊຳລະ ແລະ ສຸດທິ ແຍກຕາມສະກຸນເງິນ
   const groupedRows = useMemo<GroupedRow[]>(() => {
     const map = new Map<string, GroupedRow>();
 
@@ -399,14 +396,9 @@ export default function AdvancePage() {
           hasSettlement: outAmt > 0 && !row.method,
           entries: [row],
           primaryRow: row,
+          currencyTotals: [],
         });
       } else {
-        const nextIn = (Number(existing.amountIn) || 0) + inAmt;
-        const nextOut = (Number(existing.amountOut) || 0) + outAmt;
-        existing.amountIn = String(nextIn);
-        existing.amountOut = String(nextOut);
-        existing.netAmount = String(nextIn - nextOut);
-
         if (inAmt > 0 && row.method && !existing.methods.includes(row.method)) {
           existing.methods.push(row.method);
         }
@@ -427,20 +419,36 @@ export default function AdvancePage() {
       }
     }
 
+    for (const group of map.values()) {
+      const totals = summarizeByCurrency(group.entries, group.currency);
+      group.currencyTotals = totals;
+      const first = totals[0];
+      if (first) {
+        group.currency = first.currency;
+        group.amountIn = String(first.amountIn);
+        group.amountOut = String(first.amountOut);
+        group.netAmount = String(first.netAmount);
+      }
+    }
+
     return Array.from(map.values());
   }, [rows]);
 
   const displayRows = groupByOrder ? groupedRows : rows;
   const pager = usePagination(displayRows);
 
-  const viewingOrderInfo = viewingRow ? getOrderCurrencyInfo(viewingRow, rates) : null;
-  const modalTotalIn = viewingEntries.length > 0
-    ? viewingEntries.reduce((s, e) => s + (Number(e.amountIn) || 0), 0)
-    : (viewingRow ? Number(viewingRow.amountIn) || 0 : 0);
-  const modalTotalOut = viewingEntries.length > 0
-    ? viewingEntries.reduce((s, e) => s + (Number(e.amountOut) || 0), 0)
-    : (viewingRow ? Number(viewingRow.amountOut) || 0 : 0);
-  const modalNet = modalTotalIn - modalTotalOut;
+  const viewingOrderInfo = viewingRow ? getOrderCurrencyInfo(viewingRow) : null;
+  const modalCurrencyTotals = useMemo(
+    () =>
+      viewingRow
+        ? summarizeByCurrency(
+            viewingEntries.length > 0 ? viewingEntries : [viewingRow],
+            viewingRow.currency,
+          )
+        : [],
+    [viewingEntries, viewingRow],
+  );
+  const modalHasOut = modalCurrencyTotals.some((t) => t.amountOut > 0);
 
   return (
     <div className="space-y-6">
@@ -451,9 +459,6 @@ export default function AdvancePage() {
 
       {summaryQuery.isError && (
         <QueryErrorNotice error={summaryQuery.error} onRetry={() => void summaryQuery.refetch()} />
-      )}
-      {ratesQuery.isError && (
-        <QueryErrorNotice error={ratesQuery.error} onRetry={() => void ratesQuery.refetch()} />
       )}
 
       <div className="stat-grid">
@@ -550,13 +555,59 @@ export default function AdvancePage() {
                     </td>
                     <td>{grouped ? getGroupedPaymentBadge(grouped) : getTransactionTypeBadge(row)}</td>
                     <td className="num text-right text-success whitespace-nowrap font-medium">
-                      {formatByCurrency(row.amountIn, row.currency)} {row.currency}
+                      {grouped && grouped.currencyTotals.length > 1 ? (
+                        <div className="space-y-0.5">
+                          {grouped.currencyTotals.map((t) => (
+                            <div key={t.currency}>
+                              {formatByCurrency(t.amountIn, t.currency)} {t.currency}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <>
+                          {formatByCurrency(row.amountIn, row.currency)} {row.currency}
+                        </>
+                      )}
                     </td>
                     <td className="num text-right text-danger whitespace-nowrap font-medium">
-                      {formatByCurrency(row.amountOut, row.currency)} {row.currency}
+                      {grouped && grouped.currencyTotals.length > 1 ? (
+                        <div className="space-y-0.5">
+                          {grouped.currencyTotals.map((t) => (
+                            <div key={t.currency}>
+                              {formatByCurrency(t.amountOut, t.currency)} {t.currency}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <>
+                          {formatByCurrency(row.amountOut, row.currency)} {row.currency}
+                        </>
+                      )}
                     </td>
-                    <td className={`num text-right font-medium whitespace-nowrap ${Number(row.netAmount) < 0 ? 'text-danger' : Number(row.netAmount) > 0 ? 'text-success' : 'text-muted'}`}>
-                      {formatByCurrency(row.netAmount, row.currency)} {row.currency}
+                    <td className="num text-right font-medium whitespace-nowrap">
+                      {grouped && grouped.currencyTotals.length > 1 ? (
+                        <div className="space-y-0.5">
+                          {grouped.currencyTotals.map((t) => (
+                            <div
+                              key={t.currency}
+                              className={t.netAmount < 0 ? 'text-danger' : t.netAmount > 0 ? 'text-success' : 'text-muted'}
+                            >
+                              {formatByCurrency(t.netAmount, t.currency)} {t.currency}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        (() => {
+                          const rowNet = row.netAmount !== undefined
+                            ? Number(row.netAmount)
+                            : (Number(row.amountIn) || 0) - (Number(row.amountOut) || 0);
+                          return (
+                            <span className={rowNet < 0 ? 'text-danger' : rowNet > 0 ? 'text-success' : 'text-muted'}>
+                              {formatByCurrency(rowNet, row.currency)} {row.currency}
+                            </span>
+                          );
+                        })()
+                      )}
                     </td>
                     <td>
                       <span className={statusClass(row.order.status)}>{row.order.status}</span>
@@ -656,8 +707,12 @@ export default function AdvancePage() {
                     IN
                   </span>
                 </div>
-                <div className="num text-lg font-bold text-success">
-                  {formatByCurrency(modalTotalIn, viewingRow.currency)} {viewingRow.currency}
+                <div className="num text-lg font-bold text-success space-y-0.5">
+                  {modalCurrencyTotals.map((t) => (
+                    <div key={t.currency}>
+                      {formatByCurrency(t.amountIn, t.currency)} {t.currency}
+                    </div>
+                  ))}
                 </div>
                 <div className="text-[11px] text-muted mt-1 truncate">
                   {viewingEntries.length > 1
@@ -675,11 +730,15 @@ export default function AdvancePage() {
                     OUT
                   </span>
                 </div>
-                <div className={`num text-lg font-bold ${modalTotalOut > 0 ? 'text-danger' : 'text-muted'}`}>
-                  {formatByCurrency(modalTotalOut, viewingRow.currency)} {viewingRow.currency}
+                <div className="num text-lg font-bold space-y-0.5">
+                  {modalCurrencyTotals.map((t) => (
+                    <div key={t.currency} className={t.amountOut > 0 ? 'text-danger' : 'text-muted'}>
+                      {formatByCurrency(t.amountOut, t.currency)} {t.currency}
+                    </div>
+                  ))}
                 </div>
                 <div className="text-[11px] text-muted mt-1">
-                  {modalTotalOut > 0 ? 'ຕັດຊຳລະອອກແລ້ວ' : 'ບໍ່ມີການຕັດຊຳລະ'}
+                  {modalHasOut ? 'ຕັດຊຳລະອອກແລ້ວ' : 'ບໍ່ມີການຕັດຊຳລະ'}
                 </div>
               </div>
 
@@ -691,11 +750,15 @@ export default function AdvancePage() {
                     NET
                   </span>
                 </div>
-                <div className="num text-lg font-bold text-fg-strong">
-                  {formatByCurrency(modalNet, viewingRow.currency)} {viewingRow.currency}
+                <div className="num text-lg font-bold text-fg-strong space-y-0.5">
+                  {modalCurrencyTotals.map((t) => (
+                    <div key={t.currency}>
+                      {formatByCurrency(t.netAmount, t.currency)} {t.currency}
+                    </div>
+                  ))}
                 </div>
                 <div className="text-[11px] text-muted mt-1">
-                  ຍອດເຫຼືອ Advance ({viewingRow.currency})
+                  ຍອດເຫຼືອ Advance ({modalCurrencyTotals.map((t) => t.currency).join(', ')})
                 </div>
               </div>
             </div>

@@ -88,10 +88,9 @@ export default function StockNewPage() {
     user?.role === 'WAREHOUSE' || user?.role === 'ADMIN' || user?.role === 'MANAGER';
   const canManage = user?.role === 'ADMIN';
 
-  // View / Edit / Delete modal states for Ledger
+  // View / Edit modal states for Ledger
   const [viewingRow, setViewingRow] = useState<LedgerRow | null>(null);
   const [editingRow, setEditingRow] = useState<LedgerRow | null>(null);
-  const [deletingRow, setDeletingRow] = useState<LedgerRow | null>(null);
 
   // View / Edit modal states for Ready to Gold (SKU Balance)
   const [viewingBalance, setViewingBalance] = useState<SkuBalance | null>(null);
@@ -191,19 +190,6 @@ export default function StockNewPage() {
     },
   });
 
-  // Delete Movement Mutation
-  const deleteMovement = useMutation({
-    mutationFn: (movementId: string) => api.delete(`/stock/movements/${movementId}`),
-    onSuccess: () => {
-      toast.success('ລຶບລາຍການສຳເລັດ');
-      setDeletingRow(null);
-      void queryClient.invalidateQueries({ queryKey: ['stock'] });
-      void queryClient.invalidateQueries({ queryKey: ['ledger'] });
-    },
-    onError: (e) => {
-      toast.error('ລຶບບໍ່ສຳເລັດ', e instanceof ApiError ? e.message : undefined);
-    },
-  });
 
   // Update SKU Balance Opening Qty Mutation
   const updateBalance = useMutation({
@@ -407,7 +393,6 @@ export default function StockNewPage() {
         onRetry={() => void refetchHistory()}
         onView={(row) => setViewingRow(row)}
         onEdit={(row) => openEditModal(row)}
-        onDelete={(row) => setDeletingRow(row)}
       />
 
       {/* ========================================================================= */}
@@ -827,51 +812,6 @@ export default function StockNewPage() {
         </Dialog>
       )}
 
-      {/* ========================================================================= */}
-      {/* 3. DELETE CONFIRMATION DIALOG                                             */}
-      {/* ========================================================================= */}
-      {deletingRow && (
-        <Dialog
-          open
-          onClose={() => setDeletingRow(null)}
-          size="md"
-          title="ຢືນຢັນການລຶບລາຍການ"
-          footer={
-            <>
-              <button className="btn-secondary" onClick={() => setDeletingRow(null)} disabled={deleteMovement.isPending}>
-                ຍົກເລີກ
-              </button>
-              <button
-                className="btn-danger"
-                disabled={deleteMovement.isPending}
-                onClick={() => {
-                  const mId = deletingRow.movementId || deletingRow.movement?.id;
-                  if (mId) {
-                    deleteMovement.mutate(mId);
-                  }
-                }}
-              >
-                {deleteMovement.isPending ? 'ກຳລັງລຶບ...' : 'ຢືນຢັນລຶບ'}
-              </button>
-            </>
-          }
-        >
-          <div className="space-y-3">
-            <p className="text-sm">
-              ທ່ານແນ່ໃຈບໍ່ວ່າຕ້ອງການລຶບລາຍການ{' '}
-              <strong className="text-fg">{deletingRow.movement?.code ?? deletingRow.typeLabel}</strong>{' '}
-              ({formatDate(deletingRow.businessDate)})?
-            </p>
-            <div className="p-3 bg-danger/10 border border-danger/30 rounded-xl text-xs text-danger space-y-1">
-              <p className="font-semibold">⚠️ ຜົນກະທົບຕໍ່ລະບົບ:</p>
-              <ul className="list-disc pl-4 space-y-0.5">
-                <li>ຍອດສິນຄ້າໃນສາງ (Ready to Gold) ຈະຖືກປັບປຸງຄືນໂດຍອັດຕະໂນມັດ.</li>
-                <li>ບັນຊີ AP/AR (GOLD) ແລະ ປະຫວັດ Stock ຈະຖືກປັບຍອດຄືນ.</li>
-              </ul>
-            </div>
-          </div>
-        </Dialog>
-      )}
 
       {/* ========================================================================= */}
       {/* 4. VIEW SKU BALANCE DIALOG (Ready to Gold)                                */}
@@ -1030,7 +970,6 @@ function LedgerTable({
   onRetry,
   onView,
   onEdit,
-  onDelete,
 }: {
   titleLo: string;
   rows: LedgerRow[];
@@ -1042,7 +981,6 @@ function LedgerTable({
   onRetry: () => void;
   onView: (row: LedgerRow) => void;
   onEdit: (row: LedgerRow) => void;
-  onDelete: (row: LedgerRow) => void;
 }) {
   return (
     <div data-fade className="card">
@@ -1109,24 +1047,6 @@ function LedgerTable({
                           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                             <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                          </svg>
-                        </button>
-                      )}
-
-                      {/* Delete Button */}
-                      {canManage && hasMovement && (
-                        <button
-                          type="button"
-                          className="btn-ghost p-1.5 h-8 w-8 rounded-lg flex items-center justify-center text-danger hover:bg-danger/10 transition-colors"
-                          title="ລຶບລາຍການ"
-                          aria-label={`Delete ${row.typeLabel}`}
-                          onClick={() => onDelete(row)}
-                        >
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            <line x1="10" y1="11" x2="10" y2="17" />
-                            <line x1="14" y1="11" x2="14" y2="17" />
                           </svg>
                         </button>
                       )}

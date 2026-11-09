@@ -74,6 +74,7 @@ export default function SkusPage() {
       setWeightG('');
       setError(null);
       void queryClient.invalidateQueries({ queryKey: ['skus'] });
+      void queryClient.invalidateQueries({ queryKey: ['stock'] });
     },
     onError: (e) => {
       const detail = e instanceof ApiError ? e.message : 'ບັນທຶກບໍ່ສຳເລັດ';
@@ -84,7 +85,10 @@ export default function SkusPage() {
 
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/skus/${id}`),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['skus'] }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['skus'] });
+      void queryClient.invalidateQueries({ queryKey: ['stock'] });
+    },
   });
 
   const fullSkuName = useMemo(() => previewSkuName(nameLo, weightG), [nameLo, weightG]);

@@ -11,7 +11,7 @@ import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import type { PagedResult } from '@/components/date-range';
 import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
-import { MultiPayment, newPaymentLines, paymentPayload } from '@/components/multi-payment';
+import { MultiPayment, newPaymentLines, paymentPayload, useInsufficientFundsError } from '@/components/multi-payment';
 import type { PaymentLine } from '@/components/multi-payment';
 
 interface GoldType { id: string; nameLo: string }
@@ -184,8 +184,12 @@ export default function ExchangePage() {
   // ແຖວໂອນ ຕ້ອງເລືອກທະນາຄານ ກ່ອນບັນທຶກໄດ້ (server ກວດຊ້ຳອີກຮອບ).
   const paymentLines = paymentPayload(payments);
   const bankLegReady = paymentLines.every((l) => l.method !== 'BANK' || Boolean(l.bankAccountId));
+  const insufficientFundsError = useInsufficientFundsError(payments, showForm, 'ປ່ຽນເປັນເງິນ (Exchange)');
   const canSave =
-    /^\d{8}$/.test(phone) && preview?.isBalanced === true && bankLegReady;
+    /^\d{8}$/.test(phone) &&
+    preview?.isBalanced === true &&
+    bankLegReady &&
+    !insufficientFundsError;
 
   return (
     <div className="space-y-6">

@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { dec, GRAMS_PER_BAHT, type Decimal } from '@kpv/domain';
+import { dec, expectedReturnWeight, GRAMS_PER_BAHT, type Decimal } from '@kpv/domain';
 import { api, ApiError } from '@/lib/api';
-import { formatLak, formatWeight } from '@/lib/format';
+import { formatLak, formatWeight, formatGrams } from '@/lib/format';
 import { Dialog } from './dialog';
 import { NumberInput } from './number-input';
 import { QueryErrorNotice } from './query-state';
@@ -40,7 +40,13 @@ export interface SkuBalance {
 interface Sku { id: string; fullSkuName: string; weightG: string }
 interface GoldType { id: string; nameLo: string }
 interface GoldItem { id: string; nameLo: string }
-interface Partner { id: string; nameLo: string; code: string; direction: string }
+interface Partner {
+  id: string;
+  nameLo: string;
+  code: string;
+  direction: string;
+  type?: 'FACTORY' | 'SMITH' | 'SUPPLIER' | 'INTERNAL';
+}
 interface Wac { newWeightG: string; newCost: string; pricePerG: string; pricePerBaht: string }
 
 interface Line {
@@ -213,11 +219,15 @@ export function StockMovementDialog({
   }, [partners, kind]);
 
   const selectedPartner = partners.find((p) => p.id === partnerId);
-  const isFactoryOut = kind === 'OUT' && selectedPartner?.code === 'FACTORY';
+  const isFactoryOut =
+    kind === 'OUT' &&
+    (selectedPartner?.type === 'FACTORY' || selectedPartner?.code === 'FACTORY');
   const isSmithOut =
     kind === 'OUT' &&
     scope === 'OLD' &&
-    (selectedPartner?.code === 'OUTSOURCE_SMITH' || selectedPartner?.code === 'OTHER');
+    (selectedPartner?.type === 'SMITH' ||
+      selectedPartner?.code === 'OUTSOURCE_SMITH' ||
+      selectedPartner?.code === 'OTHER');
 
   /** Lines reference a SKU in the NEW warehouse and a ປະເພດຄຳ in OLD. */
   const usesSku = scope === 'NEW' || kind === 'TRANSFER';
@@ -331,7 +341,7 @@ export function StockMovementDialog({
       goldCost,
       expectedReturnG:
         isSmithOut && /^\d+(\.\d+)?$/.test(goldPercent.trim())
-          ? goldG.mul(dec(goldPercent).div(100)).ceil()
+          ? expectedReturnWeight(goldG, goldPercent)
           : null,
     };
   }, [lines, totalCost, wac, kind, scope, goldTypeId, oldBalances, isOldOut, isSmithOut, goldPercent]);
@@ -407,7 +417,7 @@ export function StockMovementDialog({
           .filter((l) => Number(l.weightG) > 0 && (usesSku ? Boolean(l.goldSkuId) : true))
           .map((l) => ({
             goldSkuId: usesSku ? l.goldSkuId : undefined,
-            goldTypeId: goldTypeId || l.goldTypeId || undefined,
+            goldTypeId: usesSku ? undefined : (goldTypeId || l.goldTypeId || undefined),
             ...(isOldIn ? { oldCategory } : {}),
             weightG: l.weightG.trim(),
             quantity: isOldOut ? 1 : qty(l.quantity),
@@ -467,7 +477,7 @@ export function StockMovementDialog({
   const canSubmit =
     totals.goldG.gt(0) &&
     !overweightMessage &&
-    (kind === 'TRANSFER' || kind === 'IN' ? Boolean(goldTypeId) : true) &&
+    (kind === 'TRANSFER' || isOldIn ? Boolean(goldTypeId) : true) &&
     (kind === 'TRANSFER' || isOldIn ? true : Boolean(partnerId)) &&
     (kind !== 'IN' || Number(totalCost.replace(/,/g, '')) > 0) &&
     (usesSku
@@ -523,13 +533,17 @@ export function StockMovementDialog({
             <select id="partner" className="input" value={partnerId}
               onChange={(e) => setPartnerId(e.target.value)}>
               <option value="">— ເລືອກ —</option>
-              {partnerOptions.map((p) => <option key={p.id} value={p.id}>{p.nameLo}</option>)}
+              {partnerOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nameLo} {p.type === 'FACTORY' ? '(ໂຮງງານ)' : p.type === 'SMITH' ? '(ຊ່າງ)' : ''}
+                </option>
+              ))}
             </select>
           </div>
         )}
 
-        {/* ສະແດງ ປະເພດຄຳ ດ້ານເທິງສຳລັບ Transfer ແລະ Stock IN (ເພີ່ມ/ເລືອກຄັ້ງດຽວໃນຟອມ) */}
-        {(kind === 'TRANSFER' || kind === 'IN') && (
+        {/* ສະແດງ ປະເພດຄຳ ດ້ານເທິງສຳລັບ Transfer ແລະ Stock IN (OLD) ເທົ່ານັ້ນ (Stock IN NEW ໃຊ້ SKU) */}
+        {(kind === 'TRANSFER' || isOldIn) && (
           <div>
             <label className="label" htmlFor="goldType">ປະເພດຄຳ</label>
             <select
@@ -871,7 +885,7 @@ export function StockMovementDialog({
         <Field labelLo="ຕົ້ນທຶນຄຳ" value={formatLak(totals.goldCost.toFixed())} strong />
         {totals.expectedReturnG && (
           <Field labelLo="ນ້ຳໜັກ(g) ທີ່ໄດ້ຮັບ"
-            value={formatWeight(totals.expectedReturnG.toFixed())} />
+            value={formatGrams(totals.expectedReturnG.toFixed())} />
         )}
       </div>
 
@@ -883,7 +897,9 @@ export function StockMovementDialog({
       {kind === 'OUT' && (
         <div className="notice status-warning mt-3">
           {isFactoryOut
-            ? 'OUT ໄປ FACTORY: ຕ້ອງລໍຖ້າ Admin/Manager Approve ແລ້ວ ລະບົບຍັງບໍ່ຕັດຍອດ — ຈະໄປຢູ່ Module ຕິດຕາມ Stock Out ໄປ FACTORY ຈົນກວ່າຈະປ້ອນນ້ຳໜັກທີ່ FACTORY ປະເມີນ.'
+            ? `OUT ໄປໂຮງງານ (${selectedPartner?.nameLo ?? 'FACTORY'}): ຕ້ອງລໍຖ້າ Admin/Manager Approve ແລ້ວ ລະບົບຍັງບໍ່ຕັດຍອດ — ຈະໄປຢູ່ Module ຕິດຕາມ Stock Out ໄປ FACTORY ຈົນກວ່າຈະປ້ອນນ້ຳໜັກທີ່ FACTORY ປະເມີນ.`
+            : isSmithOut
+            ? `OUT ໄປຊ່າງ (${selectedPartner?.nameLo ?? 'ຊ່າງ'}): ຕັດຍອດສາງຕາມນ້ຳໜັກຕົວຈິງ ແລະ ຕັດຍອດ AP Gold ຕາມນ້ຳໜັກຄາດວ່າຈະໄດ້ຮັບ (${totals.expectedReturnG ? formatGrams(totals.expectedReturnG.toFixed()) : '—'} g).`
             : 'Stock OUT ຕ້ອງລໍຖ້າ Admin/Manager Approve ກ່ອນຈຶ່ງຕັດຍອດ.'}
         </div>
       )}

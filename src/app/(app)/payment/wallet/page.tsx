@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -12,6 +12,7 @@ import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import { StatCard } from '@/components/stat-card';
 import { useRealtime } from '@/lib/realtime';
+import { today } from '@/components/date-range';
 
 interface Balance { currency: 'LAK' | 'THB' | 'USD'; inflow: string; outflow: string; balance: string }
 interface Wallet { shiftId: string | null; openedAt: string | null; balances: Balance[] }
@@ -33,6 +34,15 @@ const STATUS: Record<string, { lo: string }> = {
   COMPLETED: { lo: 'ສຳເລັດ' },
   CANCELLED: { lo: 'ຍົກເລີກ' },
 };
+
+function isToday(val: string | Date | null | undefined): boolean {
+  if (!val) return false;
+  const d = typeof val === 'string' ? new Date(val) : val;
+  if (Number.isNaN(d.getTime())) return false;
+  const p = (n: number) => String(n).padStart(2, '0');
+  const dateStr = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return dateStr === today();
+}
 
 /**
  * TOR §4.1 — ກະເປົ໋າເງິນສົດ (To Day).
@@ -141,9 +151,14 @@ export default function WalletPage() {
   const hasPositiveAmount = [lak, thb, usd].some((v) => v.trim() && Number(v.replace(/,/g, '')) > 0);
   const canSave = Boolean(wallet?.shiftId) && !exceedsBalance && hasPositiveAmount;
 
-  const pager = usePagination(requests);
+  const todayRequests = useMemo(
+    () => requests.filter((r) => isToday(r.createdAt)),
+    [requests],
+  );
 
-  const pendingApprovedCount = requests.filter(
+  const pager = usePagination(todayRequests);
+
+  const pendingApprovedCount = todayRequests.filter(
     (r) => r.status === 'APPROVED' && (!currentUser || r.requestedById === currentUser.id || ['ADMIN', 'MANAGER'].includes(currentUser.role)),
   ).length;
 
@@ -241,7 +256,10 @@ export default function WalletPage() {
       </div>
 
       <div data-fade className="card">
-        <div className="card-header"><h2 className="card-title">History ເບີກ / ມອບເງິນ</h2></div>
+        <div className="card-header flex flex-wrap items-center justify-between gap-2">
+          <h2 className="card-title">History ເບີກ / ມອບເງິນ</h2>
+          <span className="text-xs text-muted">ສະແດງສະເພາະມື້ນີ້ (today) · {todayRequests.length} ລາຍການ</span>
+        </div>
         <div className="table-wrap" tabIndex={0} role="region" aria-label="History ເບີກ / ມອບເງິນ">
           <table className="table">
             <thead>
@@ -258,7 +276,7 @@ export default function WalletPage() {
               </tr>
             </thead>
             <tbody>
-              <TableStateRow colSpan={9} isError={requestsFailed} error={requestsError} isEmpty={requests.length === 0} emptyText="ຍັງບໍ່ມີລາຍການ" onRetry={() => void refetchRequests()} />
+              <TableStateRow colSpan={9} isError={requestsFailed} error={requestsError} isEmpty={todayRequests.length === 0} emptyText="ຍັງບໍ່ມີລາຍການສຳລັບມື້ນີ້" onRetry={() => void refetchRequests()} />
               {pager.pageItems.map((row) => {
                 const isApproved = row.status === 'APPROVED';
                 const canComplete = canCompleteRow(row);

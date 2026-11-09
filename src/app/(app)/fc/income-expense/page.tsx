@@ -116,12 +116,16 @@ export default function IncomeExpensePage() {
   const formQuery = [categoriesQuery, banksQuery].find((q) => q.isError);
 
   const create = useMutation({
-    mutationFn: () =>
-      api.post('/finance/income-expense', {
+    mutationFn: () => {
+      if (!canSave || insufficientExpenseError) {
+        throw new Error(insufficientExpenseError || 'ບໍ່ສາມາດບັນທຶກໄດ້ (ຂໍ້ມູນບໍ່ຖືກຕ້ອງ ຫຼື ເງິນບໍ່ພໍ)');
+      }
+      return api.post('/finance/income-expense', {
         categoryId,
         payments: paymentPayload(payments),
         note: note || undefined,
-      }),
+      });
+    },
     onSuccess: () => {
       toast.success('ດຳເນີນການສຳເລັດ');
       setPayments(newPaymentLines()); setNote(''); setCategoryId(''); setError(null);
@@ -131,7 +135,7 @@ export default function IncomeExpensePage() {
       void queryClient.invalidateQueries({ queryKey: ['ledger'] });
     },
     onError: (e) => {
-      const detail = e instanceof ApiError ? e.message : 'ບັນທຶກບໍ່ສຳເລັດ';
+      const detail = e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'ບັນທຶກບໍ່ສຳເລັດ';
       setError(detail);
       toast.error('ບໍ່ສຳເລັດ', detail);
     },
@@ -140,6 +144,9 @@ export default function IncomeExpensePage() {
   const update = useMutation({
     mutationFn: () => {
       if (!editingRow) throw new Error('No row selected');
+      if (!canSaveEdit || editInsufficientError) {
+        throw new Error(editInsufficientError || 'ບໍ່ສາມາດບັນທຶກໄດ້ (ຂໍ້ມູນບໍ່ຖືກຕ້ອງ ຫຼື ເງິນບໍ່ພໍ)');
+      }
       return api.patch(`/finance/income-expense/${editingRow.id}`, {
         categoryId: editCategoryId,
         method: editMethod,
@@ -158,7 +165,7 @@ export default function IncomeExpensePage() {
       void queryClient.invalidateQueries({ queryKey: ['ledger'] });
     },
     onError: (e) => {
-      const detail = e instanceof ApiError ? e.message : 'ແກ້ໄຂບໍ່ສຳເລັດ';
+      const detail = e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'ແກ້ໄຂບໍ່ສຳເລັດ';
       setEditError(detail);
       toast.error('ບໍ່ສຳເລັດ', detail);
     },
@@ -213,7 +220,7 @@ export default function IncomeExpensePage() {
     for (const [cur, total] of Object.entries(cashTotals)) {
       const cb = cashBalances.find((c) => c.currency === cur);
       const avail = Number(cb?.balance ?? 0);
-      if (total > avail) {
+      if (total > avail + 0.0001) {
         insufficientExpenseError = `ເງິນສົດ ${cur} ໃນຮ້ານ (Module Cash) ບໍ່ພໍສຳລັບລາຍຈ່າຍ (ມີເຫຼືອ ${formatByCurrency(avail, cur)} ${cur}, ຕ້ອງການຈ່າຍ ${formatByCurrency(total, cur)} ${cur})`;
         break;
       }
@@ -225,7 +232,7 @@ export default function IncomeExpensePage() {
         const bb = bankBalances.find((b) => b.bankAccountId === bankAccountId && b.currency === cur);
         const avail = Number(bb?.actual ?? 0);
         const bankName = bb?.bankNameLo ?? banks.find((b) => b.id === bankAccountId)?.nameLo ?? 'ທະນາຄານ';
-        if (total > avail) {
+        if (total > avail + 0.0001) {
           insufficientExpenseError = `ຍອດເງິນ ${cur} ໃນບັນຊີ ${bankName} (Module Bank) ບໍ່ພໍສຳລັບລາຍຈ່າຍ (ມີເຫຼືອ ${formatByCurrency(avail, cur)} ${cur}, ຕ້ອງການຈ່າຍ ${formatByCurrency(total, cur)} ${cur})`;
           break;
         }
@@ -254,7 +261,7 @@ export default function IncomeExpensePage() {
       ) {
         avail += Number(clean(editingRow.amount));
       }
-      if (amt > avail) {
+      if (amt > avail + 0.0001) {
         editInsufficientError = `ເງິນສົດ ${editCurrency} ໃນຮ້ານ (Module Cash) ບໍ່ພໍສຳລັບລາຍຈ່າຍ (ມີເຫຼືອ ${formatByCurrency(avail, editCurrency)} ${editCurrency}, ຕ້ອງການຈ່າຍ ${formatByCurrency(amt, editCurrency)} ${editCurrency})`;
       }
     } else if (editMethod === 'BANK' && editBankAccountId) {
@@ -272,7 +279,7 @@ export default function IncomeExpensePage() {
       ) {
         avail += Number(clean(editingRow.amount));
       }
-      if (amt > avail) {
+      if (amt > avail + 0.0001) {
         editInsufficientError = `ຍອດເງິນ ${editCurrency} ໃນບັນຊີ ${bankName} (Module Bank) ບໍ່ພໍສຳລັບລາຍຈ່າຍ (ມີເຫຼືອ ${formatByCurrency(avail, editCurrency)} ${editCurrency}, ຕ້ອງການຈ່າຍ ${formatByCurrency(amt, editCurrency)} ${editCurrency})`;
       }
     }
@@ -410,72 +417,15 @@ export default function IncomeExpensePage() {
             </div>
           </div>
 
-          {kind === 'EXPENSE' && (
-            <div className="rounded-lg border border-line bg-surface/50 p-3 text-xs space-y-2">
-              <div className="font-semibold text-fg-muted">ຍອດເງິນຄົງເຫຼືອປັດຈຸບັນ (ທີ່ໃຊ້ຈ່າຍໄດ້):</div>
-              <div className="space-y-2">
-                <div>
-                  <span className="text-muted block font-medium mb-1">💵 ເງິນສົດ (Module Cash):</span>
-                  <div className="flex flex-wrap gap-2">
-                    {(['LAK', 'THB', 'USD'] as const).map((cur) => {
-                      const bal = cashBalances.find((c) => c.currency === cur)?.balance ?? '0';
-                      return (
-                        <span
-                          key={cur}
-                          className="inline-flex items-center gap-1.5 rounded bg-surface px-2.5 py-1 text-xs border border-line"
-                        >
-                          <span className="text-muted font-medium">{cur}:</span>
-                          <strong className="num text-fg-strong">
-                            {formatByCurrency(bal, cur)} {cur}
-                          </strong>
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div>
-                  <span className="text-muted block font-medium mb-1">🏦 ເງິນໃນ Bank (Module Bank):</span>
-                  <div className="space-y-1.5">
-                    {banks.length > 0 ? (
-                      banks.map((b) => (
-                        <div key={b.id} className="flex flex-wrap items-center gap-2 text-xs">
-                          <span className="font-medium text-fg-strong min-w-[70px]">{b.nameLo}:</span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {(['LAK', 'THB', 'USD'] as const).map((cur) => {
-                              const row = bankBalances.find(
-                                (bb) => bb.bankAccountId === b.id && bb.currency === cur,
-                              );
-                              const actual = row?.actual ?? '0';
-                              return (
-                                <span
-                                  key={cur}
-                                  className="inline-flex items-center gap-1 rounded bg-surface px-2 py-0.5 border border-line text-[11px]"
-                                >
-                                  <span className="text-muted">{cur}:</span>
-                                  <strong className="num text-fg-strong">
-                                    {formatByCurrency(actual, cur)} {cur}
-                                  </strong>
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))
-                    ) : (
-                      <span className="text-muted">—</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           <div className="border-t border-line pt-4">
             <MultiPayment
               lines={payments}
               onChange={setPayments}
               direction={kind === 'INCOME' ? 'in' : 'out'}
               labelLo={kind === 'INCOME' ? 'ຮັບເງິນ (ສົດ / ໂອນ)' : 'ຈ່າຍເງິນ (ສົດ / ໂອນ)'}
+              hideInsufficientNotice
+              onlyCashBalanceGuide
+              hideEquivalent
             />
           </div>
 
@@ -716,21 +666,15 @@ export default function IncomeExpensePage() {
             <div>
               <div className="flex items-center justify-between">
                 <label className="label" htmlFor="edit-amt">ຈຳນວນເງິນ</label>
-                {editKind === 'EXPENSE' && (
+                {editKind === 'EXPENSE' && editMethod === 'CASH' && (
                   <span className="text-xs text-muted">
-                    ຍອດຄົງເຫຼືອ:{' '}
+                    ເງິນສົດຄົງເຫຼືອ:{' '}
                     <strong className="num text-fg-strong">
-                      {editMethod === 'CASH'
-                        ? `${formatByCurrency(
-                            cashBalances.find((c) => c.currency === editCurrency)?.balance ?? '0',
-                            editCurrency,
-                          )} ${editCurrency}`
-                        : `${formatByCurrency(
-                            bankBalances.find(
-                              (b) => b.bankAccountId === editBankAccountId && b.currency === editCurrency,
-                            )?.actual ?? '0',
-                            editCurrency,
-                          )} ${editCurrency}`}
+                      {formatByCurrency(
+                        cashBalances.find((c) => c.currency === editCurrency)?.balance ?? '0',
+                        editCurrency,
+                      )}{' '}
+                      {editCurrency}
                     </strong>
                   </span>
                 )}

@@ -517,7 +517,8 @@
     padding-right: 32px;
     cursor: pointer;
   }
-  select.input option {
+  select.input option,
+  select.filter-date option {
     background: var(--surface-solid);
     color: var(--fg);
   }

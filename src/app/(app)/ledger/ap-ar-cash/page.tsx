@@ -5,7 +5,7 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { PageHead } from '@/components/page-head';
 import { api } from '@/lib/api';
 import { TableStateRow } from '@/components/query-state';
-import { formatMoney, formatDate } from '@/lib/format';
+import { formatMoney, formatDate, formatByCurrency } from '@/lib/format';
 import type { PagedResult } from '@/components/date-range';
 import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 
@@ -68,10 +68,10 @@ export default function ApArCashPage() {
                 {data.filter((r) => r.side === side).map((row) => (
                   <tr key={row.currency}>
                     <td className="font-medium">{row.currency}</td>
-                    <td className="num text-right">{formatMoney(row.opening)}</td>
-                    <td className="num text-right text-success">{formatMoney(row.increases)}</td>
-                    <td className="num text-right text-danger">{formatMoney(row.decreases)}</td>
-                    <td className="num text-right font-semibold">{formatMoney(row.net)}</td>
+                    <td className="num text-right">{formatByCurrency(row.opening, row.currency)}</td>
+                    <td className="num text-right text-success">{formatByCurrency(row.increases, row.currency)}</td>
+                    <td className="num text-right text-danger">{formatByCurrency(row.decreases, row.currency)}</td>
+                    <td className="num text-right font-semibold">{formatByCurrency(row.net, row.currency)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -107,9 +107,9 @@ export default function ApArCashPage() {
                   <td><span className={row.side === 'AP' ? 'status-danger' : 'status-success'}>{row.side}</span></td>
                   <td className="text-muted">{row.refType}</td>
                   <td>{row.currency}</td>
-                  <td className="num text-right">{formatMoney(row.amountIn)}</td>
-                  <td className="num text-right">{formatMoney(row.amountOut)}</td>
-                  <td className="num text-right font-medium">{formatMoney(row.balance)}</td>
+                  <td className="num text-right">{formatByCurrency(row.amountIn, row.currency)}</td>
+                  <td className="num text-right">{formatByCurrency(row.amountOut, row.currency)}</td>
+                  <td className="num text-right font-medium">{formatByCurrency(row.balance, row.currency)}</td>
                   <td className="text-muted">{row.note ?? '—'}</td>
                 </tr>
               ))}

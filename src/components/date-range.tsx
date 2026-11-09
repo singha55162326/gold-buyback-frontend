@@ -78,7 +78,7 @@ interface Options {
  * The server caps the response, and `truncated` says so rather than quietly
  * showing a partial ledger as if it were the whole thing.
  */
-export function useHistoryRange<T>(queryKey: unknown[], path: string, options: Options = {}) {
+export function useHistoryRange<T>(queryKey: readonly unknown[], path: string, options: Options = {}) {
   const { params = {}, enabled = true, refetchInterval } = options;
   const live = refetchInterval !== undefined;
 

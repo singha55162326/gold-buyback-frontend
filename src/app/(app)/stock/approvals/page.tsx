@@ -15,7 +15,7 @@ interface MovementRow {
   totalQuantity: number; totalGoldG: string; totalCost: string;
   status: string; note: string | null; createdAt: string;
   createdBy: string;
-  partner: { nameLo: string; code: string } | null;
+  partner: { nameLo: string; code: string; type?: 'FACTORY' | 'SMITH' | 'SUPPLIER' | 'INTERNAL' } | null;
   cabinet: { nameLo: string } | null;
   lines: Array<{ id: string; weightG: string; quantity: number; goldG: string }>;
 }
@@ -181,7 +181,7 @@ export default function StockApprovalsPage() {
                   <tr key={row.id}>
                     <td className="font-mono text-xs">
                       {row.code}
-                      {row.partner?.code === 'FACTORY' && (
+                      {(row.partner?.type === 'FACTORY' || row.partner?.code === 'FACTORY') && (
                         <span className="ml-1 badge recessed text-gold">FACTORY</span>
                       )}
                     </td>

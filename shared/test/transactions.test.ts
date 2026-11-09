@@ -391,13 +391,15 @@ describe('TOR §7.2 — stock-out guard and smith return weight', () => {
     expect(check.messageLo).toContain('0.5');
   });
 
-  it('rounds the expected smith return UP', () => {
+  it('computes expected smith return weight to 3 decimal places', () => {
     // 100 g at 96% = 96 exactly
     expect(expectedReturnWeight(100, 96).toNumber()).toBe(96);
     // 50 g at 96% = 48 exactly
     expect(expectedReturnWeight(50, 96).toNumber()).toBe(48);
-    // 33 g at 96% = 31.68 -> 32
-    expect(expectedReturnWeight(33, 96).toNumber()).toBe(32);
+    // 33 g at 96% = 31.68
+    expect(expectedReturnWeight(33, 96).toNumber()).toBe(31.68);
+    // 15 g at 96.5% = 14.475
+    expect(expectedReturnWeight(15, 96.5).toNumber()).toBe(14.475);
   });
 });
 

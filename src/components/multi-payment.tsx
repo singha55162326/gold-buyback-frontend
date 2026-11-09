@@ -21,6 +21,18 @@ interface Bank {
   nameLo: string;
 }
 
+export interface CashBalance {
+  currency: PayCurrency;
+  balance: string;
+}
+
+export interface BankBalance {
+  bankAccountId: string;
+  currency: PayCurrency;
+  actual: string;
+  bankNameLo: string;
+}
+
 /** The shape /rates/current returns — the snapshot row itself. */
 export interface Rates {
   thbSellRate: string;
@@ -35,6 +47,78 @@ const blank = (): PaymentLine => ({ method: 'CASH', currency: 'LAK', amount: '' 
 
 /** Strip the grouping commas staff type out of habit. */
 const clean = (s: string | number | undefined | null) => String(s ?? '').replace(/,/g, '').trim();
+
+/**
+ * ກວດສອບວ່າລາຍການຈ່າຍເງິນອອກ (direction = 'out') ເກີນຍອດຄົງເຫຼືອໃນ Module Cash
+ * ຫຼື Module Bank ຫຼືບໍ່ — ເພື່ອບລັອກປຸ່ມຢືນຢັນ ແລະ ແຈ້ງເຕືອນທັນທີກ່ອນຍິງ API.
+ */
+export function useInsufficientFundsError(
+  lines: PaymentLine[],
+  enabled = true,
+  actionLabelLo = 'ຈ່າຍອອກ',
+): string | null {
+  const { data: banks = [] } = useQuery({
+    queryKey: ['catalog', 'bank-accounts'],
+    queryFn: () => api.get<Bank[]>('/catalog/bank-accounts'),
+    enabled,
+  });
+
+  const { data: cashBalances = [] } = useQuery({
+    queryKey: ['cash', 'balances'],
+    queryFn: () => api.get<CashBalance[]>('/cash/balances'),
+    enabled,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+  });
+
+  const { data: bankBalances = [] } = useQuery({
+    queryKey: ['cash', 'bank', 'balances'],
+    queryFn: () => api.get<BankBalance[]>('/cash/bank/balances'),
+    enabled,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+  });
+
+  return useMemo(() => {
+    if (!enabled) return null;
+
+    const cashTotals: Record<string, number> = {};
+    const bankTotals: Record<string, number> = {};
+
+    for (const p of lines) {
+      const amt = Number(clean(p.amount));
+      if (Number.isFinite(amt) && amt > 0) {
+        if (p.method === 'CASH') {
+          cashTotals[p.currency] = (cashTotals[p.currency] ?? 0) + amt;
+        } else if (p.method === 'BANK' && p.bankAccountId) {
+          const key = `${p.bankAccountId}:${p.currency}`;
+          bankTotals[key] = (bankTotals[key] ?? 0) + amt;
+        }
+      }
+    }
+
+    for (const [cur, total] of Object.entries(cashTotals)) {
+      const cb = cashBalances.find((c) => c.currency === cur);
+      const avail = Number(cb?.balance ?? 0);
+      if (total > avail + 0.0001) {
+        return `ເງິນສົດ ${cur} ໃນຮ້ານ (Module Cash) ບໍ່ພໍສຳລັບ${actionLabelLo} (ມີເຫຼືອ ${formatByCurrency(avail, cur)} ${cur}, ຕ້ອງການຈ່າຍ ${formatByCurrency(total, cur)} ${cur})`;
+      }
+    }
+
+    for (const [key, total] of Object.entries(bankTotals)) {
+      const [bankAccountId, cur] = key.split(':');
+      const bb = bankBalances.find((b) => b.bankAccountId === bankAccountId && b.currency === cur);
+      const avail = Number(bb?.actual ?? 0);
+      const bankName =
+        bb?.bankNameLo ?? banks.find((b) => b.id === bankAccountId)?.nameLo ?? 'ທະນາຄານ';
+      if (total > avail + 0.0001) {
+        return `ຍອດເງິນ ${cur} ໃນບັນຊີ ${bankName} (Module Bank) ບໍ່ພໍສຳລັບ${actionLabelLo} (ມີເຫຼືອ ${formatByCurrency(avail, cur)} ${cur}, ຕ້ອງການຈ່າຍ ${formatByCurrency(total, cur)} ${cur})`;
+      }
+    }
+
+    return null;
+  }, [enabled, lines, cashBalances, bankBalances, banks, actionLabelLo]);
+}
 
 /** Convert payment lines to LAK equivalent based on direction rates. */
 export function calcTotalLak(
@@ -73,6 +157,8 @@ export function MultiPayment({
   fixedCurrency,
   hideEquivalent,
   preventOverpay,
+  hideInsufficientNotice,
+  onlyCashBalanceGuide,
 }: {
   lines: PaymentLine[];
   onChange: (lines: PaymentLine[]) => void;
@@ -91,6 +177,10 @@ export function MultiPayment({
   hideEquivalent?: boolean;
   /** When true, caps/prevents entering an amount that exceeds the remaining amount owed. */
   preventOverpay?: boolean;
+  /** When true, hides the built-in insufficient funds notice (e.g. when the parent renders its own). */
+  hideInsufficientNotice?: boolean;
+  /** When true, the balance guide under amount only shows for cash (ເງິນສົດຄົງເຫຼືອ), hiding bank balance guide. */
+  onlyCashBalanceGuide?: boolean;
 }) {
   const { data: banks = [] } = useQuery({
     queryKey: ['catalog', 'bank-accounts'],
@@ -102,6 +192,42 @@ export function MultiPayment({
     queryFn: () => api.get<Rates>('/rates/current'),
     retry: false,
   });
+
+  const isOut = direction === 'out';
+
+  const { data: cashBalances = [] } = useQuery({
+    queryKey: ['cash', 'balances'],
+    queryFn: () => api.get<CashBalance[]>('/cash/balances'),
+    enabled: isOut,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+  });
+
+  const { data: bankBalances = [] } = useQuery({
+    queryKey: ['cash', 'bank', 'balances'],
+    queryFn: () => api.get<BankBalance[]>('/cash/bank/balances'),
+    enabled: isOut,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+  });
+
+  const insufficientFundsError = useInsufficientFundsError(lines, isOut);
+
+  const getAvailableForLine = (line: PaymentLine): number | null => {
+    if (!isOut) return null;
+    if (line.method === 'CASH') {
+      const cb = cashBalances.find((c) => c.currency === line.currency);
+      return Number(cb?.balance ?? 0);
+    }
+    if (line.method === 'BANK') {
+      if (!line.bankAccountId) return null;
+      const bb = bankBalances.find(
+        (b) => b.bankAccountId === line.bankAccountId && b.currency === line.currency,
+      );
+      return Number(bb?.actual ?? 0);
+    }
+    return null;
+  };
 
   const rateFor = (currency: PayCurrency): number => {
     if (currency === 'LAK') return 1;
@@ -204,8 +330,11 @@ export function MultiPayment({
       <div className="space-y-2">
         {lines.map((line, i) => {
           const rate = rateFor(line.currency);
-          const lak = Number(clean(line.amount)) * rate;
+          const lineAmtNum = Number(clean(line.amount)) || 0;
+          const lak = lineAmtNum * rate;
           const maxVal = getMaxForLine(i, line.currency);
+          const availBal = getAvailableForLine(line);
+          const lineExceedsAvail = availBal !== null && lineAmtNum > availBal + 0.0001;
           return (
             <div key={i} className="grid items-end gap-2 sm:grid-cols-12">
               <div className="sm:col-span-3">
@@ -296,7 +425,12 @@ export function MultiPayment({
                     ສູງສຸດ: {formatByCurrency(maxVal, line.currency)} {line.currency}
                   </div>
                 )}
-                {!hideEquivalent && !fixedCurrency && line.currency !== 'LAK' && (
+                {isOut && availBal !== null && (!onlyCashBalanceGuide || line.method === 'CASH') && (
+                  <div className={`num mt-1 text-xs ${lineExceedsAvail ? 'text-danger font-medium' : 'text-muted'}`}>
+                    {line.method === 'CASH' ? 'ເງິນສົດຄົງເຫຼືອ' : 'ບັນຊີຄົງເຫຼືອ'}: {formatByCurrency(availBal, line.currency)} {line.currency}
+                  </div>
+                )}
+                {!hideEquivalent && !fixedCurrency && line.currency !== 'LAK' && lineAmtNum > 0 && (
                   <div className="num mt-1 text-xs text-muted">
                     {rate > 0 ? `× ${formatLak(rate)} = ${formatLak(lak)} LAK` : 'ຍັງບໍ່ມີອັດຕາແລກປ່ຽນ'}
                   </div>
@@ -318,6 +452,12 @@ export function MultiPayment({
           );
         })}
       </div>
+
+      {insufficientFundsError && !hideInsufficientNotice && (
+        <div role="alert" className="notice status-danger text-xs">
+          {insufficientFundsError}
+        </div>
+      )}
 
       {hasOwed ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-3 text-sm">

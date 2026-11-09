@@ -52,3 +52,69 @@ test('[dialog] stock movement dialog: focus, trap, Esc, restore', async ({ page 
   await expect(opener).toBeFocused();
   expect(await page.evaluate(() => document.body.style.overflow)).not.toBe('hidden');
 });
+
+test('[dialog] add AP/AR cash dialog: open modal, focus trap, Esc, close', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockApi(page);
+  await seedSession(page, 'dark', true);
+
+  // Test AP Cash dialog
+  await page.goto('/ledger/ap-cash');
+  await page.waitForLoadState('networkidle');
+
+  const apOpener = page.getByRole('button', { name: '+ Add AP Cash' });
+  await apOpener.focus();
+  await apOpener.click();
+
+  const apDialog = page.getByRole('dialog');
+  await expect(apDialog).toBeVisible();
+  await expect(apDialog).toHaveAttribute('aria-modal', 'true');
+  await expect(apDialog.getByText('ເພີ່ມລາຍການ AP (Cash) — ໜີ້ຕ້ອງສົ່ງ')).toBeVisible();
+
+  // Scrim click does not discard
+  await page.mouse.click(5, 5);
+  await expect(apDialog).toBeVisible();
+
+  // Esc closes
+  await page.keyboard.press('Escape');
+  await expect(apDialog).toBeHidden();
+  await expect(apOpener).toBeFocused();
+
+  // Test AR Cash dialog
+  await page.goto('/ledger/ar-cash');
+  await page.waitForLoadState('networkidle');
+
+  const arOpener = page.getByRole('button', { name: '+ Add AR Cash' });
+  await arOpener.focus();
+  await arOpener.click();
+
+  const arDialog = page.getByRole('dialog');
+  await expect(arDialog).toBeVisible();
+  await expect(arDialog).toHaveAttribute('aria-modal', 'true');
+  await expect(arDialog.getByText('ເພີ່ມລາຍການ AR (Cash) — ໜີ້ຕ້ອງຮັບ')).toBeVisible();
+
+  // Cancel button closes
+  await arDialog.getByRole('button', { name: 'ຍົກເລີກ' }).click();
+  await expect(arDialog).toBeHidden();
+});
+
+test('[dialog] AP/AR cash history view detail modal', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockApi(page);
+  await seedSession(page, 'dark', true);
+
+  await page.goto('/ledger/ap-cash');
+  await page.waitForLoadState('networkidle');
+
+  const viewButton = page.locator('table').last().getByRole('button', { name: /^View/ }).first();
+  await viewButton.click();
+
+  const detailDialog = page.getByRole('dialog');
+  await expect(detailDialog).toBeVisible();
+  await expect(detailDialog).toHaveAttribute('aria-modal', 'true');
+  await expect(detailDialog.getByText('ລາຍລະອຽດ AP (Cash)')).toBeVisible();
+
+  // Close via button
+  await detailDialog.getByRole('button', { name: 'ປິດ (Close)' }).click();
+  await expect(detailDialog).toBeHidden();
+});

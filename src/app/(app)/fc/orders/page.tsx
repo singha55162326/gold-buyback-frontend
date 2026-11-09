@@ -1,6 +1,7 @@
 'use client';
 
-import { Fragment, useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,15 +10,23 @@ import { formatLak, formatWeight, formatDate, formatDateTime, formatByCurrency }
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { NumberInput } from '@/components/number-input';
-import { MultiPayment, newPaymentLines, paymentPayload, calcTotalLak, type PaymentLine, type Rates, type PayCurrency } from '@/components/multi-payment';
+import {
+  MultiPayment,
+  newPaymentLines,
+  paymentPayload,
+  useInsufficientFundsError,
+  type PaymentLine,
+  type Rates,
+  type PayCurrency,
+  type CashBalance,
+  type BankBalance,
+} from '@/components/multi-payment';
 import { statusClass } from '@/lib/status';
-import type { PagedResult } from '@/components/date-range';
-import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
+import { DateRangeFilter, today, useHistoryRange } from '@/components/date-range';
 import { Dialog } from '@/components/dialog';
 
 interface GoldItem { id: string; nameLo: string }
 interface Partner { id: string; nameLo: string }
-interface Bank { id: string; nameLo: string }
 
 type OrderStatus =
   | 'ORDER_PLACED'
@@ -44,6 +53,9 @@ interface Order {
   id: string; code: string; billNo: string; productType: 'IT' | 'ITP';
   staffName: string; weightG: string; quantity: number;
   totalAmount: string; receivedAmount: string; balanceAmount: string;
+  currency?: PayCurrency;
+  originalTotalAmount?: string | null;
+  exchangeRate?: string | null;
   status: OrderStatus; note: string | null; createdAt: string;
   sentToSmithAt: string | null;
   /** ຜູ້ບັນທຶກ Order ນີ້. */
@@ -61,13 +73,14 @@ interface Order {
   receipts: Array<{
     id: string;
     method: 'CASH' | 'BANK';
+    bankAccountId?: string | null;
     currency: 'LAK' | 'THB' | 'USD';
     amount: string;
     amountLak: string;
     isRefund: boolean;
     isDeposit: boolean;
     createdAt: string;
-    bankAccount: { nameLo: string } | null;
+    bankAccount: { id?: string; nameLo: string } | null;
   }>;
   customer: { phone: string };
   goldItemId?: string;
@@ -85,6 +98,31 @@ const STATUS: Record<OrderStatus, { lo: string }> = {
   CANCELLED: { lo: 'ຍົກເລີກ' },
 };
 
+type StatusFilter = OrderStatus | 'PENDING_ACTION' | '';
+
+const STATUS_FILTER_OPTIONS: Array<{
+  value: StatusFilter;
+  labelLo: string;
+  dotColor: string;
+}> = [
+  { value: '', labelLo: 'ທັງໝົດ (ລວມລາຍການຄ້າງ)', dotColor: 'var(--gold)' },
+  { value: 'PENDING_ACTION', labelLo: 'ສະເພາະວຽກຄ້າງ (ຍັງບໍ່ປິດ)', dotColor: 'var(--warning-dot)' },
+  { value: 'ORDER_PLACED', labelLo: STATUS.ORDER_PLACED.lo, dotColor: 'var(--warning-dot)' },
+  { value: 'SENT_TO_SMITH', labelLo: STATUS.SENT_TO_SMITH.lo, dotColor: 'var(--warning-dot)' },
+  { value: 'RECEIVED_FROM_SMITH', labelLo: STATUS.RECEIVED_FROM_SMITH.lo, dotColor: 'var(--gold)' },
+  { value: 'AWAITING_PICKUP', labelLo: STATUS.AWAITING_PICKUP.lo, dotColor: 'var(--gold)' },
+  { value: 'COMPLETED', labelLo: STATUS.COMPLETED.lo, dotColor: 'var(--success-dot)' },
+  { value: 'CANCELLED', labelLo: STATUS.CANCELLED.lo, dotColor: 'var(--danger-dot)' },
+];
+
+/** ແปลง ISO timestamp ເປັນ YYYY-MM-DD ຕາມເວລາທ້ອງຖິ່ນ ເພື່ອກວດວ່າເປັນບິນຂ້າມມື້ຫຼືບໍ່. */
+function localDateString(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
 /** The one step each status may advance to (TOR §7). */
 const NEXT: Partial<Record<OrderStatus, OrderStatus>> = {
   ORDER_PLACED: 'SENT_TO_SMITH',
@@ -93,7 +131,72 @@ const NEXT: Partial<Record<OrderStatus, OrderStatus>> = {
   AWAITING_PICKUP: 'COMPLETED',
 };
 
-const today = () => new Date().toISOString().slice(0, 10);
+const NOTE_TOTAL_TAG_RE = /\[TOTAL:\s*([\d,.]+)\s*(THB|USD|LAK)\]/;
+
+/** ລ້າງ tag [TOTAL: ...] ເກົ່າອອກຈາກ note ເພື່ອສະແດງສະເພາະໝາຍເຫດຈິງ. */
+function cleanOrderNote(note: string | null | undefined): string {
+  return (note ?? '').replace(/\[TOTAL:\s*[\d,.]+\s*(THB|USD|LAK)\]\s*/g, '').trim();
+}
+
+/** ດຶງສະກຸນເງິນຫຼັກ ແລະ ຍອດລວມຕາມສະກຸນເງິນຂອງ Order (ຮອງຮັບທັງຖັນ DB ແລະ ຂໍ້ມູນເກົ່າໃນ note). */
+function resolveOrderCurrencyAndTotal(order: Order, fallbackRateLookup?: (cur: PayCurrency) => number) {
+  const received = (order.receipts ?? []).filter((r) => !r.isRefund);
+  const tagMatch = order.note?.match(NOTE_TOTAL_TAG_RE);
+
+  let orderCurrency: PayCurrency = 'LAK';
+  if (order.currency && (['LAK', 'THB', 'USD'] as string[]).includes(order.currency) && order.currency !== 'LAK') {
+    orderCurrency = order.currency;
+  } else if (tagMatch && (['LAK', 'THB', 'USD'] as string[]).includes(tagMatch[2])) {
+    orderCurrency = tagMatch[2] as PayCurrency;
+  } else if (received.length > 0 && (['LAK', 'THB', 'USD'] as string[]).includes(received[0].currency)) {
+    orderCurrency = received[0].currency;
+  }
+
+  const orderExchangeRate =
+    Number(order.exchangeRate) > 0
+      ? Number(order.exchangeRate)
+      : fallbackRateLookup
+        ? fallbackRateLookup(orderCurrency)
+        : 0;
+
+  let totalInCur = Number(order.totalAmount) || 0;
+  if (orderCurrency !== 'LAK') {
+    if (order.originalTotalAmount && Number(order.originalTotalAmount) > 0 && order.currency === orderCurrency) {
+      totalInCur = Number(order.originalTotalAmount);
+    } else if (tagMatch && tagMatch[2] === orderCurrency) {
+      totalInCur = Number(tagMatch[1].replace(/,/g, '')) || 0;
+    } else if (orderExchangeRate > 0) {
+      totalInCur = Math.round(((Number(order.totalAmount) || 0) / orderExchangeRate) * 100) / 100;
+    }
+  }
+
+  const receivedInCur = received
+    .filter((r) => r.currency === orderCurrency)
+    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
+
+  const balanceLak = Number(order.balanceAmount) || 0;
+  let balanceInCur = balanceLak;
+  if (balanceLak <= 0) {
+    balanceInCur = 0;
+  } else if (orderCurrency !== 'LAK') {
+    if (totalInCur > 0 && receivedInCur > 0) {
+      balanceInCur = Math.max(0, Math.round((totalInCur - receivedInCur) * 100) / 100);
+    } else if (orderExchangeRate > 0) {
+      balanceInCur = Math.max(0, Math.round((balanceLak / orderExchangeRate) * 100) / 100);
+    } else {
+      balanceInCur = Math.max(0, Math.round((totalInCur - receivedInCur) * 100) / 100);
+    }
+  }
+
+  return {
+    orderCurrency,
+    totalInCur,
+    receivedInCur,
+    balanceInCur,
+    orderExchangeRate,
+    cleanNote: cleanOrderNote(order.note),
+  };
+}
 
 /**
  * TOR §7 — ລາຍການ Order.
@@ -110,9 +213,9 @@ function getOrderReceiptSummary(order: Order) {
   const refunds = (order.receipts ?? []).filter((r) => r.isRefund);
 
   if (received.length === 0) {
-    const match = order.note?.match(/\[TOTAL:\s*[\d,.]+\s*(THB|USD|LAK)\]/);
+    const { orderCurrency } = resolveOrderCurrencyAndTotal(order);
     return {
-      currency: (match ? match[1] : 'LAK') as PayCurrency,
+      currency: orderCurrency,
       amountDisplay: '0',
       amountLak: Number(order.receivedAmount) || 0,
       netAmount: 0,
@@ -217,11 +320,19 @@ export default function OrdersPage() {
   const [supplierId, setSupplierId] = useState('');
   const [transitionDate, setTransitionDate] = useState(today());
 
-  // Auto-fill logged-in staff name if available
+  // filter & search state (supports ?search= from Module Advance link)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
+  const [searchTerm, setSearchTerm] = useState('');
+
+  // Auto-fill logged-in staff name and initial ?search= query param if available
   useEffect(() => {
     const user = getStoredUser();
     if (user?.fullName && !staffName) {
       setStaffName(user.fullName);
+    }
+    if (typeof window !== 'undefined') {
+      const q = new URLSearchParams(window.location.search).get('search');
+      if (q) setSearchTerm(q.trim());
     }
   }, []);
 
@@ -235,11 +346,6 @@ export default function OrdersPage() {
     queryFn: () => api.get<Partner[]>('/catalog/partners'),
   });
   const partners = partnersQuery.data ?? [];
-  const banksQuery = useQuery({
-    queryKey: ['catalog', 'bank-accounts'],
-    queryFn: () => api.get<Bank[]>('/catalog/bank-accounts'),
-  });
-  const banks = banksQuery.data ?? [];
 
   const ratesQuery = useQuery({
     queryKey: ['rates', 'current'],
@@ -248,10 +354,45 @@ export default function OrdersPage() {
   });
   const rates = ratesQuery.data ?? null;
 
-  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
-  const history = useHistoryRange<Order>(['orders'], '/orders');
+  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້ (ລວມບິນທີ່ຍັງຄ້າງຂ້າມມື້); the range is widened from the filter strip.
+  const serverStatusParam =
+    statusFilter && statusFilter !== 'PENDING_ACTION' ? statusFilter : undefined;
+  const history = useHistoryRange<Order>(['orders'], '/orders', {
+    params: { status: serverStatusParam },
+  });
   const orders = history.rows;
-  const catalogQuery = [goldItemsQuery, partnersQuery, banksQuery].find((q) => q.isError);
+
+  const isPendingOrder = (o: Order) => {
+    if (o.status === 'CANCELLED') return false;
+    if (o.status !== 'COMPLETED') return true;
+    return getOrderReceiptSummary(o).netAmount > 0.0001;
+  };
+
+  const carryOverCount = useMemo(
+    () =>
+      orders.filter((o) => {
+        const createdDay = localDateString(o.createdAt);
+        return Boolean(createdDay && history.from && createdDay < history.from && isPendingOrder(o));
+      }).length,
+    [orders, history.from],
+  );
+
+  const filteredOrders = useMemo(() => {
+    const byStatus =
+      statusFilter === 'PENDING_ACTION' ? orders.filter((o) => isPendingOrder(o)) : orders;
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return byStatus;
+    return byStatus.filter(
+      (o) =>
+        o.code.toLowerCase().includes(q) ||
+        o.billNo.toLowerCase().includes(q) ||
+        o.customer.phone.toLowerCase().includes(q) ||
+        o.staffName.toLowerCase().includes(q) ||
+        (o.supplier?.nameLo ?? '').toLowerCase().includes(q),
+    );
+  }, [orders, statusFilter, searchTerm]);
+
+  const catalogQuery = [goldItemsQuery, partnersQuery].find((q) => q.isError);
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -272,16 +413,18 @@ export default function OrdersPage() {
 
   const create = useMutation({
     mutationFn: () => {
-      let finalNote = note.trim();
-      if (orderCurrency !== 'LAK' && numTotalInput > 0) {
-        const currTag = `[TOTAL: ${formatByCurrency(totalAmount, orderCurrency)} ${orderCurrency}]`;
-        finalNote = finalNote ? `${finalNote} ${currTag}` : currTag;
-      }
+      const cleanNote = note.trim();
       return api.post('/orders', {
-        phone, billNo, productType, staffName,
+        phone,
+        billNo,
+        productType,
+        staffName,
         lines: orderLines,
         totalAmount: String(Math.round(totalInLak)),
-        note: finalNote || undefined,
+        currency: orderCurrency,
+        originalTotalAmount: String(numTotalInput),
+        exchangeRate: String(currentTotalRate > 0 ? currentTotalRate : 1),
+        note: cleanNote || undefined,
         receipts: paymentPayload(payments),
       });
     },
@@ -312,14 +455,13 @@ export default function OrdersPage() {
       const body: Record<string, unknown> = { status };
       if (status === 'SENT_TO_SMITH') body.supplierId = supplierId;
       if (status === 'RECEIVED_FROM_SMITH') body.receivedFromSmithAt = transitionDate;
-      if (status === 'COMPLETED') body.customerPickupAt = transitionDate;
-
-      // ຫາກເປັນຂັ້ນຕອນ COMPLETED ແລະ ມີຍອດຈ່າຍເງິນຄືນ ໃຫ້ສົ່ງ refund ໄປພ້ອມກັນ
       if (status === 'COMPLETED') {
+        body.customerPickupAt = transitionDate;
+        // ສົ່ງ refundReceipts ໄປພ້ອມກັນໃນຄຳຂໍດຽວ ເພື່ອໃຫ້ເຮັດວຽກເປັນ Atomic Transaction ຢູ່ Server
         const summary = getOrderReceiptSummary(order);
         const refundPayload = paymentPayload(refundPayments);
         if (summary.netAmount > 0.0001 && refundPayload.length > 0) {
-          await api.post(`/orders/${order.id}/refund`, { receipts: refundPayload });
+          body.refundReceipts = refundPayload;
         }
       }
 
@@ -580,20 +722,15 @@ export default function OrdersPage() {
     setEditSupplierId(order.supplier?.id ?? order.supplierId ?? '');
     setEditStatus(order.status);
 
-    // Detect currency: check receipts first, then note tag [TOTAL: ... CUR]
-    const received = (order.receipts ?? []).filter((r) => !r.isRefund);
-    let detectedCurrency: PayCurrency = 'LAK';
-    if (received.length > 0 && (['LAK', 'THB', 'USD'] as string[]).includes(received[0].currency)) {
-      detectedCurrency = received[0].currency as PayCurrency;
-    } else {
-      const match = order.note?.match(/\[TOTAL:\s*[\d,.]+\s*(THB|USD|LAK)\]/);
-      if (match && (['LAK', 'THB', 'USD'] as string[]).includes(match[1])) {
-        detectedCurrency = match[1] as PayCurrency;
-      }
-    }
+    const {
+      orderCurrency: detectedCurrency,
+      totalInCur: initialTotalInCur,
+      receivedInCur: initialDepositSum,
+      cleanNote,
+    } = resolveOrderCurrencyAndTotal(order, rateForTotal);
     setEditOrderCurrency(detectedCurrency);
 
-    // Populate payment lines in detected currency
+    const received = (order.receipts ?? []).filter((r) => !r.isRefund);
     if (received.length > 0) {
       setEditPayments(
         received.map((r: any) => ({
@@ -608,23 +745,8 @@ export default function OrdersPage() {
       setEditPayments(newPaymentLines(detectedCurrency));
     }
 
-    // Populate total amount in that currency
-    let initialTotalInCur = 0;
-    const totalMatch = order.note?.match(/\[TOTAL:\s*([\d,.]+)\s*(THB|USD|LAK)\]/);
-    if (totalMatch && totalMatch[2] === detectedCurrency) {
-      initialTotalInCur = Number(totalMatch[1].replace(/,/g, '')) || 0;
-      setEditTotalAmount(totalMatch[1].replace(/,/g, ''));
-    } else if (detectedCurrency === 'LAK') {
-      initialTotalInCur = Number(order.totalAmount) || 0;
-      setEditTotalAmount(order.totalAmount ? String(order.totalAmount).replace(/,/g, '') : '');
-    } else {
-      const rate = rateForTotal(detectedCurrency);
-      initialTotalInCur = rate > 0 ? Math.round((Number(order.totalAmount) / rate) * 100) / 100 : Number(order.totalAmount) || 0;
-      setEditTotalAmount(String(initialTotalInCur));
-    }
+    setEditTotalAmount(initialTotalInCur > 0 ? String(initialTotalInCur) : '');
 
-    // Deposit sum in detected currency
-    const initialDepositSum = received.reduce((s, r) => s + (Number(r.amount) || 0), 0);
     const orderTotalLak = Number(order.totalAmount) || 0;
     const orderRcvdLak = Number(order.receivedAmount) || 0;
     const hasRemainingBalance = orderTotalLak - orderRcvdLak > 1;
@@ -633,7 +755,6 @@ export default function OrdersPage() {
     const isCustom = hasRemainingBalance && Math.abs(initialTotalInCur - initialDepositSum) > 0.01;
     setIsEditCustomTotal(isCustom);
 
-    const cleanNote = (order.note ?? '').replace(/\[TOTAL:\s*[\d,.]+\s*(THB|USD|LAK)\]\s*/g, '').trim();
     setEditNote(cleanNote);
     setEditError(null);
 
@@ -669,10 +790,7 @@ export default function OrdersPage() {
           quantity: qty(l.quantity),
           amount: l.amount.replace(/,/g, '').trim() || undefined,
         }));
-      const finalNote =
-        editOrderCurrency !== 'LAK' && numEditTotalInput > 0
-          ? `[TOTAL: ${formatByCurrency(numEditTotalInput, editOrderCurrency)} ${editOrderCurrency}] ${editNote.trim()}`.trim()
-          : editNote.trim();
+      const cleanNote = editNote.trim();
       return api.patch(`/orders/${editingOrder.id}`, {
         phone: editPhone,
         billNo: editBillNo,
@@ -681,7 +799,10 @@ export default function OrdersPage() {
         supplierId: editSupplierId || null,
         status: editStatus,
         totalAmount: String(Math.round(editTotalInLak)),
-        note: finalNote || null,
+        currency: editOrderCurrency,
+        originalTotalAmount: String(numEditTotalInput),
+        exchangeRate: String(currentEditTotalRate > 0 ? currentEditTotalRate : 1),
+        note: cleanNote || null,
         lines: formattedLines,
         receipts: paymentPayload(editPayments),
       });
@@ -711,6 +832,132 @@ export default function OrdersPage() {
     },
   });
 
+  const refundInsufficientError = useInsufficientFundsError(
+    refundPayments,
+    Boolean(advancing || refunding),
+    'ຈ່າຍເງິນຄືນລູກຄ້າ',
+  );
+
+  const needsAdminBalanceCheck = Boolean(editingOrder || deletingOrder);
+  const { data: cashBalances = [] } = useQuery({
+    queryKey: ['cash', 'balances'],
+    queryFn: () => api.get<CashBalance[]>('/cash/balances'),
+    enabled: needsAdminBalanceCheck,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+  });
+  const { data: bankBalances = [] } = useQuery({
+    queryKey: ['cash', 'bank', 'balances'],
+    queryFn: () => api.get<BankBalance[]>('/cash/bank/balances'),
+    enabled: needsAdminBalanceCheck,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: false,
+  });
+
+  const editInsufficientFundsError = useMemo(() => {
+    if (!editingOrder) return null;
+    const oldReceipts = (editingOrder.receipts ?? []).filter((r) => !r.isRefund);
+    const oldCash: Record<string, number> = {};
+    const oldBank: Record<string, { amount: number; nameLo?: string }> = {};
+    for (const r of oldReceipts) {
+      const amt = Number(r.amount) || 0;
+      if (amt <= 0) continue;
+      if (r.method === 'CASH') {
+        oldCash[r.currency] = (oldCash[r.currency] ?? 0) + amt;
+      } else if (r.method === 'BANK') {
+        const bId = r.bankAccountId ?? r.bankAccount?.id;
+        if (bId) {
+          const key = `${bId}:${r.currency}`;
+          oldBank[key] = {
+            amount: (oldBank[key]?.amount ?? 0) + amt,
+            nameLo: r.bankAccount?.nameLo,
+          };
+        }
+      }
+    }
+
+    const newCash: Record<string, number> = {};
+    const newBank: Record<string, number> = {};
+    for (const p of editPayments) {
+      const amt = Number(p.amount.replace(/,/g, '').trim()) || 0;
+      if (amt <= 0) continue;
+      if (p.method === 'CASH') {
+        newCash[p.currency] = (newCash[p.currency] ?? 0) + amt;
+      } else if (p.method === 'BANK' && p.bankAccountId) {
+        const key = `${p.bankAccountId}:${p.currency}`;
+        newBank[key] = (newBank[key] ?? 0) + amt;
+      }
+    }
+
+    for (const [cur, oldTotal] of Object.entries(oldCash)) {
+      const reduction = oldTotal - (newCash[cur] ?? 0);
+      if (reduction > 0.0001) {
+        const avail = Number(cashBalances.find((c) => c.currency === cur)?.balance ?? 0);
+        if (reduction > avail + 0.0001) {
+          return `ເງິນສົດ ${cur} ໃນຮ້ານ (Module Cash) ບໍ່ພໍສຳລັບຫຼຸດ/ປ່ຽນຊ່ອງທາງຮັບເງິນ Order (ມີເຫຼືອ ${formatByCurrency(avail, cur)} ${cur}, ຕ້ອງການຫັກອອກ ${formatByCurrency(reduction, cur)} ${cur})`;
+        }
+      }
+    }
+
+    for (const [key, info] of Object.entries(oldBank)) {
+      const reduction = info.amount - (newBank[key] ?? 0);
+      if (reduction > 0.0001) {
+        const [bankAccountId, cur] = key.split(':');
+        const bb = bankBalances.find((b) => b.bankAccountId === bankAccountId && b.currency === cur);
+        const avail = Number(bb?.actual ?? 0);
+        const bankName = bb?.bankNameLo ?? info.nameLo ?? 'ທະນາຄານ';
+        if (reduction > avail + 0.0001) {
+          return `ຍອດເງິນ ${cur} ໃນບັນຊີ ${bankName} (Module Bank) ບໍ່ພໍສຳລັບຫຼຸດ/ປ່ຽນຊ່ອງທາງຮັບເງິນ Order (ມີເຫຼືອ ${formatByCurrency(avail, cur)} ${cur}, ຕ້ອງການຫັກອອກ ${formatByCurrency(reduction, cur)} ${cur})`;
+        }
+      }
+    }
+    return null;
+  }, [editingOrder, editPayments, cashBalances, bankBalances]);
+
+  const deleteInsufficientFundsError = useMemo(() => {
+    if (!deletingOrder) return null;
+    const netCash: Record<string, number> = {};
+    const netBank: Record<string, { amount: number; nameLo?: string }> = {};
+    for (const r of deletingOrder.receipts ?? []) {
+      const sign = r.isRefund ? -1 : 1;
+      const amt = (Number(r.amount) || 0) * sign;
+      if (r.method === 'CASH') {
+        netCash[r.currency] = (netCash[r.currency] ?? 0) + amt;
+      } else if (r.method === 'BANK') {
+        const bId = r.bankAccountId ?? r.bankAccount?.id;
+        if (bId) {
+          const key = `${bId}:${r.currency}`;
+          netBank[key] = {
+            amount: (netBank[key]?.amount ?? 0) + amt,
+            nameLo: r.bankAccount?.nameLo,
+          };
+        }
+      }
+    }
+
+    for (const [cur, net] of Object.entries(netCash)) {
+      if (net > 0.0001) {
+        const avail = Number(cashBalances.find((c) => c.currency === cur)?.balance ?? 0);
+        if (net > avail + 0.0001) {
+          return `ເງິນສົດ ${cur} ໃນຮ້ານ (Module Cash) ບໍ່ພໍສຳລັບລຶບ Order ນີ້ (ມີເຫຼືອ ${formatByCurrency(avail, cur)} ${cur}, ຕ້ອງຫັກຄືນ ${formatByCurrency(net, cur)} ${cur})`;
+        }
+      }
+    }
+
+    for (const [key, info] of Object.entries(netBank)) {
+      if (info.amount > 0.0001) {
+        const [bankAccountId, cur] = key.split(':');
+        const bb = bankBalances.find((b) => b.bankAccountId === bankAccountId && b.currency === cur);
+        const avail = Number(bb?.actual ?? 0);
+        const bankName = bb?.bankNameLo ?? info.nameLo ?? 'ທະນາຄານ';
+        if (info.amount > avail + 0.0001) {
+          return `ຍອດເງິນ ${cur} ໃນບັນຊີ ${bankName} (Module Bank) ບໍ່ພໍສຳລັບລຶບ Order ນີ້ (ມີເຫຼືອ ${formatByCurrency(avail, cur)} ${cur}, ຕ້ອງຫັກຄືນ ${formatByCurrency(info.amount, cur)} ${cur})`;
+        }
+      }
+    }
+    return null;
+  }, [deletingOrder, cashBalances, bankBalances]);
+
   const isEditPhoneValid = /^\d{8}$/.test(editPhone);
   const isEditBillNoValid = /^\d{6}$/.test(editBillNo);
   const isEditStaffValid = Boolean(editStaffName.trim());
@@ -726,9 +973,10 @@ export default function OrdersPage() {
     isEditLinesValid &&
     isEditTotalValid &&
     isEditPaymentValid &&
-    isEditDepositValid;
+    isEditDepositValid &&
+    !editInsufficientFundsError;
 
-  const pager = usePagination(orders);
+  const pager = usePagination(filteredOrders);
 
   return (
     <div className="space-y-6">
@@ -939,7 +1187,7 @@ export default function OrdersPage() {
                     type="button"
                     className={`px-3.5 py-1 text-xs font-semibold rounded-md transition-all ${
                       orderCurrency === cur
-                        ? 'bg-[var(--gold)] text-white shadow-sm font-bold'
+                        ? 'bg-[var(--gold)] text-[var(--gold-fg)] shadow-sm font-bold'
                         : 'text-muted hover:text-fg'
                     }`}
                     onClick={() => changeOrderCurrency(cur)}
@@ -1063,7 +1311,7 @@ export default function OrdersPage() {
           const totalRefundEntered = refundPayments.reduce((s, l) => s + (Number(l.amount.replace(/,/g, '')) || 0), 0);
           const isOverRefund = refundAmount > 0 && totalRefundEntered > refundAmount + 0.001;
           const hasRefundLines = paymentPayload(refundPayments).length > 0;
-          const refundValid = !hasRefund || (legsReady(refundPayments) && !isOverRefund);
+          const refundValid = !hasRefund || (legsReady(refundPayments) && !isOverRefund && !refundInsufficientError);
 
           return (
             <div className="flex w-full items-center justify-end gap-2">
@@ -1181,18 +1429,10 @@ export default function OrdersPage() {
                   )}
 
                   {Number(advancing.balanceAmount) > 0 && (() => {
-                    let balDisplay = `${formatLak(advancing.balanceAmount)} LAK`;
-                    if (refundSummary.currency !== 'LAK') {
-                      const match = advancing.note?.match(/\[TOTAL:\s*([\d,.]+)\s*(THB|USD|LAK)\]/);
-                      if (match && match[2] === refundSummary.currency) {
-                        const totalInCur = Number(match[1].replace(/,/g, '')) || 0;
-                        const rcvdInCur = (advancing.receipts ?? [])
-                          .filter((r) => !r.isRefund && r.currency === refundSummary.currency)
-                          .reduce((s, r) => s + (Number(r.amount) || 0), 0);
-                        const bal = Math.max(0, totalInCur - rcvdInCur);
-                        balDisplay = `${formatByCurrency(bal, refundSummary.currency)} ${refundSummary.currency}`;
-                      }
-                    }
+                    const resolved = resolveOrderCurrencyAndTotal(advancing, rateForTotal);
+                    const balDisplay = resolved.orderCurrency === 'LAK'
+                      ? `${formatLak(advancing.balanceAmount)} LAK`
+                      : `${formatByCurrency(resolved.balanceInCur, resolved.orderCurrency)} ${resolved.orderCurrency}`;
                     return (
                       <div className="notice status-warning mt-3">
                         ຍັງມີຍອດຄົງເຫຼືອ {balDisplay} — ຕ້ອງຊຳຣະໃຫ້ຄົບກ່ອນ.
@@ -1216,24 +1456,9 @@ export default function OrdersPage() {
         }}
         title={
           paying ? (() => {
-            const paySummary = getOrderReceiptSummary(paying);
-            const payCurrency = (paySummary.currency === 'USD' || paySummary.currency === 'THB')
-              ? (paySummary.currency as PayCurrency)
-              : 'LAK';
-            let payBal = Number(paying.balanceAmount) || 0;
-            if (payCurrency !== 'LAK') {
-              const match = paying.note?.match(/\[TOTAL:\s*([\d,.]+)\s*(THB|USD|LAK)\]/);
-              if (match && match[2] === payCurrency) {
-                const totalInCur = Number(match[1].replace(/,/g, '')) || 0;
-                const rcvdInCur = (paying.receipts ?? [])
-                  .filter((r) => !r.isRefund && r.currency === payCurrency)
-                  .reduce((s, r) => s + (Number(r.amount) || 0), 0);
-                payBal = Math.max(0, Math.round((totalInCur - rcvdInCur) * 100) / 100);
-              } else {
-                const rate = rateForTotal(payCurrency);
-                payBal = rate > 0 ? Math.round((payBal / rate) * 100) / 100 : payBal;
-              }
-            }
+            const resolved = resolveOrderCurrencyAndTotal(paying, rateForTotal);
+            const payCurrency = resolved.orderCurrency;
+            const payBal = resolved.balanceInCur;
             return `ຊຳຣະເພີ່ມ — ${paying.code} (ຄົງເຫຼືອ ${
               payCurrency === 'LAK'
                 ? `${formatLak(paying.balanceAmount)} LAK`
@@ -1243,24 +1468,8 @@ export default function OrdersPage() {
         }
         size="lg"
         footer={paying && (() => {
-          const paySummary = getOrderReceiptSummary(paying);
-          const payCurrency = (paySummary.currency === 'USD' || paySummary.currency === 'THB')
-            ? (paySummary.currency as PayCurrency)
-            : 'LAK';
-          let payBal = Number(paying.balanceAmount) || 0;
-          if (payCurrency !== 'LAK') {
-            const match = paying.note?.match(/\[TOTAL:\s*([\d,.]+)\s*(THB|USD|LAK)\]/);
-            if (match && match[2] === payCurrency) {
-              const totalInCur = Number(match[1].replace(/,/g, '')) || 0;
-              const rcvdInCur = (paying.receipts ?? [])
-                .filter((r) => !r.isRefund && r.currency === payCurrency)
-                .reduce((s, r) => s + (Number(r.amount) || 0), 0);
-              payBal = Math.max(0, Math.round((totalInCur - rcvdInCur) * 100) / 100);
-            } else {
-              const rate = rateForTotal(payCurrency);
-              payBal = rate > 0 ? Math.round((payBal / rate) * 100) / 100 : payBal;
-            }
-          }
+          const resolved = resolveOrderCurrencyAndTotal(paying, rateForTotal);
+          const payBal = resolved.balanceInCur;
           const totalPayEntered = payPayments.reduce((s, l) => s + (Number(l.amount.replace(/,/g, '')) || 0), 0);
           const isOverPay = payBal > 0 && totalPayEntered > payBal + 0.001;
 
@@ -1290,24 +1499,9 @@ export default function OrdersPage() {
         })()}
       >
         {paying && (() => {
-          const paySummary = getOrderReceiptSummary(paying);
-          const payCurrency = (paySummary.currency === 'USD' || paySummary.currency === 'THB')
-            ? (paySummary.currency as PayCurrency)
-            : 'LAK';
-          let payBal = Number(paying.balanceAmount) || 0;
-          if (payCurrency !== 'LAK') {
-            const match = paying.note?.match(/\[TOTAL:\s*([\d,.]+)\s*(THB|USD|LAK)\]/);
-            if (match && match[2] === payCurrency) {
-              const totalInCur = Number(match[1].replace(/,/g, '')) || 0;
-              const rcvdInCur = (paying.receipts ?? [])
-                .filter((r) => !r.isRefund && r.currency === payCurrency)
-                .reduce((s, r) => s + (Number(r.amount) || 0), 0);
-              payBal = Math.max(0, Math.round((totalInCur - rcvdInCur) * 100) / 100);
-            } else {
-              const rate = rateForTotal(payCurrency);
-              payBal = rate > 0 ? Math.round((payBal / rate) * 100) / 100 : payBal;
-            }
-          }
+          const resolved = resolveOrderCurrencyAndTotal(paying, rateForTotal);
+          const payCurrency = resolved.orderCurrency;
+          const payBal = resolved.balanceInCur;
 
           return (
             <div className="space-y-4">
@@ -1370,7 +1564,7 @@ export default function OrdersPage() {
                 type="button"
                 className="btn-primary min-w-[120px]"
                 aria-describedby={error ? 'orders-error' : undefined}
-                disabled={!legsReady(refundPayments) || refund.isPending || isOverRefund}
+                disabled={!legsReady(refundPayments) || refund.isPending || isOverRefund || Boolean(refundInsufficientError)}
                 onClick={() => refund.mutate(refunding)}
               >
                 {refund.isPending ? 'ກຳລັງບັນທຶກ...' : 'ຈ່າຍເງິນຄືນ'}
@@ -1409,10 +1603,169 @@ export default function OrdersPage() {
       {/* ORDERS HISTORY TABLE */}
       <div data-fade className="card">
         <div className="card-header">
-          <h2 className="card-title">ລາຍການ Order</h2>
-          <span className="num text-xs text-muted">{orders.length} ລາຍການ</span>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="card-title">ລາຍການ Order</h2>
+            {carryOverCount > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setStatusFilter((prev) => (prev === 'PENDING_ACTION' ? '' : 'PENDING_ACTION'))
+                }
+                className="status-warning cursor-pointer transition-opacity hover:opacity-90"
+                title="ກົດເພື່ອກອງສະເພາະບິນຄ້າງຂ້າມມື້"
+              >
+                ວຽກຄ້າງຂ້າມມື້ {carryOverCount} ບິນ
+              </button>
+            )}
+          </div>
+          <span className="num text-xs text-muted">
+            {filteredOrders.length === orders.length
+              ? `${orders.length} ລາຍການ`
+              : `${filteredOrders.length} / ${orders.length} ລາຍການ`}
+          </span>
         </div>
         <DateRangeFilter history={history} />
+        <div className="filter-bar">
+          <div className="filter-dates">
+            <span className="filter-select-label" id="orders-status-filter-label">
+              ສະຖານະ
+            </span>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button
+                  type="button"
+                  id="orders-status-filter"
+                  aria-labelledby="orders-status-filter-label"
+                  className="filter-date group inline-flex min-w-[230px] items-center justify-between gap-2.5 pr-3 text-left"
+                >
+                  <span className="inline-flex items-center gap-2 truncate">
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor:
+                          STATUS_FILTER_OPTIONS.find((opt) => opt.value === statusFilter)?.dotColor ??
+                          'var(--gold)',
+                      }}
+                    />
+                    <span className="truncate font-medium text-fg">
+                      {STATUS_FILTER_OPTIONS.find((opt) => opt.value === statusFilter)?.labelLo ??
+                        'ທັງໝົດ (ລວມລາຍການຄ້າງ)'}
+                    </span>
+                  </span>
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="shrink-0 text-[var(--gold-icon)] transition-transform duration-150 group-data-[state=open]:rotate-180"
+                    aria-hidden="true"
+                  >
+                    <path d="m6 9 6 6 6-6" />
+                  </svg>
+                </button>
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  align="start"
+                  sideOffset={6}
+                  className="menu-panel z-50 min-w-[250px] p-1.5"
+                >
+                  <DropdownMenu.RadioGroup
+                    value={statusFilter}
+                    onValueChange={(v) => setStatusFilter(v as StatusFilter)}
+                  >
+                    {STATUS_FILTER_OPTIONS.map((opt) => {
+                      const active = statusFilter === opt.value;
+                      return (
+                        <DropdownMenu.RadioItem
+                          key={opt.value || 'ALL'}
+                          value={opt.value}
+                          className={`flex min-h-[38px] cursor-pointer items-center justify-between gap-3 rounded-[10px] px-3 py-1.5 text-sm outline-none transition-colors ${
+                            active
+                              ? 'bg-[var(--gold-tint)] font-semibold text-[var(--gold)]'
+                              : 'text-fg data-[highlighted]:bg-[var(--row-hover)] data-[highlighted]:text-fg-strong'
+                          }`}
+                        >
+                          <span className="inline-flex items-center gap-2.5 truncate">
+                            <span
+                              className="h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: opt.dotColor }}
+                            />
+                            <span className="truncate">{opt.labelLo}</span>
+                          </span>
+                          {active && (
+                            <svg
+                              width="15"
+                              height="15"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2.4"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="shrink-0 text-[var(--gold)]"
+                              aria-hidden="true"
+                            >
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </DropdownMenu.RadioItem>
+                      );
+                    })}
+                  </DropdownMenu.RadioGroup>
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+            {statusFilter && (
+              <button
+                type="button"
+                className="filter-clear"
+                onClick={() => setStatusFilter('')}
+              >
+                ລ້າງສະຖານະ
+              </button>
+            )}
+          </div>
+          <div className="filter-tail w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-64">
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--gold-icon)]"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="search"
+                className="filter-date w-full pl-9"
+                placeholder="ຄົ້ນຫາ ລະຫັດ Order / ເລກບິນ / ເບີໂທ..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            {searchTerm && (
+              <button
+                type="button"
+                className="filter-clear"
+                onClick={() => setSearchTerm('')}
+              >
+                ລ້າງ
+              </button>
+            )}
+          </div>
+        </div>
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການ Order">
           <table className="table">
             <thead>
@@ -1436,12 +1789,16 @@ export default function OrdersPage() {
                 isLoading={history.isLoading}
                 isError={history.isError}
                 error={history.error}
-                isEmpty={orders.length === 0}
-                emptyText="ຍັງບໍ່ມີ Order"
+                isEmpty={filteredOrders.length === 0}
+                emptyText={searchTerm || statusFilter ? 'ບໍ່ພົບ Order ທີ່ຄົ້ນຫາ' : 'ຍັງບໍ່ມີ Order'}
                 onRetry={() => history.refetch()}
               />
               {pager.pageItems.map((row) => {
                 const receiptInfo = getOrderReceiptSummary(row);
+                const rowCreatedDay = localDateString(row.createdAt);
+                const isCarryOver = Boolean(
+                  rowCreatedDay && history.from && rowCreatedDay < history.from && isPendingOrder(row),
+                );
                 return (
                   <tr key={row.id}>
                     {/* ລາຍການ / Supplier / ຍອດລວມ ບໍ່ຢູ່ໃນຖັນທີ່ລູກຄ້າຂໍ ແຕ່ຍັງ
@@ -1453,7 +1810,16 @@ export default function OrdersPage() {
                         <span className="ml-1 text-muted">({row.lines.length} ລາຍການ)</span>
                       )}
                     </td>
-                    <td>{formatDate(row.createdAt)}</td>
+                    <td>
+                      <div className="flex items-center gap-1.5">
+                        <span>{formatDate(row.createdAt)}</span>
+                        {isCarryOver && (
+                          <span className="status-warning text-[10px] px-1.5 py-0" title="ບິນຄ້າງຈາກມື້ກ່ອນໜ້າ">
+                            ຄ້າງຂ້າມມື້
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="num">{row.customer.phone}</td>
                     <td className="font-mono text-xs">{row.billNo}</td>
                     <td>{row.productType}</td>
@@ -1499,23 +1865,9 @@ export default function OrdersPage() {
                           <button className="btn-ghost text-xs py-1 px-2 text-success font-medium"
                             aria-label={`ຊຳຣະເພີ່ມ ${row.code}`}
                             onClick={() => {
-                              const payCur = (receiptInfo.currency === 'USD' || receiptInfo.currency === 'THB')
-                                ? (receiptInfo.currency as PayCurrency)
-                                : 'LAK';
-                              let payBal = Number(row.balanceAmount) || 0;
-                              if (payCur !== 'LAK') {
-                                const match = row.note?.match(/\[TOTAL:\s*([\d,.]+)\s*(THB|USD|LAK)\]/);
-                                if (match && match[2] === payCur) {
-                                  const totalInCur = Number(match[1].replace(/,/g, '')) || 0;
-                                  const rcvdInCur = (row.receipts ?? [])
-                                    .filter((r) => !r.isRefund && r.currency === payCur)
-                                    .reduce((s, r) => s + (Number(r.amount) || 0), 0);
-                                  payBal = Math.max(0, Math.round((totalInCur - rcvdInCur) * 100) / 100);
-                                } else {
-                                  const rate = rateForTotal(payCur);
-                                  payBal = rate > 0 ? Math.round((payBal / rate) * 100) / 100 : payBal;
-                                }
-                              }
+                              const resolved = resolveOrderCurrencyAndTotal(row, rateForTotal);
+                              const payCur = resolved.orderCurrency;
+                              const payBal = resolved.balanceInCur;
                               setPaying(row); setAdvancing(null); setShowAdd(false); setRefunding(null);
                               const initPay = newPaymentLines(payCur);
                               if (payBal > 0) {
@@ -1656,9 +2008,9 @@ export default function OrdersPage() {
                 <span className="text-xs text-muted block mb-1">ຍອດ Order ທັງໝົດ</span>
                 <strong className="text-base font-semibold text-fg num">
                   {(() => {
-                    const match = viewingOrder.note?.match(/\[TOTAL:\s*([\d,.]+)\s*(THB|USD|LAK)\]/);
-                    if (match && match[2] !== 'LAK') {
-                      return `${match[1]} ${match[2]}`;
+                    const resolved = resolveOrderCurrencyAndTotal(viewingOrder, rateForTotal);
+                    if (resolved.orderCurrency !== 'LAK') {
+                      return `${formatByCurrency(resolved.totalInCur, resolved.orderCurrency)} ${resolved.orderCurrency}`;
                     }
                     return `${formatLak(viewingOrder.totalAmount)} LAK`;
                   })()}
@@ -1679,13 +2031,9 @@ export default function OrdersPage() {
                 <span className="text-xs text-muted block mb-1">ຍອດຄົງເຫຼືອ</span>
                 <strong className={`text-base font-semibold num ${Number(viewingOrder.balanceAmount) > 0 ? 'text-warning' : 'text-fg'}`}>
                   {(() => {
-                    const summary = getOrderReceiptSummary(viewingOrder);
-                    if (summary.currency !== 'LAK') {
-                      const match = viewingOrder.note?.match(/\[TOTAL:\s*([\d,.]+)\s*(THB|USD|LAK)\]/);
-                      const totalInCur = match ? Number(match[1].replace(/,/g, '')) || 0 : 0;
-                      const rcvdInCur = (viewingOrder.receipts ?? []).filter((r) => !r.isRefund && r.currency === summary.currency).reduce((s, r) => s + (Number(r.amount) || 0), 0);
-                      const bal = Math.max(0, totalInCur - rcvdInCur);
-                      return `${formatByCurrency(bal, summary.currency)} ${summary.currency}`;
+                    const resolved = resolveOrderCurrencyAndTotal(viewingOrder, rateForTotal);
+                    if (resolved.orderCurrency !== 'LAK') {
+                      return `${formatByCurrency(resolved.balanceInCur, resolved.orderCurrency)} ${resolved.orderCurrency}`;
                     }
                     return `${formatLak(viewingOrder.balanceAmount)} LAK`;
                   })()}
@@ -1693,9 +2041,9 @@ export default function OrdersPage() {
               </div>
             </div>
 
-            {viewingOrder.note && (
+            {cleanOrderNote(viewingOrder.note) && (
               <div className="text-xs text-muted bg-recessed/40 p-3 rounded-lg border border-line">
-                <strong className="text-fg">ໝາຍເຫດ:</strong> {viewingOrder.note}
+                <strong className="text-fg">ໝາຍເຫດ:</strong> {cleanOrderNote(viewingOrder.note)}
               </div>
             )}
 
@@ -1820,6 +2168,9 @@ export default function OrdersPage() {
           <div className="space-y-4">
             {editError && (
               <div role="alert" className="notice status-danger">{editError}</div>
+            )}
+            {editInsufficientFundsError && (
+              <div role="alert" className="notice status-danger text-xs">{editInsufficientFundsError}</div>
             )}
 
             {/* ຂໍ້ມູນຫຼັກ */}
@@ -1990,7 +2341,7 @@ export default function OrdersPage() {
                       type="button"
                       className={`px-3.5 py-1 text-xs font-semibold rounded-md transition-all ${
                         editOrderCurrency === cur
-                          ? 'bg-[var(--gold)] text-black shadow-sm font-bold'
+                          ? 'bg-[var(--gold)] text-[var(--gold-fg)] shadow-sm font-bold'
                           : 'text-muted hover:text-fg'
                       }`}
                       onClick={() => changeEditOrderCurrency(cur)}
@@ -2102,7 +2453,7 @@ export default function OrdersPage() {
             <button
               type="button"
               className="btn-danger"
-              disabled={deleteOrderMutation.isPending}
+              disabled={deleteOrderMutation.isPending || Boolean(deleteInsufficientFundsError)}
               onClick={() => deletingOrder && deleteOrderMutation.mutate(deletingOrder.id)}
             >
               {deleteOrderMutation.isPending ? 'ກຳລັງລຶບ...' : 'ຢືນຢັນລຶບ'}
@@ -2112,6 +2463,11 @@ export default function OrdersPage() {
       >
         {deletingOrder && (
           <div className="space-y-3">
+            {deleteInsufficientFundsError && (
+              <div role="alert" className="notice status-danger text-xs">
+                {deleteInsufficientFundsError}
+              </div>
+            )}
             <p className="text-sm">
               ທ່ານແນ່ໃຈບໍ່ວ່າຕ້ອງການລຶບ Order ລະຫັດ{' '}
               <strong className="text-fg font-mono">{deletingOrder.code}</strong> (ເລກບິນ{' '}

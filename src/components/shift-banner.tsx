@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
+import { formatByCurrency } from '@/lib/format';
 import type { Role } from '@/lib/nav';
+import { sanitizeNumeric } from '@/lib/number-input';
 import { Dialog } from './dialog';
 import { NumberInput } from './number-input';
 
@@ -15,6 +17,19 @@ interface Shift {
   status: 'OPEN' | 'PENDING_APPROVAL' | 'CLOSED' | 'REJECTED';
   openedAt: string;
   closedAt: string | null;
+}
+
+interface Balance {
+  currency: Currency;
+  inflow: string;
+  outflow: string;
+  balance: string;
+}
+
+interface Wallet {
+  shiftId: string | null;
+  openedAt: string | null;
+  balances: Balance[];
 }
 
 // Admin/Manager ບໍ່ຖືກບັງຄັບໃຫ້ເປີດກະ ແຕ່ຕ້ອງເປີດໄດ້ ຖ້າຢາກເຮັດທຸລະກຳເອງ.
@@ -35,6 +50,12 @@ export function ShiftBanner({ role }: { role: Role }) {
     enabled,
   });
 
+  const { data: wallet, refetch: refetchWallet } = useQuery({
+    queryKey: ['cash', 'wallet'],
+    queryFn: () => api.get<Wallet>('/cash/wallet'),
+    enabled: enabled && shift?.status === 'OPEN',
+  });
+
   const open = useMutation({
     mutationFn: () => api.post<Shift>('/shifts/open'),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['shift', 'me'] }),
@@ -50,6 +71,56 @@ export function ShiftBanner({ role }: { role: Role }) {
   const [counts, setCounts] = useState<Record<Currency, string>>({ LAK: '', THB: '', USD: '' });
   const [note, setNote] = useState('');
 
+  const populateCountsFromWallet = (balances?: Balance[]) => {
+    const list = balances ?? wallet?.balances;
+    if (!list) return;
+    const next: Record<Currency, string> = { LAK: '', THB: '', USD: '' };
+    for (const currency of CURRENCIES) {
+      const b = list.find((item) => item.currency === currency);
+      if (b && b.balance !== undefined && b.balance !== null && b.balance !== '') {
+        next[currency] = sanitizeNumeric(b.balance, {
+          decimals: currency === 'LAK' ? 0 : 2,
+        });
+      }
+    }
+    setCounts(next);
+  };
+
+  const handleOpenCloseModal = () => {
+    if (wallet?.balances) {
+      populateCountsFromWallet(wallet.balances);
+    }
+    void refetchWallet();
+    setClosing(true);
+  };
+
+  const handleCloseDialog = () => {
+    setClosing(false);
+    setCounts({ LAK: '', THB: '', USD: '' });
+    setNote('');
+  };
+
+  useEffect(() => {
+    if (closing && wallet?.balances) {
+      setCounts((prev) => {
+        const allEmpty = CURRENCIES.every((c) => !prev[c]);
+        if (allEmpty) {
+          const next: Record<Currency, string> = { LAK: '', THB: '', USD: '' };
+          for (const currency of CURRENCIES) {
+            const b = wallet.balances.find((item) => item.currency === currency);
+            if (b && b.balance !== undefined && b.balance !== null && b.balance !== '') {
+              next[currency] = sanitizeNumeric(b.balance, {
+                decimals: currency === 'LAK' ? 0 : 2,
+              });
+            }
+          }
+          return next;
+        }
+        return prev;
+      });
+    }
+  }, [closing, wallet]);
+
   const close = useMutation({
     mutationFn: () =>
       api.post('/shifts/close', {
@@ -60,9 +131,7 @@ export function ShiftBanner({ role }: { role: Role }) {
         note: note || undefined,
       }),
     onSuccess: () => {
-      setClosing(false);
-      setCounts({ LAK: '', THB: '', USD: '' });
-      setNote('');
+      handleCloseDialog();
       void queryClient.invalidateQueries({ queryKey: ['shift', 'me'] });
       void queryClient.invalidateQueries({ queryKey: ['cash'] });
     },
@@ -93,18 +162,19 @@ export function ShiftBanner({ role }: { role: Role }) {
       <>
         <Banner tone="ok">
           <span>ກະເປີດຢູ່ — ສາມາດເຮັດທຸລະກຳໄດ້</span>
-          <button className="btn-secondary text-xs" onClick={() => setClosing(true)}>
+          <button className="btn-secondary text-xs" onClick={handleOpenCloseModal}>
             ປິດກະ
           </button>
         </Banner>
 
         <Dialog
           open={closing}
-          onClose={() => setClosing(false)}
+          onClose={handleCloseDialog}
           title="ປິດກະ — ນັບເງິນທ້າຍກະ"
+          size="lg"
           footer={
             <>
-              <button className="btn-secondary" onClick={() => setClosing(false)}>ຍົກເລີກ</button>
+              <button className="btn-secondary" onClick={handleCloseDialog}>ຍົກເລີກ</button>
               <button className="btn-primary" disabled={close.isPending}
                 onClick={() => close.mutate()}>
                 {close.isPending ? 'ກຳລັງສົ່ງ...' : 'ສົ່ງໃຫ້ FC ອະນຸມັດ'}
@@ -112,16 +182,58 @@ export function ShiftBanner({ role }: { role: Role }) {
             </>
           }
         >
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="text-muted">
+              ລະບົບດຶງຍອດຄົງເຫຼືອໃນກະເປົ໋າມາໃສ່ໃຫ້ອັດຕະໂນມັດ (ສາມາດແກ້ໄຂໄດ້ຕາມເງິນນັບຕົວຈິງ)
+            </span>
+            <button
+              type="button"
+              className="btn-ghost text-xs py-1 px-2 cursor-pointer"
+              onClick={() => populateCountsFromWallet()}
+            >
+              ດຶງຍອດຄົງເຫຼືອຄືນໃໝ່
+            </button>
+          </div>
           <div className="grid gap-4 sm:grid-cols-3">
-            {CURRENCIES.map((currency) => (
-              <div key={currency}>
-                <label className="label" htmlFor={`close-${currency}`}>ຍອດນັບໄດ້ ({currency})</label>
-                <NumberInput id={`close-${currency}`} className="input num"
-                  decimals={currency === 'LAK' ? 0 : 2}
-                  value={counts[currency]}
-                  onValueChange={(v) => setCounts((p) => ({ ...p, [currency]: v }))} />
-              </div>
-            ))}
+            {CURRENCIES.map((currency) => {
+              const remBalance = wallet?.balances?.find((b) => b.currency === currency)?.balance;
+              return (
+                <div key={currency}>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="label mb-0" htmlFor={`close-${currency}`}>
+                      ຍອດນັບໄດ້ ({currency})
+                    </label>
+                  </div>
+                  <NumberInput
+                    id={`close-${currency}`}
+                    className="input num"
+                    decimals={currency === 'LAK' ? 0 : 2}
+                    value={counts[currency]}
+                    onValueChange={(v) => setCounts((p) => ({ ...p, [currency]: v }))}
+                  />
+                  <div className="mt-1.5 flex items-center justify-between text-xs text-muted">
+                    <span>ຍອດຄົງເຫຼືອ:</span>
+                    <button
+                      type="button"
+                      className="num font-medium text-fg-strong hover:underline cursor-pointer"
+                      title="ກົດເພື່ອດຶງຍອດຄົງເຫຼືອໃສ່ຊ່ອງປ້ອນຂໍ້ມູນນີ້"
+                      onClick={() => {
+                        if (remBalance !== undefined && remBalance !== null) {
+                          setCounts((p) => ({
+                            ...p,
+                            [currency]: sanitizeNumeric(remBalance, {
+                              decimals: currency === 'LAK' ? 0 : 2,
+                            }),
+                          }));
+                        }
+                      }}
+                    >
+                      {remBalance !== undefined ? formatByCurrency(remBalance, currency) : '—'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <div className="mt-4">
             <label className="label" htmlFor="close-note">ໝາຍເຫດ</label>

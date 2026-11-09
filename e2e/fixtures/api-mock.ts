@@ -22,7 +22,22 @@ const CUR = ['LAK', 'THB', 'USD'] as const;
 
 const cashRows = [1, 2, 3].map((i) => ({ id: `cr${i}`, type: i === 2 ? 'OUT' : 'IN', currency: 'LAK', amount: String(i * 1500000), refType: 'MANUAL', note: 'ທົດສອບ', createdAt: D }));
 const bankRows = cashRows.map((r) => ({ ...r, bankAccount: { nameLo: bank.nameLo } }));
-const apArCashHistory = [1, 2, 3].map((i) => ({ id: `ah${i}`, businessDate: day(i), refType: 'MANUAL', currency: 'LAK', amountIn: String(i * 1500000), amountOut: '0', balance: String(i * 3200000), note: 'ທົດສອບ', partner: { nameLo: partner.nameLo }, category: { nameLo: 'ຄ່າສິນຄ້າ' } }));
+const apArCashHistory = [1, 2, 3].map((i) => ({
+  id: `ah${i}`,
+  businessDate: day(i),
+  refType: 'MANUAL',
+  currency: 'LAK',
+  amountIn: String(i * 1500000),
+  amountOut: '0',
+  balance: String(i * 3200000),
+  note: 'ທົດສອບ',
+  partner: { nameLo: partner.nameLo },
+  category: { nameLo: 'ຄ່າສິນຄ້າ' },
+  method: i === 2 ? ('BANK' as const) : ('CASH' as const),
+  bankAccountId: i === 2 ? bank.id : null,
+  bankAccount: i === 2 ? { id: bank.id, nameLo: bank.nameLo, code: bank.code } : null,
+  createdBy: 'admin',
+}));
 const goldLedger = [1, 2, 3].map((i) => ({ id: `g${i}`, businessDate: day(i), partnerLabel: partner.nameLo, typeLabel: 'ຮັບເຂົ້າ', goldInG: `${i * 15}.00`, goldOutG: '0.00', weightG: `${i * 15}.00`, priceIn: '2500000', priceOut: '0', cost: String(i * 37500000), goldType: { nameLo: 'ຄຳ 96.5%' }, side: i === 2 ? 'AR' : 'AP', partner: { nameLo: partner.nameLo } }));
 const order = (i: number) => ({ id: `o${i}`, code: `OD-00${i}`, billNo: `B${100 + i}`, productType: 'IT', staffName: 'ນາງ ແສງ', weightG: '15.00', quantity: 1, totalAmount: '40000000', receivedAmount: '10000000', balanceAmount: '30000000', status: ['ORDER_PLACED', 'AWAITING_PICKUP', 'COMPLETED'][i % 3], note: null, createdAt: D, receivedFromSmithAt: null, customerPickupAt: null, customer, goldItem: { nameLo: 'ແຫວນ' }, supplier: { nameLo: partner.nameLo } });
 const buyback = (i: number) => ({ id: `bb${i}`, code: `BB-00${i}`, source: 'KPV', goldPercent: '96.5', outstandingAmount: '0', updatedBy: 'admin', payments: [{ id: 'pay1', method: 'CASH', currency: 'LAK', amount: '35000000', amountLak: '35000000', changeLak: '0' }], goldItem: { nameLo: 'ສາຍຄໍ' }, goldType: { nameLo: 'ຄຳ 96.5%' }, status: i === 1 ? 'PENDING' : 'COMPLETED', weightG: '15.20', quantity: 1, payableAmount: '35000000', createdAt: D, customer });

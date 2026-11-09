@@ -11,7 +11,7 @@ import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import type { PagedResult } from '@/components/date-range';
 import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
-import { MultiPayment, newPaymentLines, paymentPayload } from '@/components/multi-payment';
+import { MultiPayment, newPaymentLines, paymentPayload, useInsufficientFundsError } from '@/components/multi-payment';
 import type { PaymentLine } from '@/components/multi-payment';
 
 interface GoldType { id: string; code: string; nameLo: string }
@@ -240,13 +240,15 @@ export default function BuybackPage() {
   // ແຕ່ລະແຖວຈ່າຍຕ້ອງຄົບ: ແຖວໂອນ ຕ້ອງເລືອກທະນາຄານ ກ່ອນບັນທຶກໄດ້.
   const paymentLines = paymentPayload(payments);
   const bankLegReady = paymentLines.every((l) => l.method !== 'BANK' || Boolean(l.bankAccountId));
+  const insufficientFundsError = useInsufficientFundsError(payments, showForm, 'ຊື້ຄຳຄືນ (Buyback)');
   const canSave =
     /^\d{8}$/.test(phone) &&
     readyLines.length > 0 &&
     preview !== null &&
     Number(preview.payableAmount) > 0 &&
     paymentLines.length > 0 &&
-    bankLegReady;
+    bankLegReady &&
+    !insufficientFundsError;
 
   return (
     <div className="space-y-6">
