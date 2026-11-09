@@ -11,6 +11,7 @@ import type {
   GoldItemOption,
   PartnerOption,
   LedgerRow,
+  MovementData,
   FormEditLine,
 } from '@/app/(app)/stock/old/types';
 
@@ -18,7 +19,9 @@ import type {
 export const stockOldKeys = {
   all: ['stock', 'old'] as const,
   balances: () => ['stock', 'old', 'balances'] as const,
-  history: () => ['stock', 'old', 'history'] as const,
+  history: (goldTypeId?: string, q?: string) =>
+    ['stock', 'old', 'history', { goldTypeId, q }] as const,
+  movement: (id?: string | null) => ['stock', 'movements', id] as const,
   wac: () => ['ledger', 'wac'] as const,
   newBalances: () => ['stock', 'new', 'balances'] as const,
 };
@@ -65,6 +68,9 @@ export const stockOldApi = {
   getGoldTypes: () => api.get<GoldTypeOption[]>('/catalog/gold-types?stockOnly=true'),
   getGoldItems: () => api.get<GoldItemOption[]>('/catalog/gold-items'),
   getPartners: () => api.get<PartnerOption[]>('/catalog/partners'),
+
+  // Movement
+  getMovement: (id: string) => api.get<MovementData>(`/stock/movements/${id}`),
 
   // Mutations
   updateMovement: (id: string, payload: UpdateStockMovementPayload) =>
@@ -144,6 +150,16 @@ export function useNewStockBalances(enabled = false) {
     queryKey: stockOldKeys.newBalances(),
     queryFn: stockOldApi.getNewBalances,
     enabled,
+    staleTime: 60 * 1000,
+  });
+}
+
+/** Hook for fetching on-demand full details of a stock movement (lines, items, SKUs) */
+export function useMovementDetails(movementId?: string | null) {
+  return useQuery({
+    queryKey: stockOldKeys.movement(movementId),
+    queryFn: () => stockOldApi.getMovement(movementId!),
+    enabled: Boolean(movementId),
     staleTime: 60 * 1000,
   });
 }

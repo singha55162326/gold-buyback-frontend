@@ -3,6 +3,7 @@
 import { dec } from '@kpv/domain';
 import { Dialog } from '@/components/dialog';
 import { formatDate, formatLak, formatWeight, formatGrams, gramsToBaht } from '@/lib/format';
+import { useMovementDetails } from '@/lib/stock-old-api';
 import { TRANSFORM_LABEL, type LedgerRow } from '../types';
 
 interface MovementViewModalProps {
@@ -11,9 +12,11 @@ interface MovementViewModalProps {
 }
 
 export function MovementViewModal({ row, onClose }: MovementViewModalProps) {
+  const { data: fullMovement, isLoading: loadingDetails } = useMovementDetails(row?.movementId);
+
   if (!row) return null;
 
-  const mv = row.movement;
+  const mv = fullMovement ?? row.movement;
   const isIn = mv ? mv.type === 'IN' : dec(row.goldInG).gt(0);
   const totalW = mv ? mv.totalGoldG : isIn ? row.goldInG : row.goldOutG;
   const totalC = mv ? mv.totalCost : isIn ? row.priceIn : row.priceOut;
@@ -131,7 +134,13 @@ export function MovementViewModal({ row, onClose }: MovementViewModalProps) {
                 </tr>
               </thead>
               <tbody>
-                {mv?.lines && mv.lines.length > 0 ? (
+                {loadingDetails && (!mv?.lines || mv.lines.length === 0) ? (
+                  <tr>
+                    <td colSpan={8} className="text-center py-4 text-muted">
+                      ກຳລັງໂຫຼດລາຍການຄຳ...
+                    </td>
+                  </tr>
+                ) : mv?.lines && mv.lines.length > 0 ? (
                   mv.lines.map((line, idx) => (
                     <tr key={line.id || idx}>
                       <td className="text-muted text-xs">{idx + 1}</td>

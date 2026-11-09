@@ -7,7 +7,7 @@ import { NumberInput } from '@/components/number-input';
 import { formatLak, formatWeight } from '@/lib/format';
 import { ApiError } from '@/lib/api';
 import { useToast } from '@/components/toast';
-import { useUpdateStockOldRecord } from '@/lib/stock-old-api';
+import { useUpdateStockOldRecord, useMovementDetails } from '@/lib/stock-old-api';
 import type {
   LedgerRow,
   TypeBalance,
@@ -45,6 +45,9 @@ export function MovementEditModal({
   const toast = useToast();
   const { skus, goldTypes, goldItems, partners } = masterData;
 
+  const { data: fullMovement } = useMovementDetails(row?.movementId);
+  const activeMovement = fullMovement ?? row?.movement;
+
   const [editPartnerId, setEditPartnerId] = useState('');
   const [editPartnerLabel, setEditPartnerLabel] = useState('');
   const [editGoldTypeId, setEditGoldTypeId] = useState('');
@@ -60,7 +63,7 @@ export function MovementEditModal({
 
   useEffect(() => {
     if (!row) return;
-    const mv = row.movement;
+    const mv = activeMovement;
     setEditError(null);
     setEditPartnerId(mv?.partnerId ?? '');
     setEditPartnerLabel(row.partnerLabel ?? '');
@@ -105,7 +108,7 @@ export function MovementEditModal({
         },
       ]);
     }
-  }, [row]);
+  }, [row, activeMovement]);
 
   const updateMutation = useUpdateStockOldRecord({
     onSuccess: () => {
@@ -122,7 +125,7 @@ export function MovementEditModal({
   };
 
   const editCalculations = useMemo(() => {
-    if (!row?.movement) {
+    if (!activeMovement) {
       let w = dec(0);
       let c = dec(0);
       try {
@@ -147,7 +150,7 @@ export function MovementEditModal({
       }
     }, dec(0));
     const totalQty = editLines.reduce((sum, l) => sum + (Number(l.quantity) || 0), 0);
-    const isIn = row.movement.type === 'IN';
+    const isIn = activeMovement.type === 'IN';
     let cost = dec(0);
     let perG = dec(0);
     if (isIn) {
@@ -158,11 +161,11 @@ export function MovementEditModal({
       }
       perG = totalGoldG.gt(0) ? cost.div(totalGoldG) : dec(0);
     } else {
-      perG = dec(row.movement.pricePerG || wac?.pricePerG || 0);
+      perG = dec(activeMovement.pricePerG || wac?.pricePerG || 0);
       cost = totalGoldG.mul(perG);
     }
     return { totalGoldG, totalQty, cost, perG };
-  }, [editLines, editTotalCost, editLedgerWeightG, row, wac]);
+  }, [editLines, editTotalCost, editLedgerWeightG, activeMovement, wac]);
 
   const getEditAvailableOldWeight = (goldTypeId: string) => {
     if (!goldTypeId) return null;
@@ -170,7 +173,7 @@ export function MovementEditModal({
       (b) => (b.goldTypeId ?? b.goldType?.id) === goldTypeId,
     );
     const currentClosingWeight = dec(bal?.closingWeightG ?? 0);
-    const origOutWeight = (row?.movement?.lines ?? [])
+    const origOutWeight = (activeMovement?.lines ?? [])
       .filter((l) => l.goldTypeId === goldTypeId)
       .reduce((sum, l) => sum.plus(dec(l.goldG || 0)), dec(0));
     return currentClosingWeight.plus(origOutWeight);
@@ -180,14 +183,14 @@ export function MovementEditModal({
     if (!skuId) return null;
     const bal = newBalances.find((b) => (b.goldSkuId ?? b.goldSku.id) === skuId);
     const currentWeight = dec(bal?.totalWeightG ?? 0);
-    const origLineWeight = (row?.movement?.lines ?? [])
+    const origLineWeight = (activeMovement?.lines ?? [])
       .filter((l) => l.goldSkuId === skuId)
       .reduce((sum, l) => sum.plus(dec(l.goldG || 0)), dec(0));
     return currentWeight.plus(origLineWeight);
   };
 
   const getEditMaxWeightForLine = (idx: number) => {
-    const mv = row?.movement;
+    const mv = activeMovement;
     if (!mv || mv.type === 'IN') return undefined;
 
     const currentLine = editLines[idx];
@@ -244,7 +247,7 @@ export function MovementEditModal({
   };
 
   const editOverweightMessage = useMemo(() => {
-    const mv = row?.movement;
+    const mv = activeMovement;
     if (!mv || mv.type === 'IN') return null;
 
     if (mv.scope === 'NEW' && mv.type === 'TRANSFER') {
@@ -313,7 +316,7 @@ export function MovementEditModal({
     <Dialog
       open
       size="lg"
-      title={`ແກ້ໄຂລາຍການ — ${row.movement?.code ?? row.typeLabel}`}
+      title={`ແກ້ໄຂລາຍການ — ${activeMovement?.code ?? row.typeLabel}`}
       onClose={onClose}
       footer={
         <>
@@ -344,10 +347,10 @@ export function MovementEditModal({
             <div>{editError}</div>
           </div>
         )}
-        {row.movement ? (
+        {activeMovement ? (
           <>
             {/* Partner / GoldType header fields */}
-            {row.movement.type === 'OUT' && (
+            {activeMovement.type === 'OUT' && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
                   <label className="label">ແຫຼ່ງສົ່ງມອບ *</label>
@@ -385,7 +388,7 @@ export function MovementEditModal({
               </div>
             )}
 
-            {row.movement.type === 'OUT' && (
+            {activeMovement.type === 'OUT' && (
               <div>
                 <label className="label">%ຄຳ (ສຳລັບສົ່ງຊ່າງນອກ / ອື່ນໆ)</label>
                 <NumberInput
@@ -399,7 +402,7 @@ export function MovementEditModal({
               </div>
             )}
 
-            {row.movement.type === 'TRANSFER' && (
+            {activeMovement.type === 'TRANSFER' && (
               <div>
                 <label className="label">ປະເພດຄຳ (ຝັ່ງ OLD) *</label>
                 <select
@@ -414,7 +417,7 @@ export function MovementEditModal({
                     return (
                       <option key={gt.id} value={gt.id}>
                         {gt.nameLo}
-                        {row.movement?.scope === 'OLD' && avail !== null
+                        {activeMovement?.scope === 'OLD' && avail !== null
                           ? ` (ຍອດຄົງເຫຼືອ: ${formatWeight(avail.toFixed())} g)`
                           : ''}
                       </option>
@@ -438,7 +441,7 @@ export function MovementEditModal({
                         goldSkuId: '',
                         goldTypeId: editGoldTypeId || '',
                         goldItemId: '',
-                        oldCategory: row.movement?.type === 'IN' ? 'JEWELRY' : '',
+                        oldCategory: activeMovement?.type === 'IN' ? 'JEWELRY' : '',
                         weightG: '',
                         quantity: '1',
                       },
@@ -450,7 +453,7 @@ export function MovementEditModal({
               </div>
 
               {editLines.map((line, idx) => {
-                const mv = row.movement!;
+                const mv = activeMovement!;
                 const isTransferNewToOld =
                   mv.type === 'TRANSFER' && mv.scope === 'NEW';
                 const isTransferOldToNew =
@@ -685,7 +688,7 @@ export function MovementEditModal({
               })}
             </div>
 
-            {row.movement.type === 'IN' && (
+            {activeMovement.type === 'IN' && (
               <div>
                 <label className="label">ຕົ້ນທຶນຄຳລວມ (LAK) *</label>
                 <NumberInput

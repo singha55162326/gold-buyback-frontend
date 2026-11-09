@@ -25,7 +25,6 @@ import { TypeBalanceEditModal } from './components/type-balance-edit-modal';
 import { HistoryTable } from './components/history-table';
 import { MovementViewModal } from './components/movement-view-modal';
 import { MovementEditModal } from './components/movement-edit-modal';
-import { MovementDeleteModal } from './components/movement-delete-modal';
 
 /** TOR §7.3 — Stock (OLD), ສາງຄຳເກົ່າ. */
 export default function StockOldPage() {
@@ -42,7 +41,6 @@ export default function StockOldPage() {
   // Modal states for LedgerRow (ປະຫວັດ Stock (OLD))
   const [viewingRow, setViewingRow] = useState<LedgerRow | null>(null);
   const [editingRow, setEditingRow] = useState<LedgerRow | null>(null);
-  const [deletingRow, setDeletingRow] = useState<LedgerRow | null>(null);
 
   // Queries
   const {
@@ -60,12 +58,22 @@ export default function StockOldPage() {
   } = useOldStockBalances();
 
   const { data: newBalances = [] } = useNewStockBalances(Boolean(editingRow));
-  const masterData = useStockMasterData(Boolean(editingRow));
+  const masterData = useStockMasterData(true);
+
+  // Search & goldType filter state
+  const [selectedGoldTypeId, setSelectedGoldTypeId] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Ledger history with date range filter
   const historyRange = useHistoryRange<LedgerRow>(
-    stockOldKeys.history(),
+    stockOldKeys.history(selectedGoldTypeId, searchQuery),
     '/stock/old/history',
+    {
+      params: {
+        ...(selectedGoldTypeId ? { goldTypeId: selectedGoldTypeId } : {}),
+        ...(searchQuery.trim() ? { q: searchQuery.trim() } : {}),
+      },
+    },
   );
   const history = historyRange.rows;
   const historyFailed = historyRange.isError;
@@ -146,7 +154,11 @@ export default function StockOldPage() {
         isAdmin={isAdmin}
         onView={setViewingRow}
         onEdit={setEditingRow}
-        onDelete={setDeletingRow}
+        goldTypes={masterData.goldTypes}
+        selectedGoldTypeId={selectedGoldTypeId}
+        onGoldTypeChange={setSelectedGoldTypeId}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
 
       {/* ─── Modals ─── */}
@@ -175,13 +187,6 @@ export default function StockOldPage() {
           newBalances={newBalances}
           masterData={masterData}
           wac={wac}
-        />
-      )}
-
-      {isAdmin && (
-        <MovementDeleteModal
-          row={deletingRow}
-          onClose={() => setDeletingRow(null)}
         />
       )}
     </div>

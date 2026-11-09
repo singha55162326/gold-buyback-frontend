@@ -58,6 +58,14 @@ export function MovementDeleteModal({ row, onClose }: MovementDeleteModalProps) 
           <strong className="text-fg">{row.movement?.code ?? row.typeLabel}</strong>{' '}
           ({formatDate(row.businessDate)})?
         </p>
+        {row.movementId && (
+          <div className="p-3 bg-warning/10 border border-warning/30 rounded-xl text-xs text-warning">
+            <p className="font-semibold mb-0.5">⚠️ ແຈ້ງເຕືອນລາຍການເຄື່ອນໄຫວສາງ:</p>
+            <p>
+              ລາຍການນີ້ເປັນສ່ວນໜຶ່ງຂອງໃບບິນເຄື່ອນໄຫວສາງ (Stock Movement). ການລຶບຈະລຶບໃບບິນ ແລະ ລາຍການຍ່ອຍທັງໝົດທີ່ຢູ່ໃນໃບບິນດຽວກັນອອກຈາກລະບົບ.
+            </p>
+          </div>
+        )}
         <div className="p-3 bg-danger/10 border border-danger/30 rounded-xl text-xs text-danger space-y-1">
           <p className="font-semibold">⚠️ ຜົນກະທົບຕໍ່ລະບົບ:</p>
           <ul className="list-disc pl-4 space-y-0.5">
