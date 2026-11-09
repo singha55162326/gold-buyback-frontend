@@ -221,13 +221,15 @@ export function StockMovementDialog({
   const selectedPartner = partners.find((p) => p.id === partnerId);
   const isFactoryOut =
     kind === 'OUT' &&
-    (selectedPartner?.type === 'FACTORY' || selectedPartner?.code === 'FACTORY');
+    (selectedPartner?.type === 'FACTORY' ||
+      (!selectedPartner?.type && selectedPartner?.code === 'FACTORY'));
   const isSmithOut =
     kind === 'OUT' &&
     scope === 'OLD' &&
+    !isFactoryOut &&
     (selectedPartner?.type === 'SMITH' ||
-      selectedPartner?.code === 'OUTSOURCE_SMITH' ||
-      selectedPartner?.code === 'OTHER');
+      (!selectedPartner?.type &&
+        (selectedPartner?.code === 'OUTSOURCE_SMITH' || selectedPartner?.code === 'OTHER')));
 
   /** Lines reference a SKU in the NEW warehouse and a ປະເພດຄຳ in OLD. */
   const usesSku = scope === 'NEW' || kind === 'TRANSFER';
@@ -446,7 +448,7 @@ export function StockMovementDialog({
         scope,
         partnerId,
         transformType: transformType || undefined,
-        goldPercent: goldPercent.trim() || undefined,
+        goldPercent: isSmithOut && goldPercent.trim() ? goldPercent.trim() : undefined,
         lines: payloadLines,
         note: note || undefined,
       });
@@ -530,8 +532,25 @@ export function StockMovementDialog({
             <label className="label" htmlFor="partner">
               {kind === 'IN' ? 'ແຫຼ່ງທີ່ມາ' : 'ແຫຼ່ງສົ່ງມອບ'}
             </label>
-            <select id="partner" className="input" value={partnerId}
-              onChange={(e) => setPartnerId(e.target.value)}>
+            <select
+              id="partner"
+              className="input"
+              value={partnerId}
+              onChange={(e) => {
+                const newId = e.target.value;
+                setPartnerId(newId);
+                const p = partners.find((item) => item.id === newId);
+                const nextIsSmith =
+                  kind === 'OUT' &&
+                  scope === 'OLD' &&
+                  p?.type !== 'FACTORY' &&
+                  (p?.type === 'SMITH' ||
+                    (!p?.type && (p?.code === 'OUTSOURCE_SMITH' || p?.code === 'OTHER')));
+                if (!nextIsSmith) {
+                  setGoldPercent('');
+                }
+              }}
+            >
               <option value="">— ເລືອກ —</option>
               {partnerOptions.map((p) => (
                 <option key={p.id} value={p.id}>
