@@ -5,18 +5,27 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import Link from 'next/link';
-import { formatWeight, formatDate, formatDateTime, formatByCurrency, formatLak } from '@/lib/format';
+import { formatDate, formatDateTime, formatByCurrency, formatLak } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import { StatCard } from '@/components/stat-card';
-import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
+import { useHistoryRange } from '@/components/date-range';
 import { Dialog } from '@/components/dialog';
-import {
-  TimeSearchFilterBar,
-  matchesOrderSearch,
-  useTimeSearchFilter,
-} from '@/components/time-search-filter';
+import { matchesOrderSearch } from '@/components/time-search-filter';
+import { OrderFilterBar, useOrderSearchFilter } from '@/components/order-filter-bar';
+import { OrderTimeline, type OrderStatusHistoryItem } from '@/components/order-timeline';
+import { OrderGoldItemsCard } from '@/components/order-gold-items-card';
+import { OrderBillInfoCard } from '@/components/order-bill-info-card';
+
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  ORDER_PLACED: 'Order ສຳເລັດ',
+  SENT_TO_SMITH: 'ສັ່ງຊ່າງ ສຳເລັດ',
+  RECEIVED_FROM_SMITH: 'ຮັບເຄື່ອງຈາກຊ່າງ ສຳເລັດ',
+  AWAITING_PICKUP: 'ລໍຖ້າລູກຄ້າຮັບເຄື່ອງ',
+  COMPLETED: 'Completed',
+  CANCELLED: 'ຍົກເລີກ',
+};
 
 interface Summary {
   totals: Array<{ currency: 'LAK' | 'THB' | 'USD'; net: string }>;
@@ -73,11 +82,13 @@ interface Row {
     sentToSmithAt?: string | null;
     receivedFromSmithAt: string | null; customerPickupAt: string | null;
     completedAt?: string | null;
+    createdAt?: string | null;
     customer: { phone: string };
     goldItem?: { nameLo: string } | null;
     supplier?: { nameLo: string } | null;
     note?: string | null;
     lines?: OrderLineItem[];
+    statusHistory?: OrderStatusHistoryItem[];
     receipts?: Array<{
       id: string;
       currency: string;
@@ -368,7 +379,7 @@ export default function AdvancePage() {
   const [viewingRow, setViewingRow] = useState<Row | null>(null);
   const [viewingEntries, setViewingEntries] = useState<Row[]>([]);
   const [groupByOrder, setGroupByOrder] = useState(true);
-  const timeSearch = useTimeSearchFilter();
+  const searchFilter = useOrderSearchFilter();
 
   const summaryQuery = useQuery({
     queryKey: advanceKeys.summary(),
@@ -379,15 +390,13 @@ export default function AdvancePage() {
   // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; ກວ້າງອອກໄດ້ຈາກແຖບ filter.
   const history = useHistoryRange<Row>(advanceKeys.history(), '/finance/advance/history', {
     params: {
-      start_time: timeSearch.startTime || undefined,
-      end_time: timeSearch.endTime || undefined,
-      search: timeSearch.debouncedSearch || undefined,
+      search: searchFilter.debouncedSearch || undefined,
     },
   });
   const rows = history.rows;
 
   const filteredRows = useMemo(() => {
-    if (!timeSearch.searchTerm.trim()) return rows;
+    if (!searchFilter.searchTerm.trim()) return rows;
     return rows.filter((r) =>
       matchesOrderSearch(
         {
@@ -396,10 +405,10 @@ export default function AdvancePage() {
           phone: r.order.customer.phone,
           staffName: r.order.staffName,
         },
-        timeSearch.searchTerm,
+        searchFilter.searchTerm,
       ),
     );
-  }, [rows, timeSearch.searchTerm]);
+  }, [rows, searchFilter.searchTerm]);
 
   // ຈັດກຸ່ມຕາມ Order: 1 Order = 1 ແຖວ ພ້ອມລວມຍອດຮັບ, ຕັດຊຳລະ ແລະ ສຸດທິ ແຍກຕາມສະກຸນເງິນ
   const groupedRows = useMemo<GroupedRow[]>(() => {
@@ -536,12 +545,7 @@ export default function AdvancePage() {
             </button>
           </div>
         </div>
-        <DateRangeFilter history={history} />
-        <TimeSearchFilterBar
-          filter={timeSearch}
-          fromDate={history.from}
-          toDate={history.to}
-        />
+        <OrderFilterBar history={history} search={searchFilter} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Module Advance">
           <table className="table">
             <thead>
@@ -569,7 +573,7 @@ export default function AdvancePage() {
                 error={history.error}
                 isEmpty={displayRows.length === 0}
                 emptyText={
-                  timeSearch.hasActiveFilter ? 'ບໍ່ພົບລາຍການທີ່ຄົ້ນຫາ' : 'ຍັງບໍ່ມີລາຍການ'
+                  searchFilter.hasActiveFilter ? 'ບໍ່ພົບລາຍການທີ່ຄົ້ນຫາ' : 'ຍັງບໍ່ມີລາຍການ'
                 }
                 onRetry={() => void history.refetch()}
               />
@@ -686,7 +690,7 @@ export default function AdvancePage() {
         <Pagination {...pager} />
       </div>
 
-      {/* Modal ລາຍລະອຽດ View (ui-ux-pro-max) */}
+      {/* Modal ລາຍລະອຽດ Module Advance */}
       <Dialog
         open={Boolean(viewingRow)}
         onClose={() => setViewingRow(null)}
@@ -722,22 +726,19 @@ export default function AdvancePage() {
       >
         {viewingRow && viewingOrderInfo && (
           <div className="space-y-4">
-            {/* ແຖບສະຖານະ & ເລກບິນ */}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-xs px-2.5 py-1 rounded-md bg-recessed border border-line text-fg font-semibold">
-                  ເລກບິນ: {viewingRow.order.billNo}
-                </span>
-                <span className={statusClass(viewingRow.order.status)}>
-                  {viewingRow.order.status}
-                </span>
-              </div>
-              <div className="text-xs text-muted">
-                ສະກຸນເງິນ Order: <span className="font-semibold text-fg">{viewingOrderInfo.orderCurrency}</span>
-              </div>
-            </div>
+            {/* 1. ຂໍ້ມູນໃບບິນ (ເລກບິນ, ປະເພດ, Status Order, ເບີໂທ, ພະນັກງານ, ສະກຸນເງິນ, ໝາຍເຫດ) */}
+            <OrderBillInfoCard
+              billNo={viewingRow.order.billNo}
+              productType={viewingRow.order.productType}
+              status={viewingRow.order.status}
+              statusLabel={ORDER_STATUS_LABELS[viewingRow.order.status] ?? viewingRow.order.status}
+              phone={viewingRow.order.customer.phone}
+              staffName={viewingRow.order.staffName}
+              currency={viewingOrderInfo.orderCurrency}
+              note={viewingOrderInfo.cleanNote}
+            />
 
-            {/* ກຸ່ມຍອດເງິນ Advance (Financial Highlights) */}
+            {/* 2. ສະຫຼຸບຍອດເງິນ Advance */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {/* ຍອດເງິນທີ່ໄດ້ຮັບ */}
               <div className="rounded-xl border border-line bg-recessed/60 p-3.5 flex flex-col justify-between">
@@ -803,104 +804,33 @@ export default function AdvancePage() {
               </div>
             </div>
 
-            {/* ຂໍ້ມູນຫຼັກຂອງ Order */}
-            <div className="rounded-xl border border-line bg-recessed/40 p-4 space-y-3">
-              <div className="flex items-center gap-2 text-xs font-semibold text-fg uppercase tracking-wider">
-                <svg className="w-4 h-4 text-primary shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-                ຂໍ້ມູນ Order
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                <DetailItem labelLo="ລະຫັດ Order" value={viewingRow.order.code} mono />
-                <DetailItem labelLo="ເລກບິນ (BILL ID)" value={viewingRow.order.billNo} mono />
-                <DetailItem labelLo="ປະເພດສິນຄ້າ" value={viewingRow.order.productType} />
-                <DetailItem
-                  labelLo="ຍອດລວມ Order"
-                  value={viewingOrderInfo.totalDisplay}
-                />
-                <DetailItem
-                  labelLo="ຍອດຄົງເຫຼືອ Order"
-                  value={viewingOrderInfo.balanceDisplay}
-                  highlight={!viewingOrderInfo.isBalanceZero ? 'warning' : 'success'}
-                />
-                <DetailItem labelLo="ລວມນ້ຳໜັກ" value={`${formatWeight(viewingRow.order.weightG)} g`} />
-                <DetailItem labelLo="ລວມຈຳນວນ" value={`${viewingRow.order.quantity} ອັນ`} />
-              </div>
-            </div>
+            {/* 3. ລາຍການຄຳໃນບິນ (ພ້ອມ ລວມນ້ຳໜັກ ແລະ ລວມຈຳນວນ) */}
+            <OrderGoldItemsCard
+              lines={viewingRow.order.lines}
+              fallbackItemName={viewingRow.order.goldItem?.nameLo}
+              totalWeightG={viewingRow.order.weightG}
+              totalQuantity={viewingRow.order.quantity}
+            />
 
-            {/* ລາຍການຄຳໃນ Order (Item Details Table) */}
-            <div className="rounded-xl border border-line bg-recessed/40 p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-xs font-semibold text-fg uppercase tracking-wider">
-                  <svg className="w-4 h-4 text-primary shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                  </svg>
-                  ລາຍການຄຳໃນບິນ
-                </div>
-                <span className="text-xs text-muted font-medium">
-                  {((viewingRow.order.lines?.length ?? 0) > 0) ? `${viewingRow.order.lines?.length} ລາຍການ` : '1 ລາຍການ'}
-                </span>
-              </div>
+            {/* 4. ການດຳເນີນງານ (Timeline) */}
+            <OrderTimeline
+              status={viewingRow.order.status}
+              createdAt={viewingRow.order.createdAt}
+              fallbackCreatedDate={viewingRow.businessDate}
+              sentToSmithAt={viewingRow.order.sentToSmithAt}
+              receivedFromSmithAt={viewingRow.order.receivedFromSmithAt}
+              customerPickupAt={viewingRow.order.customerPickupAt}
+              completedAt={viewingRow.order.completedAt}
+              supplierName={viewingRow.order.supplier?.nameLo}
+              statusHistory={viewingRow.order.statusHistory}
+            />
 
-              <div className="table-wrap rounded-lg border border-line bg-surface">
-                <table className="table text-sm">
-                  <thead>
-                    <tr>
-                      <th>ລາຍການ</th>
-                      <th className="text-right">ນ້ຳໜັກ (g)</th>
-                      <th className="text-right">ຈຳນວນ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(!viewingRow.order.lines || viewingRow.order.lines.length === 0) ? (
-                      <tr>
-                        <td className="font-medium text-fg">{viewingRow.order.goldItem?.nameLo ?? '—'}</td>
-                        <td className="num text-right">{formatWeight(viewingRow.order.weightG)}</td>
-                        <td className="num text-right">{viewingRow.order.quantity}</td>
-                      </tr>
-                    ) : (
-                      viewingRow.order.lines.map((line) => (
-                        <tr key={line.id}>
-                          <td>
-                            <span className="font-medium text-fg">{line.goldItem?.nameLo ?? '—'}</span>
-                            {line.note && <span className="block text-xs text-muted">{line.note}</span>}
-                          </td>
-                          <td className="num text-right">{formatWeight(line.weightG)}</td>
-                          <td className="num text-right">{line.quantity}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* ຂໍ້ມູນຕິດຕໍ່ & ການດຳເນີນງານ */}
-            <div className="rounded-xl border border-line bg-recessed/40 p-4 space-y-3">
-              <div className="flex items-center gap-2 text-xs font-semibold text-fg uppercase tracking-wider">
-                <svg className="w-4 h-4 text-primary shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-                ຂໍ້ມູນຕິດຕໍ່ & ການດຳເນີນງານ
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-                <DetailItem labelLo="ເບີໂທລູກຄ້າ" value={viewingRow.order.customer.phone} mono />
-                <DetailItem labelLo="ພະນັກງານຮັບ Order" value={viewingRow.order.staffName} />
-                <DetailItem labelLo="ຜູ້ບັນທຶກ Advance" value={viewingRow.createdBy} />
-                <DetailItem labelLo="Supplier / ຊ່າງ" value={viewingRow.order.supplier?.nameLo ?? '—'} />
-                <DetailItem labelLo="ວັນທີສັ່ງຊ່າງ" value={formatDate(viewingRow.order.sentToSmithAt)} />
-                <DetailItem labelLo="ວັນທີຮັບເຄື່ອງຈາກຊ່າງ" value={formatDate(viewingRow.order.receivedFromSmithAt)} />
-                <DetailItem labelLo="ວັນທີລູກຄ້າມາຮັບເຄື່ອງ" value={formatDate(viewingRow.order.customerPickupAt || viewingRow.order.completedAt)} />
-              </div>
-            </div>
-
-            {/* ລາຍລະອຽດການເຄື່ອນໄຫວ Advance (Ledger Movements History) */}
+            {/* 5. ປະຫວັດການເຄື່ອນໄຫວ Advance ໃນບິນນີ້ */}
             {viewingEntries.length > 0 && (
               <div className="rounded-xl border border-line bg-recessed/40 p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-fg uppercase tracking-wider">
-                    <svg className="w-4 h-4 text-primary shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-fg">
+                    <svg className="w-4 h-4 text-[var(--gold-icon)] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
                     ປະຫວັດການເຄື່ອນໄຫວ Advance ໃນບິນນີ້
@@ -948,48 +878,9 @@ export default function AdvancePage() {
                 </div>
               </div>
             )}
-
-            {/* ໝາຍເຫດ (ຖ້າມີ) */}
-            {viewingOrderInfo.cleanNote && (
-              <div className="rounded-lg bg-recessed/60 border border-line p-3 text-xs text-muted">
-                <strong className="text-fg">ໝາຍເຫດ: </strong> {viewingOrderInfo.cleanNote}
-              </div>
-            )}
           </div>
         )}
       </Dialog>
-    </div>
-  );
-}
-
-function DetailItem({
-  labelLo,
-  value,
-  sub,
-  mono = false,
-  highlight,
-}: {
-  labelLo: string;
-  value: React.ReactNode;
-  sub?: React.ReactNode;
-  mono?: boolean;
-  highlight?: 'warning' | 'success';
-}) {
-  return (
-    <div>
-      <div className="text-xs text-muted mb-0.5">{labelLo}</div>
-      <div
-        className={`font-medium ${mono ? 'font-mono text-xs' : 'text-sm'} ${
-          highlight === 'warning'
-            ? 'text-warning font-semibold'
-            : highlight === 'success'
-              ? 'text-success font-semibold'
-              : 'text-fg-strong'
-        }`}
-      >
-        {value}
-      </div>
-      {sub && <div className="text-[11px] text-muted mt-0.5">{sub}</div>}
     </div>
   );
 }

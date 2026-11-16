@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dec, GRAMS_PER_BAHT, trimTrailingZeros } from '@kpv/domain';
 import { api, ApiError } from '@/lib/api';
 import { PageHead } from '@/components/page-head';
+import { Dialog } from '@/components/dialog';
 import { NumberInput } from '@/components/number-input';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { formatGrams, formatWeight } from '@/lib/format';
@@ -82,6 +83,7 @@ export default function SkusPage() {
   // ບໍ່ດັ່ງນັ້ນການເລືອກກອງຈະໄປປ່ຽນສິ່ງທີ່ກຳລັງຈະບັນທຶກ.
   const [filterItemId, setFilterItemId] = useState('');
   const [search, setSearch] = useState('');
+  const [deletingSku, setDeletingSku] = useState<Sku | null>(null);
 
   const { data: goldItems = [], isError: goldItemsFailed, error: goldItemsError, refetch: refetchGoldItems } = useQuery({
     queryKey: ['catalog', 'gold-items'],
@@ -113,8 +115,14 @@ export default function SkusPage() {
   const remove = useMutation({
     mutationFn: (id: string) => api.delete(`/skus/${id}`),
     onSuccess: () => {
+      toast.success('ລຶບ SKU ສຳເລັດ');
+      setDeletingSku(null);
       void queryClient.invalidateQueries({ queryKey: ['skus'] });
       void queryClient.invalidateQueries({ queryKey: ['stock'] });
+    },
+    onError: (e) => {
+      const detail = e instanceof ApiError ? e.message : 'ລຶບບໍ່ສຳເລັດ';
+      toast.error('ບໍ່ສຳເລັດ', detail);
     },
   });
 
@@ -122,7 +130,7 @@ export default function SkusPage() {
   const bahtWeight = useMemo(() => {
     const raw = weightG.trim();
     if (!raw || !/^\d+(\.\d+)?$/.test(raw)) return null;
-    return dec(raw).div(GRAMS_PER_BAHT).toDecimalPlaces(4).toFixed();
+    return dec(raw).div(GRAMS_PER_BAHT).toDecimalPlaces(3).toFixed();
   }, [weightG]);
 
   const canSave = Boolean(goldItemId && fullSkuName);
@@ -195,10 +203,10 @@ export default function SkusPage() {
               id="weightG"
               className="input num"
               aria-describedby={error ? 'sku-error' : undefined}
-              decimals={3}
+              decimals={2}
               placeholder="15"
               value={weightG}
-              // TOR 3.6: weight is entered to 3 decimal places.
+              // Weight is entered to 2 decimal places.
               onValueChange={setWeightG}
             />
           </div>
@@ -211,7 +219,7 @@ export default function SkusPage() {
               ບາດຄຳ = ນ້ຳໜັກ / 15
             </div>
             <div className="num mt-0.5 text-lg font-semibold text-fg-strong">
-              {bahtWeight ? formatWeight(bahtWeight) : '—'}
+              {bahtWeight ? formatWeight(bahtWeight, 3) : '—'}
             </div>
           </div>
           <div>
@@ -296,13 +304,14 @@ export default function SkusPage() {
                   <td className="font-mono text-xs text-muted">{sku.code ?? '—'}</td>
                   <td className="font-medium">{sku.fullSkuName}</td>
                   <td className="text-muted">{sku.goldItem.nameLo}</td>
-                  <td className="num text-right">{formatGrams(sku.weightG)}</td>
-                  <td className="num text-right">{formatWeight(sku.bahtWeight)}</td>
+                  <td className="num text-right">{formatGrams(sku.weightG, 2)}</td>
+                  <td className="num text-right">{formatWeight(sku.bahtWeight, 3)}</td>
                   <td className="text-muted">{sku.createdBy}</td>
                   <td className="text-right">
                     <button
+                      type="button"
                       className="btn-danger"
-                      onClick={() => remove.mutate(sku.id)}
+                      onClick={() => setDeletingSku(sku)}
                       disabled={remove.isPending}
                     >
                       ລຶບ
@@ -315,6 +324,59 @@ export default function SkusPage() {
         </div>
         <Pagination {...pager} />
       </div>
+
+      <Dialog
+        open={Boolean(deletingSku)}
+        onClose={() => {
+          if (!remove.isPending) setDeletingSku(null);
+        }}
+        title="ຢືນຢັນການລຶບ SKU"
+        size="md"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={remove.isPending}
+              onClick={() => setDeletingSku(null)}
+            >
+              ຍົກເລີກ
+            </button>
+            <button
+              type="button"
+              className="btn-danger"
+              disabled={remove.isPending || !deletingSku}
+              onClick={() => deletingSku && remove.mutate(deletingSku.id)}
+            >
+              {remove.isPending ? 'ກຳລັງລຶບ...' : 'ຢືນຢັນລຶບ'}
+            </button>
+          </>
+        }
+      >
+        {deletingSku && (
+          <div className="space-y-3 text-sm">
+            <p className="text-fg">ທ່ານແນ່ໃຈບໍ່ວ່າຕ້ອງການລຶບ SKU ນີ້?</p>
+            <div className="rounded-xl border border-line recessed p-3.5 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted">ລະຫັດ:</span>
+                <span className="font-mono font-semibold text-fg-strong">{deletingSku.code ?? '—'}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted">ຊື່ SKU ເຕັມ:</span>
+                <span className="font-medium text-fg-strong">{deletingSku.fullSkuName}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted">ນ້ຳໜັກ (g):</span>
+                <span className="num text-fg-strong">{formatGrams(deletingSku.weightG, 2)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted">ບາດຄຳ:</span>
+                <span className="num text-fg-strong">{formatWeight(deletingSku.bahtWeight, 3)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </Dialog>
     </div>
   );
 }

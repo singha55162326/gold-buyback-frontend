@@ -1,39 +1,8 @@
 'use client';
 
-import { SimpleCatalog } from '@/components/simple-catalog';
+import { IncomeExpenseCategoriesView } from '@/components/income-expense-categories-view';
 
 /** TOR §3.7 — Module ເພີ້ມລາຍການຮັບຈ່າຍ. */
-export default function IncomeExpenseCategoriesPage() {
-  return (
-    <SimpleCatalog
-      titleLo="ເພີ້ມລາຍການຮັບຈ່າຍ"
-      section="§3.7"
-      descriptionLo="ໝວດ ລາຍຮັບ / ລາຍຈ່າຍ ທີ່ໃຊ້ໃນ Module ຈັດການລາຍຮັບລາຍຈ່າຍ"
-      listPath="/finance/income-expense/categories?withActor=true"
-      createPath="/finance/income-expense/categories"
-      queryKey={['finance', 'ie-categories', 'all']}
-      addLabelLo="ເພີ່ມລາຍການ"
-      fields={[
-        {
-          key: 'kind',
-          labelLo: 'ໝວດ',
-          options: [
-            { value: 'INCOME', labelLo: 'ລາຍຮັບ' },
-            { value: 'EXPENSE', labelLo: 'ລາຍຈ່າຍ' },
-          ],
-        },
-        { key: 'nameLo', labelLo: 'ຊື່ລາຍການ', placeholder: 'ເງິນເດືອນ' },
-      ]}
-      showRecorder
-      columns={[
-        { key: 'code', labelLo: 'Code' },
-        { key: 'nameLo', labelLo: 'ຊື່ລາຍການ' },
-        {
-          key: 'kind',
-          labelLo: 'ໝວດ',
-          render: (row) => (row.kind === 'INCOME' ? 'ລາຍຮັບ' : 'ລາຍຈ່າຍ'),
-        },
-      ]}
-    />
-  );
+export default function AdminIncomeExpenseCategoriesPage() {
+  return <IncomeExpenseCategoriesView />;
 }

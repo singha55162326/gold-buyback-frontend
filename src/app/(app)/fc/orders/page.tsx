@@ -6,7 +6,7 @@ import { useToast } from '@/components/toast';
 import { Pagination, usePagination } from '@/components/pagination';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser, type SessionUser } from '@/lib/api';
-import { formatLak, formatWeight, formatDate, formatDateTime, formatByCurrency } from '@/lib/format';
+import { formatLak, formatWeight, formatDateTime, formatByCurrency } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { NumberInput } from '@/components/number-input';
@@ -22,14 +22,14 @@ import {
   type BankBalance,
 } from '@/components/multi-payment';
 import { statusClass } from '@/lib/status';
-import { DateRangeFilter, today, useHistoryRange } from '@/components/date-range';
+import { today, useHistoryRange } from '@/components/date-range';
 import { Dialog } from '@/components/dialog';
 import { EmployeeSelect, type EmployeeOption } from '@/components/employee-select';
-import {
-  TimeSearchFilterBar,
-  matchesOrderSearch,
-  useTimeSearchFilter,
-} from '@/components/time-search-filter';
+import { matchesOrderSearch } from '@/components/time-search-filter';
+import { OrderFilterBar, useOrderSearchFilter } from '@/components/order-filter-bar';
+import { OrderTimeline, type OrderStatusHistoryItem } from '@/components/order-timeline';
+import { OrderGoldItemsCard } from '@/components/order-gold-items-card';
+import { OrderBillInfoCard } from '@/components/order-bill-info-card';
 
 interface GoldItem { id: string; nameLo: string }
 interface Partner { id: string; nameLo: string }
@@ -76,6 +76,7 @@ interface Order {
     goldItem: { nameLo: string };
   }>;
   receivedFromSmithAt: string | null; customerPickupAt: string | null; completedAt?: string | null;
+  statusHistory?: OrderStatusHistoryItem[];
   /** ການຮັບ / ຈ່າຍຄືນເງິນຂອງບິນນີ້ — ສະແດງພ້ອມສະກຸນເງິນ. */
   receipts: Array<{
     id: string;
@@ -329,8 +330,8 @@ export default function OrdersPage() {
 
   // filter & search state (supports ?search= from Module Advance link)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
-  const timeSearch = useTimeSearchFilter();
-  const { setSearchImmediate } = timeSearch;
+  const searchFilter = useOrderSearchFilter();
+  const { setSearchImmediate } = searchFilter;
 
   // Auto-fill initial ?search= query param if available
   useEffect(() => {
@@ -377,9 +378,7 @@ export default function OrdersPage() {
   const history = useHistoryRange<Order>(['orders'], '/orders', {
     params: {
       status: serverStatusParam,
-      start_time: timeSearch.startTime || undefined,
-      end_time: timeSearch.endTime || undefined,
-      search: timeSearch.debouncedSearch || undefined,
+      search: searchFilter.debouncedSearch || undefined,
     },
   });
   const orders = history.rows;
@@ -402,7 +401,7 @@ export default function OrdersPage() {
   const filteredOrders = useMemo(() => {
     const byStatus =
       statusFilter === 'PENDING_ACTION' ? orders.filter((o) => isPendingOrder(o)) : orders;
-    if (!timeSearch.searchTerm.trim()) return byStatus;
+    if (!searchFilter.searchTerm.trim()) return byStatus;
     return byStatus.filter((o) =>
       matchesOrderSearch(
         {
@@ -412,10 +411,10 @@ export default function OrdersPage() {
           staffName: o.staffName,
           supplierNameLo: o.supplier?.nameLo,
         },
-        timeSearch.searchTerm,
+        searchFilter.searchTerm,
       ),
     );
-  }, [orders, statusFilter, timeSearch.searchTerm]);
+  }, [orders, statusFilter, searchFilter.searchTerm]);
 
   const catalogQuery = [goldItemsQuery, partnersQuery, employeesQuery].find((q) => q.isError);
 
@@ -1108,7 +1107,7 @@ export default function OrdersPage() {
                 onChange={(e) => setProductType(e.target.value as 'IT' | 'ITP')}
               >
                 <option value="IT">IT (ສັ່ງທົ່ວໄປ)</option>
-                <option value="ITP">ITP (ສັ່ງພິເສດ)</option>
+                <option value="ITP">ITP (ພຣະ)</option>
               </select>
             </div>
 
@@ -1655,12 +1654,10 @@ export default function OrdersPage() {
               : `${filteredOrders.length} / ${orders.length} ລາຍການ`}
           </span>
         </div>
-        <DateRangeFilter history={history} />
-        <TimeSearchFilterBar
-          filter={timeSearch}
-          fromDate={history.from}
-          toDate={history.to}
-          leftSlot={
+        <OrderFilterBar
+          history={history}
+          search={searchFilter}
+          statusSlot={
             <div className="flex flex-wrap items-center gap-2">
               <span className="filter-select-label" id="orders-status-filter-label">
                 ສະຖານະ
@@ -1671,7 +1668,7 @@ export default function OrdersPage() {
                     type="button"
                     id="orders-status-filter"
                     aria-labelledby="orders-status-filter-label"
-                    className="filter-date group inline-flex min-w-[230px] items-center justify-between gap-2.5 pr-3 text-left"
+                    className="filter-date group inline-flex min-w-[220px] items-center justify-between gap-2.5 pr-3 text-left cursor-pointer"
                   >
                     <span className="inline-flex items-center gap-2 truncate">
                       <span
@@ -1758,7 +1755,7 @@ export default function OrdersPage() {
               {statusFilter && (
                 <button
                   type="button"
-                  className="filter-clear"
+                  className="filter-clear cursor-pointer text-xs"
                   onClick={() => setStatusFilter('')}
                 >
                   ລ້າງສະຖານະ
@@ -1793,7 +1790,7 @@ export default function OrdersPage() {
                 error={history.error}
                 isEmpty={filteredOrders.length === 0}
                 emptyText={
-                  timeSearch.hasActiveFilter || statusFilter
+                  searchFilter.hasActiveFilter || statusFilter
                     ? 'ບໍ່ພົບ Order ທີ່ຄົ້ນຫາ'
                     : 'ຍັງບໍ່ມີ Order'
                 }
@@ -1975,14 +1972,16 @@ export default function OrdersPage() {
         onClose={() => setViewingOrder(null)}
         title={`ລາຍລະອຽດ Order — ${viewingOrder?.code ?? ''}`}
         size="lg"
+        dismissOnScrim
         footer={
-          <div className="flex w-full items-center justify-between">
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <div className="text-xs text-muted">
-              ສ້າງເມື່ອ: {viewingOrder ? formatDateTime(viewingOrder.createdAt) : ''}
+              ສ້າງເມື່ອ: <span className="text-fg font-medium">{viewingOrder ? formatDateTime(viewingOrder.createdAt) : ''}</span>
+              {viewingOrder?.createdBy && <> · ບັນທຶກໂດຍ: <span className="text-fg font-medium">{viewingOrder.createdBy}</span></>}
             </div>
             <button
               type="button"
-              className="btn-secondary"
+              className="btn-secondary cursor-pointer"
               onClick={() => setViewingOrder(null)}
             >
               ປິດ
@@ -1990,147 +1989,190 @@ export default function OrdersPage() {
           </div>
         }
       >
-        {viewingOrder && (
-          <div className="space-y-5">
-            {/* ຂໍ້ມູນຫຼັກ */}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 p-4 rounded-xl bg-recessed/60 border border-line">
-              <Detail labelLo="ລະຫັດ Order" value={viewingOrder.code} />
-              <Detail labelLo="ເລກບິນ (BILL ID)" value={viewingOrder.billNo} />
-              <Detail labelLo="ປະເພດສິນຄ້າ" value={viewingOrder.productType} />
-              <Detail labelLo="ສະຖານະ" value={STATUS[viewingOrder.status].lo} highlight />
-              <Detail labelLo="ເບີໂທລູກຄ້າ" value={viewingOrder.customer.phone} />
-              <Detail labelLo="ພະນັກງານທີ່ຮັບ" value={viewingOrder.staffName} />
-              <Detail labelLo="ຜູ້ບັນທຶກ" value={viewingOrder.createdBy} />
-              <Detail labelLo="Supplier" value={viewingOrder.supplier?.nameLo ?? '—'} />
-              <Detail labelLo="ລວມນ້ຳໜັກ (g)" value={`${formatWeight(viewingOrder.weightG)} g`} />
-              <Detail labelLo="ລວມຈຳນວນ" value={`${viewingOrder.quantity} ອັນ`} />
-              <Detail labelLo="ວັນທີສັ່ງຊ່າງ" value={formatDate(viewingOrder.sentToSmithAt)} />
-              <Detail labelLo="ວັນທີຮັບຈາກຊ່າງ" value={formatDate(viewingOrder.receivedFromSmithAt)} />
-              <Detail labelLo="ວັນທີລູກຄ້າມາຮັບເຄື່ອງ" value={formatDate(viewingOrder.customerPickupAt || viewingOrder.completedAt)} />
-            </div>
+        {viewingOrder && (() => {
+          const resolved = resolveOrderCurrencyAndTotal(viewingOrder, rateForTotal);
+          const receiptSummary = getOrderReceiptSummary(viewingOrder);
+          const totalDisplay = resolved.orderCurrency !== 'LAK'
+            ? `${formatByCurrency(resolved.totalInCur, resolved.orderCurrency)} ${resolved.orderCurrency}`
+            : `${formatLak(viewingOrder.totalAmount)} LAK`;
+          const receivedDisplay = receiptSummary.currency !== 'LAK'
+            ? (receiptSummary.currency.includes(',')
+                ? receiptSummary.amountDisplay
+                : `${receiptSummary.amountDisplay} ${receiptSummary.currency}`)
+            : `${formatLak(viewingOrder.receivedAmount)} LAK`;
+          const balanceLakNum = Number(viewingOrder.balanceAmount) || 0;
+          const isBalanceZero = balanceLakNum <= 0;
+          const balanceDisplay = isBalanceZero
+            ? (resolved.orderCurrency !== 'LAK' ? `0.00 ${resolved.orderCurrency}` : '0 LAK')
+            : (resolved.orderCurrency !== 'LAK'
+                ? `${formatByCurrency(resolved.balanceInCur, resolved.orderCurrency)} ${resolved.orderCurrency}`
+                : `${formatLak(viewingOrder.balanceAmount)} LAK`);
+          const receiptCount = (viewingOrder.receipts ?? []).length;
 
-            {/* ສະຫຼຸບຍອດເງິນ */}
-            <div className="grid gap-3 sm:grid-cols-3 p-4 rounded-xl bg-recessed border border-line">
-              <div>
-                <span className="text-xs text-muted block mb-1">ຍອດ Order ທັງໝົດ</span>
-                <strong className="text-base font-semibold text-fg num">
-                  {(() => {
-                    const resolved = resolveOrderCurrencyAndTotal(viewingOrder, rateForTotal);
-                    if (resolved.orderCurrency !== 'LAK') {
-                      return `${formatByCurrency(resolved.totalInCur, resolved.orderCurrency)} ${resolved.orderCurrency}`;
-                    }
-                    return `${formatLak(viewingOrder.totalAmount)} LAK`;
-                  })()}
-                </strong>
-              </div>
-              <div>
-                <span className="text-xs text-muted block mb-1">ຍອດເງິນທີ່ໄດ້ຮັບແລ້ວ</span>
-                <strong className="text-base font-semibold text-success num">
-                  {(() => {
-                    const summary = getOrderReceiptSummary(viewingOrder);
-                    return summary.currency !== 'LAK'
-                      ? `${summary.amountDisplay} ${summary.currency}`
-                      : `${formatLak(viewingOrder.receivedAmount)} LAK`;
-                  })()}
-                </strong>
-              </div>
-              <div>
-                <span className="text-xs text-muted block mb-1">ຍອດຄົງເຫຼືອ</span>
-                <strong className={`text-base font-semibold num ${Number(viewingOrder.balanceAmount) > 0 ? 'text-warning' : 'text-fg'}`}>
-                  {(() => {
-                    const resolved = resolveOrderCurrencyAndTotal(viewingOrder, rateForTotal);
-                    if (resolved.orderCurrency !== 'LAK') {
-                      return `${formatByCurrency(resolved.balanceInCur, resolved.orderCurrency)} ${resolved.orderCurrency}`;
-                    }
-                    return `${formatLak(viewingOrder.balanceAmount)} LAK`;
-                  })()}
-                </strong>
-              </div>
-            </div>
+          return (
+            <div className="space-y-4">
+              {/* 1. ຂໍ້ມູນໃບບິນ (ເລກບິນ, ປະເພດ, Status Order, ເບີໂທ, ພະນັກງານ, ສະກຸນເງິນ, ໝາຍເຫດ) */}
+              <OrderBillInfoCard
+                billNo={viewingOrder.billNo}
+                productType={viewingOrder.productType}
+                status={viewingOrder.status}
+                statusLabel={STATUS[viewingOrder.status].lo}
+                phone={viewingOrder.customer.phone}
+                staffName={viewingOrder.staffName}
+                staffLabel="ພະນັກງານທີ່ຮັບ"
+                currency={resolved.orderCurrency}
+                note={resolved.cleanNote}
+              />
 
-            {cleanOrderNote(viewingOrder.note) && (
-              <div className="text-xs text-muted bg-recessed/40 p-3 rounded-lg border border-line">
-                <strong className="text-fg">ໝາຍເຫດ:</strong> {cleanOrderNote(viewingOrder.note)}
-              </div>
-            )}
+              {/* 2. ສະຫຼຸບຍອດເງິນ Order (Financial Highlights) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* ຍອດ Order ທັງໝົດ */}
+                <div className="rounded-xl border border-line bg-recessed/60 p-3.5 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-xs text-muted mb-1">
+                    <span>ຍອດ Order ທັງໝົດ</span>
+                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400 font-semibold">
+                      TOTAL
+                    </span>
+                  </div>
+                  <div className="num text-lg font-bold text-fg-strong">
+                    {totalDisplay}
+                  </div>
+                  <div className="text-[11px] text-muted mt-1">
+                    ມູນຄ່າລວມຂອງບິນ
+                  </div>
+                </div>
 
-            {/* ລາຍການຄຳໃນບິນ */}
-            <div>
-              <div className="font-semibold text-sm text-fg mb-2">ລາຍການຄຳໃນບິນ ({viewingOrder.lines?.length ?? 1} ລາຍການ)</div>
-              <div className="table-wrap rounded-lg border border-line">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>ລາຍການ</th>
-                      <th className="text-right">ນ້ຳໜັກ (g)</th>
-                      <th className="text-right">ຈຳນວນ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(viewingOrder.lines ?? []).length === 0 && (
+                {/* ຍອດເງິນທີ່ໄດ້ຮັບແລ້ວ */}
+                <div className="rounded-xl border border-line bg-recessed/60 p-3.5 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-xs text-muted mb-1">
+                    <span>ຍອດເງິນທີ່ໄດ້ຮັບແລ້ວ</span>
+                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-semibold">
+                      IN
+                    </span>
+                  </div>
+                  <div className="num text-lg font-bold text-success">
+                    {receivedDisplay}
+                  </div>
+                  <div className="text-[11px] text-muted mt-1">
+                    {receiptCount > 0 ? `${receiptCount} ລາຍການເຄື່ອນໄຫວ` : 'ຍັງບໍ່ມີການຮັບເງິນ'}
+                  </div>
+                </div>
+
+                {/* ຍອດຄົງເຫຼືອ */}
+                <div className="rounded-xl border border-line bg-recessed/60 p-3.5 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-xs text-muted mb-1">
+                    <span>ຍອດຄົງເຫຼືອ</span>
+                    <span
+                      className={`font-mono text-[10px] px-1.5 py-0.5 rounded font-semibold ${
+                        isBalanceZero
+                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                          : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                      }`}
+                    >
+                      {isBalanceZero ? 'PAID' : 'DUE'}
+                    </span>
+                  </div>
+                  <div className={`num text-lg font-bold ${isBalanceZero ? 'text-success' : 'text-warning'}`}>
+                    {balanceDisplay}
+                  </div>
+                  <div className="text-[11px] text-muted mt-1">
+                    {isBalanceZero ? 'ຊຳລະຄົບແລ້ວ' : 'ຍັງຄ້າງຊຳລະ'}
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. ລາຍການຄຳໃນບິນ (ພ້ອມ ລວມນ້ຳໜັກ ແລະ ລວມຈຳນວນ) */}
+              <OrderGoldItemsCard
+                lines={viewingOrder.lines}
+                fallbackItemName={viewingOrder.goldItem?.nameLo}
+                totalWeightG={viewingOrder.weightG}
+                totalQuantity={viewingOrder.quantity}
+              />
+
+              {/* 4. ການດຳເນີນງານ (Timeline) */}
+              <OrderTimeline
+                status={viewingOrder.status}
+                createdAt={viewingOrder.createdAt}
+                sentToSmithAt={viewingOrder.sentToSmithAt}
+                receivedFromSmithAt={viewingOrder.receivedFromSmithAt}
+                customerPickupAt={viewingOrder.customerPickupAt}
+                completedAt={viewingOrder.completedAt}
+                supplierName={viewingOrder.supplier?.nameLo}
+                statusHistory={viewingOrder.statusHistory}
+              />
+
+              {/* 5. ປະຫວັດການຮັບ / ຈ່າຍເງິນ (Payment) */}
+              <div className="rounded-xl border border-line bg-recessed/40 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-fg">
+                    <svg className="w-4 h-4 text-[var(--gold-icon)] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                    </svg>
+                    ປະຫວັດການຮັບ / ຈ່າຍເງິນ (Payment)
+                  </div>
+                  <span className="text-xs text-muted font-medium">
+                    {receiptCount} ລາຍການ
+                  </span>
+                </div>
+
+                <div className="table-wrap rounded-lg border border-line bg-surface">
+                  <table className="table text-xs">
+                    <thead>
                       <tr>
-                        <td>{viewingOrder.goldItem.nameLo}</td>
-                        <td className="num text-right">{formatWeight(viewingOrder.weightG)}</td>
-                        <td className="num text-right">{viewingOrder.quantity}</td>
+                        <th>ວັນທີ-ເວລາ</th>
+                        <th>ປະເພດ</th>
+                        <th>ຊ່ອງທາງ</th>
+                        <th>ສະກຸນເງິນ</th>
+                        <th className="text-right">ຈຳນວນ</th>
                       </tr>
-                    )}
-                    {(viewingOrder.lines ?? []).map((line) => (
-                      <tr key={line.id}>
-                        <td>{line.goldItem.nameLo}</td>
-                        <td className="num text-right">{formatWeight(line.weightG)}</td>
-                        <td className="num text-right">{line.quantity}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {receiptCount === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="text-center text-muted py-4">
+                            ຍັງບໍ່ມີການຈ່າຍເງິນ
+                          </td>
+                        </tr>
+                      ) : (
+                        (viewingOrder.receipts ?? []).map((receipt) => (
+                          <tr key={receipt.id}>
+                            <td className="num whitespace-nowrap">{formatDateTime(receipt.createdAt)}</td>
+                            <td>
+                              {receipt.isRefund ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-rose-500/15 text-rose-600 dark:text-rose-400 border border-rose-500/30">
+                                  ຈ່າຍຄືນ (−)
+                                </span>
+                              ) : receipt.isDeposit ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                                  ມັດຈຳ (+)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/30">
+                                  ຮັບເງິນ (+)
+                                </span>
+                              )}
+                            </td>
+                            <td className="text-muted">
+                              {receipt.method === 'CASH' ? 'ເງິນສົດ' : (receipt.bankAccount?.nameLo ?? 'ທະນາຄານ')}
+                            </td>
+                            <td>
+                              <span className="font-semibold text-xs px-2 py-0.5 rounded bg-recessed border border-line">
+                                {receipt.currency}
+                              </span>
+                            </td>
+                            <td className={`num text-right font-semibold ${receipt.isRefund ? 'text-danger' : 'text-success'}`}>
+                              {receipt.isRefund ? '−' : '+'}{formatByCurrency(receipt.amount, receipt.currency)}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
-
-            {/* ປະຫວັດການຮັບ / ຈ່າຍເງິນໃນບິນ */}
-            <div>
-              <div className="font-semibold text-sm text-fg mb-2">ປະຫວັດການຮັບ / ຈ່າຍເງິນ (Payment)</div>
-              <div className="table-wrap rounded-lg border border-line">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>ວັນທີ-ເວລາ</th>
-                      <th>ປະເພດ</th>
-                      <th>ຊ່ອງທາງ</th>
-                      <th>ສະກຸນເງິນ</th>
-                      <th className="text-right">ຈຳນວນ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(viewingOrder.receipts ?? []).length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="text-center text-muted py-4">ຍັງບໍ່ມີການຈ່າຍເງິນ</td>
-                      </tr>
-                    )}
-                    {(viewingOrder.receipts ?? []).map((receipt) => (
-                      <tr key={receipt.id}>
-                        <td className="whitespace-nowrap">{formatDateTime(receipt.createdAt)}</td>
-                        <td className={receipt.isRefund ? 'text-danger font-medium' : 'text-success font-medium'}>
-                          {receipt.isRefund ? 'ຈ່າຍຄືນ (−)' : receipt.isDeposit ? 'ມັດຈຳ (+)' : 'ຮັບເງິນ (+)'}
-                        </td>
-                        <td className="text-muted">
-                          {receipt.method === 'CASH' ? 'ເງິນສົດ' : (receipt.bankAccount?.nameLo ?? 'ທະນາຄານ')}
-                        </td>
-                        <td>
-                          <span className="font-semibold text-xs px-2 py-0.5 rounded bg-recessed border border-line">
-                            {receipt.currency}
-                          </span>
-                        </td>
-                        <td className="num text-right font-medium">
-                          {formatByCurrency(receipt.amount, receipt.currency)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </Dialog>
 
       {/* POP-UP MODAL: ແກ້ໄຂ Order (Admin) */}
@@ -2215,7 +2257,7 @@ export default function OrdersPage() {
                   onChange={(e) => setEditProductType(e.target.value as 'IT' | 'ITP')}
                 >
                   <option value="IT">IT (ສັ່ງທົ່ວໄປ)</option>
-                  <option value="ITP">ITP (ສັ່ງພິເສດ)</option>
+                  <option value="ITP">ITP (ພຣະ)</option>
                 </select>
               </div>
 
@@ -2488,18 +2530,6 @@ export default function OrdersPage() {
         )}
       </Dialog>
 
-    </div>
-  );
-}
-
-/** ຊ່ອງລາຍລະອຽດໃນແຖວ View. */
-function Detail({ labelLo, value, highlight }: { labelLo: string; value: string; highlight?: boolean }) {
-  return (
-    <div>
-      <div className="text-xs text-muted mb-0.5">{labelLo}</div>
-      <div className={`font-medium text-sm ${highlight ? 'text-[var(--gold)] font-semibold' : 'text-fg'}`}>
-        {value || '—'}
-      </div>
     </div>
   );
 }

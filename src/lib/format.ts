@@ -65,26 +65,32 @@ export function formatRate(value: string | number | Decimal | null | undefined):
   return formatMoney(value, RATE_DECIMALS);
 }
 
-/** Weight in grams, trailing zeros trimmed: "1.875" not "1.8750". */
-export function formatWeight(value: string | number | Decimal | null | undefined): string {
+/** Weight in grams or baht, trailing zeros trimmed: "1.875" not "1.8750". */
+export function formatWeight(
+  value: string | number | Decimal | null | undefined,
+  decimals = 4,
+): string {
   if (value === null || value === undefined || value === '') return '—';
   const d = dec(value as never);
   if (!d.isFinite()) return '—';
-  return trimZeros(d.toDecimalPlaces(4).toFixed(4));
+  return trimZeros(d.toDecimalPlaces(decimals).toFixed(decimals));
 }
 
 /**
- * ນ້ຳໜັກ ຫຼັງຈຸດ 3 ຕົວ — three places, zeros kept.
+ * ນ້ຳໜັກ ຫຼັງຈຸດ — fixed decimal places, zeros kept.
  *
- * For SKU weights, where a column is read down and 1.870 has to line up with
- * 1.875. Everywhere else formatWeight trims, which suits a single figure
- * in a sentence.
+ * For SKU weights, where a column is read down and trailing zeros keep
+ * decimal places aligned. Everywhere else formatWeight trims, which suits a
+ * single figure in a sentence.
  */
-export function formatGrams(value: string | number | Decimal | null | undefined): string {
+export function formatGrams(
+  value: string | number | Decimal | null | undefined,
+  decimals = 3,
+): string {
   if (value === null || value === undefined || value === '') return '—';
   const d = dec(value as never);
   if (!d.isFinite()) return '—';
-  return d.toDecimalPlaces(3).toFixed(3);
+  return d.toDecimalPlaces(decimals).toFixed(decimals);
 }
 
 /** ບາດຄຳ = g / 15, trimmed. */
