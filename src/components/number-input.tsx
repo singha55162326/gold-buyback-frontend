@@ -77,11 +77,13 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
     }
 
     function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
+      if (rest.readOnly || rest.disabled) return;
       const el = e.currentTarget;
       apply(el, el.value, el.selectionStart ?? el.value.length);
     }
 
     function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
+      if (rest.readOnly || rest.disabled) return;
       onPaste?.(e);
       if (e.defaultPrevented) return;
       const el = e.currentTarget;

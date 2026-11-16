@@ -1,4 +1,24 @@
+import { dec, GRAMS_PER_BAHT, type Decimal } from '@kpv/domain';
 import type { TypeBalance, SkuBalance } from '@/components/stock-movement-dialog';
+
+/**
+ * ລາຄາ/g = ຕົ້ນທຶນຄົງເຫຼືອ / ນໍ້າໜັກ(g) ຄົງເຫຼືອ, ລາຄາ/ບາດ = ລາຄາ/g * 15 (ແຍກຕາມປະເພດຄຳ).
+ */
+export function computeOldTypeRates(
+  closingWeightG: string,
+  closingCost: string,
+): { pricePerG: Decimal | null; pricePerBaht: Decimal | null } {
+  const weight = dec(closingWeightG || 0);
+  const cost = dec(closingCost || 0);
+  if (weight.lte(0)) {
+    return { pricePerG: null, pricePerBaht: null };
+  }
+  const pricePerG = cost.div(weight);
+  return {
+    pricePerG,
+    pricePerBaht: pricePerG.mul(GRAMS_PER_BAHT),
+  };
+}
 
 export interface Wac {
   oldWeightG: string;
@@ -59,6 +79,7 @@ export interface LedgerRow {
   goldType: { id?: string; nameLo: string };
   /** ຜູ້ບັນທຶກລາຍການນີ້. */
   createdBy: string;
+  createdAt?: string;
   movement?: MovementData | null;
 }
 

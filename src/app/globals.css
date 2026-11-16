@@ -683,7 +683,8 @@
     opacity: 0.6;
     cursor: not-allowed;
   }
-  input.filter-date[type='date'] {
+  input.filter-date[type='date'],
+  input.filter-date[type='time'] {
     /* The picker button is part of the field, so the right padding is tighter. */
     padding-right: 8px;
   }

@@ -57,6 +57,7 @@ export const NAV: NavGroup[] = [
       { href: '/admin/income-expense-categories', labelLo: 'ເພີ້ມລາຍການຮັບຈ່າຍ', section: '§3.7', roles: ADMIN_FC, status: 'live' },
       { href: '/admin/ap-ar-categories', labelLo: 'ລາຍການ AP-AR (Cash)', section: '§9.1', roles: ADMIN, status: 'live' },
       { href: '/admin/partners', labelLo: 'Supplier — ແຫຼ່ງຮັບເຂົ້າ / ສົ່ງອອກ', section: '§3.7', roles: ADMIN, status: 'live' },
+      { href: '/admin/employees', labelLo: 'ຈັດການ Employee', section: '§3.7', roles: ADMIN, status: 'live' },
       { href: '/admin/users', labelLo: 'User Setting', section: '§3.7', roles: ADMIN, status: 'live' },
       { href: '/admin/notifications', labelLo: 'ການແຈ້ງເຕືອນ WhatsApp', section: '§10', roles: ADMIN, status: 'live' },
       { href: '/admin/deleted', labelLo: 'Deleted List', section: '§3.7', roles: ADMIN, status: 'live' },

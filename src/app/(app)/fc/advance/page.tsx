@@ -5,13 +5,18 @@ import { Pagination, usePagination } from '@/components/pagination';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import Link from 'next/link';
-import { formatWeight, formatDate, formatByCurrency, formatLak } from '@/lib/format';
+import { formatWeight, formatDate, formatDateTime, formatByCurrency, formatLak } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import { StatCard } from '@/components/stat-card';
 import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 import { Dialog } from '@/components/dialog';
+import {
+  TimeSearchFilterBar,
+  matchesOrderSearch,
+  useTimeSearchFilter,
+} from '@/components/time-search-filter';
 
 interface Summary {
   totals: Array<{ currency: 'LAK' | 'THB' | 'USD'; net: string }>;
@@ -44,6 +49,7 @@ interface OrderSummary {
 interface Row {
   id: string;
   businessDate: string;
+  createdAt: string;
   currency: string;
   amountIn: string;
   amountOut: string;
@@ -362,6 +368,7 @@ export default function AdvancePage() {
   const [viewingRow, setViewingRow] = useState<Row | null>(null);
   const [viewingEntries, setViewingEntries] = useState<Row[]>([]);
   const [groupByOrder, setGroupByOrder] = useState(true);
+  const timeSearch = useTimeSearchFilter();
 
   const summaryQuery = useQuery({
     queryKey: advanceKeys.summary(),
@@ -370,14 +377,35 @@ export default function AdvancePage() {
   });
   const summary = summaryQuery.data;
   // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; ກວ້າງອອກໄດ້ຈາກແຖບ filter.
-  const history = useHistoryRange<Row>(advanceKeys.history(), '/finance/advance/history');
+  const history = useHistoryRange<Row>(advanceKeys.history(), '/finance/advance/history', {
+    params: {
+      start_time: timeSearch.startTime || undefined,
+      end_time: timeSearch.endTime || undefined,
+      search: timeSearch.debouncedSearch || undefined,
+    },
+  });
   const rows = history.rows;
+
+  const filteredRows = useMemo(() => {
+    if (!timeSearch.searchTerm.trim()) return rows;
+    return rows.filter((r) =>
+      matchesOrderSearch(
+        {
+          code: r.order.code,
+          billNo: r.order.billNo,
+          phone: r.order.customer.phone,
+          staffName: r.order.staffName,
+        },
+        timeSearch.searchTerm,
+      ),
+    );
+  }, [rows, timeSearch.searchTerm]);
 
   // ຈັດກຸ່ມຕາມ Order: 1 Order = 1 ແຖວ ພ້ອມລວມຍອດຮັບ, ຕັດຊຳລະ ແລະ ສຸດທິ ແຍກຕາມສະກຸນເງິນ
   const groupedRows = useMemo<GroupedRow[]>(() => {
     const map = new Map<string, GroupedRow>();
 
-    for (const row of rows) {
+    for (const row of filteredRows) {
       const orderId = row.order?.id || row.id;
       const existing = map.get(orderId);
       const inAmt = Number(row.amountIn) || 0;
@@ -432,9 +460,9 @@ export default function AdvancePage() {
     }
 
     return Array.from(map.values());
-  }, [rows]);
+  }, [filteredRows]);
 
-  const displayRows = groupByOrder ? groupedRows : rows;
+  const displayRows = groupByOrder ? groupedRows : filteredRows;
   const pager = usePagination(displayRows);
 
   const viewingOrderInfo = viewingRow ? getOrderCurrencyInfo(viewingRow) : null;
@@ -509,14 +537,20 @@ export default function AdvancePage() {
           </div>
         </div>
         <DateRangeFilter history={history} />
+        <TimeSearchFilterBar
+          filter={timeSearch}
+          fromDate={history.from}
+          toDate={history.to}
+        />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Module Advance">
           <table className="table">
             <thead>
               <tr>
                 <th>ລະຫັດ Order</th>
-                <th>ວັນທີ</th>
+                <th>ວັນທີ / ເວລາ</th>
                 <th>ເບີໂທ</th>
                 <th>ເລກບິນ</th>
+                <th>ພະນັກງານຮັບ</th>
                 <th>ປະເພດສິນຄ້າ</th>
                 <th>ວິທີຊຳລະ / ທຸລະກຳ</th>
                 <th className="text-right">ຍອດເງິນທີ່ໄດ້ຮັບ</th>
@@ -529,24 +563,30 @@ export default function AdvancePage() {
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={12}
+                colSpan={13}
                 isLoading={history.isLoading}
                 isError={history.isError}
                 error={history.error}
                 isEmpty={displayRows.length === 0}
-                emptyText="ຍັງບໍ່ມີລາຍການ"
+                emptyText={
+                  timeSearch.hasActiveFilter ? 'ບໍ່ພົບລາຍການທີ່ຄົ້ນຫາ' : 'ຍັງບໍ່ມີລາຍການ'
+                }
                 onRetry={() => void history.refetch()}
               />
               {pager.pageItems.map((row) => {
                 const isGroupedRow = 'isGrouped' in row && row.isGrouped;
                 const grouped = isGroupedRow ? (row as GroupedRow) : null;
+                const dateTimeText = row.createdAt
+                  ? formatDateTime(row.createdAt)
+                  : formatDate(row.businessDate);
 
                 return (
                   <tr key={row.id}>
                     <td className="font-mono text-xs">{row.order.code}</td>
-                    <td>{formatDate(row.businessDate)}</td>
+                    <td className="num whitespace-nowrap">{dateTimeText}</td>
                     <td className="num">{row.order.customer.phone}</td>
                     <td className="font-mono text-xs">{row.order.billNo}</td>
+                    <td>{row.order.staffName || '—'}</td>
                     <td>
                       {row.order.productType}
                       {(row.order.lines?.length ?? 0) > 1 && (

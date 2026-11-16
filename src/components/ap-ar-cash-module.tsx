@@ -1,29 +1,42 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError } from '@/lib/api';
-import { TableStateRow } from '@/components/query-state';
-import { formatMoney, formatDate, formatByCurrency } from '@/lib/format';
-import { NumberInput } from './number-input';
+import { dec } from '@kpv/domain';
+import { api, ApiError, getStoredUser } from '@/lib/api';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
+import { formatDate, formatDateTime, formatByCurrency } from '@/lib/format';
 import { PageHead } from './page-head';
 import { StatCard } from './stat-card';
 import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
-import { isPositive } from '@/lib/validate';
+import { TimeSearchFilterBar, useTimeSearchFilter } from '@/components/time-search-filter';
+import { Pagination, usePagination } from '@/components/pagination';
 import { AddApArCashModal } from './add-ap-ar-cash-modal';
+import { SettleApArCashModal, type ApArPartnerRow } from './settle-ap-ar-cash-modal';
 import { Dialog } from './dialog';
-import type { CashBalance, BankBalance } from './multi-payment';
+import { useToast } from './toast';
 
-interface Total { currency: 'LAK' | 'THB' | 'USD'; opening: string; increases: string; decreases: string; net: string }
-interface PartnerRow {
-  partnerId: string; partnerCode: string; partnerNameLo: string;
+interface Total {
   currency: 'LAK' | 'THB' | 'USD';
-  broughtForward: string; increases: string; decreases: string; current: string;
+  opening: string;
+  increases: string;
+  decreases: string;
+  net: string;
 }
+
 interface HistoryRow {
-  id: string; businessDate: string; refType: string; currency: string;
-  amountIn: string; amountOut: string; balance: string; note: string | null;
-  partner: { nameLo: string } | null;
+  id: string;
+  businessDate: string;
+  createdAt?: string;
+  refType: string;
+  refId?: string | null;
+  currency: string;
+  amountIn: string;
+  amountOut: string;
+  balance: string;
+  note: string | null;
+  partnerId?: string | null;
+  partner: { id?: string; nameLo: string } | null;
   category: { nameLo: string } | null;
   method?: 'CASH' | 'BANK' | null;
   bankAccountId?: string | null;
@@ -31,16 +44,49 @@ interface HistoryRow {
   /** ຜູ້ບັນທຶກລາຍການນີ້. */
   createdBy: string;
 }
-interface Partner { id: string; nameLo: string }
-interface Category { id: string; nameLo: string }
-interface Bank { id: string; nameLo: string }
+
+interface Bank {
+  id: string;
+  nameLo: string;
+}
+
+function safeDec(value: string | number | null | undefined) {
+  try {
+    return dec(value ?? 0);
+  } catch {
+    return dec(0);
+  }
+}
+
+function formatRefTypeLabel(row: Pick<HistoryRow, 'refType' | 'amountIn' | 'amountOut'>, side: 'AP' | 'AR'): string {
+  switch (row.refType) {
+    case 'LABOR_PAYABLE':
+      return 'ຄ່າແຮງຊ່າງຄ້າງຈ່າຍ';
+    case 'LABOR_PAYMENT':
+      return 'ຈ່າຍຄ່າແຮງຊ່າງ';
+    case 'CREDIT_ISSUED':
+      return 'ຍອດສິນເຊື່ອໃໝ່';
+    case 'CREDIT_RECEIPT':
+      return 'ຮັບຄ່າງວດສິນເຊື່ອ';
+    case 'ADJUSTMENT': {
+      const isOut = safeDec(row.amountOut).gt(0) && safeDec(row.amountIn).lte(0);
+      if (isOut) {
+        return side === 'AP' ? 'ຊຳຣະໜີ້ AP' : 'ຮັບຊຳຣະ AR';
+      }
+      return `ເພີ່ມຍອດ ${side}`;
+    }
+    case 'OPENING':
+      return 'ຍອດຕັ້ງຕົ້ນ';
+    default:
+      return row.refType;
+  }
+}
 
 /**
  * TOR §9.3 / §9.4 — Module AR (Cash) and Module AP (Cash).
  *
- * The updated TOR gives each side its own window, but they are structurally
- * identical: totals, a per-Supplier table with a Payment button, and history.
- * One parameterised component rather than two near-copies.
+ * One parameterised component for both sides: currency totals, a per-Partner
+ * breakdown with modal settlement, and filterable/paginated ledger history.
  */
 export function ApArCashModule({
   side,
@@ -52,112 +98,119 @@ export function ApArCashModule({
   descriptionLo: string;
 }) {
   const queryClient = useQueryClient();
+  const toast = useToast();
+
   const [showAdd, setShowAdd] = useState(false);
-  const [settling, setSettling] = useState<PartnerRow | null>(null);
+  const [settling, setSettling] = useState<ApArPartnerRow | null>(null);
   const [viewingHistory, setViewingHistory] = useState<HistoryRow | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
-  const [settleAmount, setSettleAmount] = useState('');
-  const [method, setMethod] = useState<'CASH' | 'BANK'>('CASH');
-  const [bankAccountId, setBankAccountId] = useState('');
+  const [selectedPartnerId, setSelectedPartnerId] = useState<string>('');
+  const [selectedCurrency, setSelectedCurrency] = useState<string>('');
+  const timeSearch = useTimeSearchFilter();
 
-  const { data: totals = [] } = useQuery({
+  const userRole = getStoredUser()?.role;
+  const canWrite =
+    userRole === 'ADMIN' || userRole === 'MANAGER' || userRole === 'FINANCIAL_CONTROLLER';
+
+  const {
+    data: totals = [],
+    isLoading: totalsLoading,
+    isError: totalsFailed,
+    error: totalsError,
+    refetch: refetchTotals,
+  } = useQuery({
     queryKey: ['finance', 'ap-ar', side, 'totals'],
     queryFn: () => api.get<Total[]>(`/finance/ap-ar/${side}/totals`),
   });
-  const { data: partnerRows = [], isError: partnersFailed, error: partnersError, refetch: refetchPartners } = useQuery({
+
+  const {
+    data: partnerRows = [],
+    isLoading: partnersLoading,
+    isError: partnersFailed,
+    error: partnersError,
+    refetch: refetchPartners,
+  } = useQuery({
     queryKey: ['finance', 'ap-ar', side, 'partners'],
-    queryFn: () => api.get<PartnerRow[]>(`/finance/ap-ar/${side}/partners`),
+    queryFn: () => api.get<ApArPartnerRow[]>(`/finance/ap-ar/${side}/partners`),
   });
+
   // ປະຫວັດ: ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້, ກວ້າງອອກໄດ້ຈາກແຖບ filter.
   const historyRange = useHistoryRange<HistoryRow>(
     ['finance', 'ap-ar', side, 'history'],
     `/finance/ap-ar/${side}/history`,
+    {
+      params: {
+        partnerId: selectedPartnerId || undefined,
+        currency: selectedCurrency || undefined,
+        start_time: timeSearch.startTime || undefined,
+        end_time: timeSearch.endTime || undefined,
+        search: timeSearch.debouncedSearch || undefined,
+      },
+    },
   );
   const history = historyRange.rows;
-  const historyFailed = historyRange.isError;
-  const historyError = historyRange.error;
-  const refetchHistory = historyRange.refetch;
+  const pager = usePagination(history);
+
   const { data: banks = [] } = useQuery({
     queryKey: ['catalog', 'bank-accounts'],
     queryFn: () => api.get<Bank[]>('/catalog/bank-accounts'),
   });
 
-  const isApSettling = side === 'AP' && Boolean(settling);
-  const { data: cashBalances = [] } = useQuery({
-    queryKey: ['cash', 'balances'],
-    queryFn: () => api.get<CashBalance[]>('/cash/balances'),
-    enabled: isApSettling,
-    refetchInterval: 30_000,
-    refetchIntervalInBackground: false,
-  });
-  const { data: bankBalances = [] } = useQuery({
-    queryKey: ['cash', 'bank', 'balances'],
-    queryFn: () => api.get<BankBalance[]>('/cash/bank/balances'),
-    enabled: isApSettling,
-    refetchInterval: 30_000,
-    refetchIntervalInBackground: false,
-  });
-
-  const settleValidationError = (() => {
-    if (!settling) return null;
-    const amt = Number(settleAmount.replace(/,/g, '').trim());
-    if (!Number.isFinite(amt) || amt <= 0) return null;
-    const maxCurrent = Number(settling.current) || 0;
-    if (amt > maxCurrent + 0.0001) {
-      return `ຈຳນວນເງິນທີ່ຊຳຣະເກີນຍອດຄ້າງປັດຈຸບັນ (${formatByCurrency(maxCurrent, settling.currency)} ${settling.currency})`;
+  const uniquePartners = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of partnerRows) {
+      if (!map.has(r.partnerId)) map.set(r.partnerId, r.partnerNameLo);
     }
-    if (side === 'AP') {
-      if (method === 'CASH') {
-        const cb = cashBalances.find((c) => c.currency === settling.currency);
-        const avail = Number(cb?.balance ?? 0);
-        if (amt > avail + 0.0001) {
-          return `ເງິນສົດ ${settling.currency} ໃນຮ້ານ (Module Cash) ບໍ່ພໍສຳລັບຊຳຣະໜີ້ AP (ມີເຫຼືອ ${formatByCurrency(avail, settling.currency)} ${settling.currency}, ຕ້ອງການຈ່າຍ ${formatByCurrency(amt, settling.currency)} ${settling.currency})`;
-        }
-      } else if (method === 'BANK' && bankAccountId) {
-        const bb = bankBalances.find(
-          (b) => b.bankAccountId === bankAccountId && b.currency === settling.currency,
-        );
-        const avail = Number(bb?.actual ?? 0);
-        const bankName =
-          bb?.bankNameLo ?? banks.find((b) => b.id === bankAccountId)?.nameLo ?? 'ທະນາຄານ';
-        if (amt > avail + 0.0001) {
-          return `ຍອດເງິນ ${settling.currency} ໃນບັນຊີ ${bankName} (Module Bank) ບໍ່ພໍສຳລັບຊຳຣະໜີ້ AP (ມີເຫຼືອ ${formatByCurrency(avail, settling.currency)} ${settling.currency}, ຕ້ອງການຈ່າຍ ${formatByCurrency(amt, settling.currency)} ${settling.currency})`;
-        }
+    return Array.from(map.entries()).map(([id, nameLo]) => ({ id, nameLo }));
+  }, [partnerRows]);
+
+  // Detect any unassigned AR balance (e.g. GoldCredit rows without partnerId).
+  const unallocatedByCurrency = useMemo(() => {
+    if (totalsLoading || partnersLoading || totals.length === 0) return [];
+    const diffs: Array<{ currency: Total['currency']; amount: string }> = [];
+    for (const t of totals) {
+      const partnerSum = partnerRows
+        .filter((p) => p.currency === t.currency)
+        .reduce((acc, p) => acc.plus(safeDec(p.current)), dec(0));
+      const diff = safeDec(t.net).minus(partnerSum);
+      if (diff.abs().gt(0)) {
+        diffs.push({ currency: t.currency, amount: diff.toFixed() });
       }
     }
-    return null;
-  })();
+    return diffs;
+  }, [totals, partnerRows, totalsLoading, partnersLoading]);
 
-  const canConfirmSettle =
-    Boolean(settling) &&
-    isPositive(settleAmount) &&
-    (method === 'CASH' || Boolean(bankAccountId)) &&
-    !settleValidationError;
+  const deleteEntry = useMutation({
+    mutationFn: (id: string) => api.delete(`/finance/ap-ar/${side}/entries/${id}`),
+    onSuccess: () => {
+      toast.success(`ລຶບລາຍການ ${side} (Cash) ສຳເລັດ`);
+      setConfirmDeleteId(null);
+      setViewingHistory(null);
+      void queryClient.invalidateQueries({ queryKey: ['finance', 'ap-ar', side] });
+      void queryClient.invalidateQueries({ queryKey: ['ledger'] });
+    },
+    onError: (e) => {
+      const msg = e instanceof ApiError ? e.message : 'ລຶບບໍ່ສຳເລັດ';
+      toast.error('ລຶບບໍ່ສຳເລັດ', msg);
+    },
+  });
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ['finance', 'ap-ar', side] });
-    void queryClient.invalidateQueries({ queryKey: ['ledger'] });
-    void queryClient.invalidateQueries({ queryKey: ['cash'] });
+  const handleRefreshAll = () => {
+    void refetchTotals();
+    void refetchPartners();
+    historyRange.refetch();
   };
 
-  const settle = useMutation({
-    mutationFn: (row: PartnerRow) =>
-      api.post(`/finance/ap-ar/${side}/settle`, {
-        partnerId: row.partnerId,
-        currency: row.currency,
-        method,
-        bankAccountId: method === 'BANK' ? bankAccountId : undefined,
-        amount: settleAmount.replace(/,/g, '').trim(),
-      }),
-    onSuccess: () => {
-      setSettling(null);
-      setSettleAmount('');
-      setError(null);
-      invalidate();
-    },
-    onError: (e) => setError(e instanceof ApiError ? e.message : side === 'AR' ? 'ຮັບເງິນບໍ່ສຳເລັດ' : 'ຊຳຣະບໍ່ສຳເລັດ'),
-  });
+  const partnerHeading = side === 'AP' ? 'ແຍກຕາມ Supplier / ຊ່າງ' : 'ແຍກຕາມແຫຼ່ງ / ຄູ່ຄ້າ';
+  const partnerColLabel = side === 'AP' ? 'Supplier / ຊ່າງ' : 'ແຫຼ່ງ / ຄູ່ຄ້າ';
+
+  const canDeleteViewing =
+    Boolean(viewingHistory) &&
+    canWrite &&
+    viewingHistory?.refType === 'ADJUSTMENT' &&
+    !viewingHistory?.refId &&
+    safeDec(viewingHistory?.amountIn).gt(0);
 
   return (
     <div className="space-y-6">
@@ -165,17 +218,26 @@ export function ApArCashModule({
         title={titleLo}
         subtitle={descriptionLo}
         actions={
-          <button
-            type="button"
-            className="btn-primary"
-            aria-haspopup="dialog"
-            onClick={() => {
-              setShowAdd(true);
-              setSettling(null);
-            }}
-          >
-            + Add {side} Cash
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn-secondary btn-sm h-9 py-0 px-3 text-xs"
+              onClick={handleRefreshAll}
+            >
+              ໂຫຼດຂໍ້ມູນຄືນ
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              aria-haspopup="dialog"
+              onClick={() => {
+                setShowAdd(true);
+                setSettling(null);
+              }}
+            >
+              + Add {side} Cash
+            </button>
+          </div>
         }
       />
 
@@ -185,32 +247,70 @@ export function ApArCashModule({
         side={side}
       />
 
-      {error && (
-        <div id="apar-error" role="alert" className="notice status-danger">{error}</div>
+      <SettleApArCashModal
+        row={settling}
+        onClose={() => setSettling(null)}
+        side={side}
+      />
+
+      {totalsFailed ? (
+        <QueryErrorNotice error={totalsError} onRetry={() => void refetchTotals()} />
+      ) : totalsLoading ? (
+        <div className="stat-grid">
+          {(['LAK', 'THB', 'USD'] as const).map((c) => (
+            <StatCard key={c} label={`ຍອດລວມ ${side} (Cash) — ${c}`} value="…" sub="ກຳລັງໂຫຼດ..." />
+          ))}
+        </div>
+      ) : (
+        <div className="stat-grid">
+          {totals.map((t) => (
+            <StatCard
+              key={t.currency}
+              label={`ຍອດລວມ ${side} (Cash) — ${t.currency}`}
+              value={formatByCurrency(t.net, t.currency)}
+              sub={`ຍົກມາ ${formatByCurrency(t.opening, t.currency)} · (+) ${formatByCurrency(t.increases, t.currency)} · (−) ${formatByCurrency(t.decreases, t.currency)}`}
+            />
+          ))}
+        </div>
       )}
 
-      {settleValidationError && (
-        <div role="alert" className="notice status-danger text-xs">{settleValidationError}</div>
+      {side === 'AR' && unallocatedByCurrency.length > 0 && (
+        <div data-fade className="notice status-info text-xs">
+          <span>
+            ຍອດລວມ AR (Cash) ລວມຍອດສິນເຊື່ອລູກຄ້າ (Module Credit) ທີ່ບໍ່ໄດ້ຜູກກັບແຫຼ່ງຄູ່ຄ້າ:{' '}
+            <strong>
+              {unallocatedByCurrency
+                .map((d) => `${formatByCurrency(d.amount, d.currency)} ${d.currency}`)
+                .join(' · ')}
+            </strong>{' '}
+            (ຊຳຣະງວດໄດ້ທີ່ໜ້າ ລາຍການສິນເຊື່ອ)
+          </span>
+        </div>
       )}
-
-      <div className="stat-grid">
-        {totals.map((t) => (
-          <StatCard
-            key={t.currency}
-            label={`ຍອດລວມ ${side} (Cash) — ${t.currency}`}
-            value={formatByCurrency(t.net, t.currency)}
-            sub={`ຍົກມາ ${formatByCurrency(t.opening, t.currency)} · (+) ${formatByCurrency(t.increases, t.currency)} · (−) ${formatByCurrency(t.decreases, t.currency)}`}
-          />
-        ))}
-      </div>
 
       <div data-fade className="card">
-        <div className="card-header"><h2 className="card-title">ແຍກຕາມ Supplier</h2></div>
-        <div className="table-wrap" tabIndex={0} role="region" aria-label="ແຍກຕາມ Supplier">
+        <div className="card-header flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="card-title">{partnerHeading}</h2>
+            <p className="text-xs text-muted mt-0.5">
+              ຄລິກທີ່ແຖວເພື່ອກອງປະຫວັດສະເພາະຄູ່ຄ້ານັ້ນ
+            </p>
+          </div>
+          {selectedPartnerId && (
+            <button
+              type="button"
+              className="btn-ghost btn-sm text-xs h-7 py-0"
+              onClick={() => setSelectedPartnerId('')}
+            >
+              ສະແດງທຸກຄູ່ຄ້າ
+            </button>
+          )}
+        </div>
+        <div className="table-wrap" tabIndex={0} role="region" aria-label={partnerHeading}>
           <table className="table">
             <thead>
               <tr>
-                <th>ແຫຼ່ງ Supplier</th>
+                <th>{partnerColLabel}</th>
                 <th>ສະກຸນເງິນ</th>
                 <th className="text-right">ຍອດຍົກມາ</th>
                 <th className="text-right">(+)</th>
@@ -222,72 +322,126 @@ export function ApArCashModule({
             <tbody>
               <TableStateRow
                 colSpan={7}
+                isLoading={partnersLoading}
                 isError={partnersFailed}
                 error={partnersError}
                 isEmpty={partnerRows.length === 0}
                 emptyText="ຍັງບໍ່ມີຍອດຄ້າງ"
                 onRetry={() => void refetchPartners()}
               />
-              {partnerRows.map((row) => (
-                <tr key={`${row.partnerId}-${row.currency}`}>
-                  <td className="font-medium">{row.partnerNameLo}</td>
-                  <td>{row.currency}</td>
-                  <td className="num text-right">{formatByCurrency(row.broughtForward, row.currency)}</td>
-                  <td className="num text-right text-success">{formatByCurrency(row.increases, row.currency)}</td>
-                  <td className="num text-right text-danger">{formatByCurrency(row.decreases, row.currency)}</td>
-                  <td className="num text-right font-semibold">{formatByCurrency(row.current, row.currency)}</td>
-                  <td className="text-right">
-                    {settling?.partnerId === row.partnerId && settling.currency === row.currency ? (
-                      <div className="flex items-center justify-end gap-2">
-                        <select className="input w-24" aria-label={side === 'AR' ? 'ຮັບເງິນ' : 'Payment'} value={method}
-                          onChange={(e) => setMethod(e.target.value as 'CASH' | 'BANK')}>
-                          <option value="CASH">Cash</option>
-                          <option value="BANK">Bank</option>
-                        </select>
-                        {method === 'BANK' && (
-                          <select className="input w-32" aria-label="ທະນາຄານ" value={bankAccountId}
-                            onChange={(e) => setBankAccountId(e.target.value)}>
-                            <option value="">ທະນາຄານ</option>
-                            {banks.map((b) => <option key={b.id} value={b.id}>{b.nameLo}</option>)}
-                          </select>
+              {partnerRows.map((row) => {
+                const isSelected = selectedPartnerId === row.partnerId;
+                const hasOutstanding = safeDec(row.current).gt(0);
+                const hadActivity =
+                  safeDec(row.broughtForward).gt(0) ||
+                  safeDec(row.increases).gt(0) ||
+                  safeDec(row.decreases).gt(0);
+                return (
+                  <tr
+                    key={`${row.partnerId}-${row.currency}`}
+                    className={`cursor-pointer transition-colors hover:bg-recessed/50 ${
+                      isSelected ? 'bg-recessed/80 font-medium' : ''
+                    }`}
+                    onClick={() =>
+                      setSelectedPartnerId((curr) => (curr === row.partnerId ? '' : row.partnerId))
+                    }
+                  >
+                    <td className="font-medium">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span>{row.partnerNameLo}</span>
+                        {row.isActive === false && (
+                          <span className="badge recessed text-[10px]">ປິດນຳໃຊ້</span>
                         )}
-                        <NumberInput className="input num w-32 text-right" decimals={row.currency === 'LAK' ? 0 : 2} aria-label="ຈຳນວນເງິນ" aria-describedby={error ? 'apar-error' : undefined}
-                          placeholder={row.current} value={settleAmount}
-                          onValueChange={setSettleAmount} autoFocus />
-                        <button className="btn-ghost"
-                          onClick={() => settle.mutate(row)} disabled={settle.isPending || !canConfirmSettle}>
-                          ຢືນຢັນ
-                        </button>
-                        <button className="btn-ghost !text-muted"
-                          onClick={() => setSettling(null)}>
-                          ຍົກເລີກ
-                        </button>
+                        {isSelected && (
+                          <span className="badge status-info text-[10px]">ເລືອກຢູ່</span>
+                        )}
                       </div>
-                    ) : (
-                      <button className="btn-ghost"
-                        onClick={() => { setSettling(row); setSettleAmount(''); setShowAdd(false); }}>
-                        {side === 'AR' ? 'ຮັບເງິນ' : 'Payment'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td>{row.currency}</td>
+                    <td className="num text-right">{formatByCurrency(row.broughtForward, row.currency)}</td>
+                    <td className="num text-right text-success">{formatByCurrency(row.increases, row.currency)}</td>
+                    <td className="num text-right text-danger">{formatByCurrency(row.decreases, row.currency)}</td>
+                    <td className="num text-right font-semibold">{formatByCurrency(row.current, row.currency)}</td>
+                    <td className="text-right" onClick={(e) => e.stopPropagation()}>
+                      {hasOutstanding ? (
+                        <button
+                          type="button"
+                          className="btn-ghost"
+                          aria-haspopup="dialog"
+                          onClick={() => {
+                            setSettling(row);
+                            setShowAdd(false);
+                          }}
+                        >
+                          {side === 'AR' ? 'ຮັບເງິນ' : 'Payment'}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-muted">
+                          {hadActivity ? 'ຊຳຣະຄົບແລ້ວ' : 'ບໍ່ມີຍອດຄ້າງ'}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
       <div data-fade className="card">
-        <div className="card-header"><h2 className="card-title">History {side} (Cash)</h2></div>
+        <div className="card-header flex flex-wrap items-center justify-between gap-3">
+          <h2 className="card-title">History {side} (Cash)</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="apar-history-partner" className="text-xs font-medium text-muted">
+              {partnerColLabel}:
+            </label>
+            <select
+              id="apar-history-partner"
+              className="input h-8 !w-auto text-xs py-0 px-2"
+              value={selectedPartnerId}
+              onChange={(e) => setSelectedPartnerId(e.target.value)}
+            >
+              <option value="">ທັງໝົດ</option>
+              {uniquePartners.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nameLo}
+                </option>
+              ))}
+              {side === 'AR' && <option value="UNASSIGNED">ສິນເຊື່ອ / ບໍ່ລະບຸແຫຼ່ງ</option>}
+            </select>
+
+            <label htmlFor="apar-history-currency" className="text-xs font-medium text-muted">
+              ສະກຸນເງິນ:
+            </label>
+            <select
+              id="apar-history-currency"
+              className="input h-8 !w-auto text-xs py-0 px-2"
+              value={selectedCurrency}
+              onChange={(e) => setSelectedCurrency(e.target.value)}
+            >
+              <option value="">ທັງໝົດ</option>
+              <option value="LAK">LAK</option>
+              <option value="THB">THB</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+        </div>
         <DateRangeFilter history={historyRange} />
+        <TimeSearchFilterBar
+          filter={timeSearch}
+          fromDate={historyRange.from}
+          toDate={historyRange.to}
+          searchPlaceholder="ຄົ້ນຫາ ຄູ່ຄ້າ / ປະເພດ / ໝາຍເຫດ..."
+        />
         <div className="table-wrap" tabIndex={0} role="region" aria-label={`History ${side} (Cash)`}>
           <table className="table">
             <thead>
               <tr>
                 <th>ວັນທີ</th>
-                <th>ແຫຼ່ງ Supplier</th>
+                <th>{partnerColLabel}</th>
                 <th>ປະເພດລາຍການ</th>
-                <th>ປະເພດ</th>
+                <th>ທຸລະກຳ</th>
                 <th>ສະກຸນເງິນ</th>
                 <th className="text-right">(+)</th>
                 <th className="text-right">(−)</th>
@@ -300,29 +454,46 @@ export function ApArCashModule({
             <tbody>
               <TableStateRow
                 colSpan={11}
-                isError={historyFailed}
-                error={historyError}
+                isLoading={historyRange.isLoading}
+                isError={historyRange.isError}
+                error={historyRange.error}
                 isEmpty={history.length === 0}
                 emptyText="ຍັງບໍ່ມີລາຍການ"
-                onRetry={() => void refetchHistory()}
+                onRetry={() => historyRange.refetch()}
               />
-              {history.map((row) => (
+              {pager.pageItems.map((row) => (
                 <tr key={row.id}>
-                  <td>{formatDate(row.businessDate)}</td>
-                  <td>{row.partner?.nameLo ?? '—'}</td>
+                  <td>
+                    <div>{formatDate(row.businessDate)}</div>
+                    {row.createdAt && (
+                      <div className="text-[11px] text-muted num">
+                        {formatDateTime(row.createdAt).split(' ')[1]}
+                      </div>
+                    )}
+                  </td>
+                  <td>{row.partner?.nameLo ?? (row.refType.startsWith('CREDIT') ? 'ລູກຄ້າສິນເຊື່ອ' : '—')}</td>
                   <td>{row.category?.nameLo ?? '—'}</td>
-                  <td className="text-muted">{row.refType}</td>
+                  <td>
+                    <span className="text-xs font-medium text-muted">
+                      {formatRefTypeLabel(row, side)}
+                    </span>
+                  </td>
                   <td>{row.currency}</td>
                   <td className="num text-right text-success">{formatByCurrency(row.amountIn, row.currency)}</td>
                   <td className="num text-right text-danger">{formatByCurrency(row.amountOut, row.currency)}</td>
                   <td className="num text-right font-medium">{formatByCurrency(row.balance, row.currency)}</td>
-                  <td className="text-muted">{row.note ?? '—'}</td>
+                  <td className="text-muted max-w-[200px] truncate" title={row.note ?? undefined}>
+                    {row.note ?? '—'}
+                  </td>
                   <td className="text-muted">{row.createdBy}</td>
                   <td className="text-right">
                     <button
                       type="button"
                       className="btn-ghost inline-flex items-center gap-1.5"
-                      onClick={() => setViewingHistory(row)}
+                      onClick={() => {
+                        setConfirmDeleteId(null);
+                        setViewingHistory(row);
+                      }}
                       aria-label={`View detail ${row.id}`}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -337,50 +508,76 @@ export function ApArCashModule({
             </tbody>
           </table>
         </div>
+        <Pagination {...pager} />
       </div>
 
       {/* Modal ລາຍລະອຽດປະຫວັດ (History Detail Modal) */}
       <Dialog
         open={Boolean(viewingHistory)}
-        onClose={() => setViewingHistory(null)}
+        onClose={() => {
+          setConfirmDeleteId(null);
+          setViewingHistory(null);
+        }}
         title={`ລາຍລະອຽດ ${side} (Cash)`}
         size="md"
         dismissOnScrim={true}
         footer={
-          <div className="flex w-full items-center justify-between">
+          <div className="flex w-full flex-wrap items-center justify-between gap-2">
             <span className="text-xs text-muted font-mono">
               {viewingHistory ? `ID: ${viewingHistory.id}` : ''}
             </span>
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => setViewingHistory(null)}
-            >
-              ປິດ (Close)
-            </button>
+            <div className="flex items-center gap-2">
+              {canDeleteViewing && viewingHistory && (
+                confirmDeleteId === viewingHistory.id ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-danger btn-sm"
+                      disabled={deleteEntry.isPending}
+                      onClick={() => deleteEntry.mutate(viewingHistory.id)}
+                    >
+                      {deleteEntry.isPending ? 'ກຳລັງລຶບ...' : 'ຢືນຢັນລຶບ'}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary btn-sm"
+                      disabled={deleteEntry.isPending}
+                      onClick={() => setConfirmDeleteId(null)}
+                    >
+                      ບໍ່ລຶບ
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-ghost text-danger"
+                    onClick={() => setConfirmDeleteId(viewingHistory.id)}
+                  >
+                    ລຶບລາຍການ
+                  </button>
+                )
+              )}
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => {
+                  setConfirmDeleteId(null);
+                  setViewingHistory(null);
+                }}
+              >
+                ປິດ (Close)
+              </button>
+            </div>
           </div>
         }
       >
         {viewingHistory && (() => {
-          const resolvedMethod: 'CASH' | 'BANK' | null =
-            viewingHistory.method ??
-            (viewingHistory.bankAccount || viewingHistory.bankAccountId
-              ? 'BANK'
-              : (viewingHistory.note || '').toLowerCase().includes('ໂອນ') ||
-                (viewingHistory.note || '').toLowerCase().includes('bank') ||
-                (viewingHistory.note || '').toLowerCase().includes('bcel') ||
-                (viewingHistory.note || '').toLowerCase().includes('jdb') ||
-                (viewingHistory.note || '').toLowerCase().includes('ldb')
-                ? 'BANK'
-                : viewingHistory.refType === 'SETTLEMENT' || (viewingHistory.note && viewingHistory.note.includes('ຊຳຣະ'))
-                  ? 'CASH'
-                  : null);
-
+          const resolvedMethod: 'CASH' | 'BANK' | null = viewingHistory.method ?? null;
           const resolvedBankName =
             viewingHistory.bankAccount?.nameLo ??
             banks.find((b) => b.id === viewingHistory.bankAccountId)?.nameLo ??
-            banks.find((b) => viewingHistory.note?.toLowerCase().includes(b.nameLo.toLowerCase()))?.nameLo ??
             null;
+          const refLabel = formatRefTypeLabel(viewingHistory, side);
 
           return (
             <div className="space-y-4">
@@ -396,15 +593,17 @@ export function ApArCashModule({
                     >
                       {side} (Cash)
                     </span>
-                    <span className="badge recessed font-mono text-xs">
-                      {viewingHistory.refType}
+                    <span className="badge recessed text-xs">
+                      {refLabel}
                     </span>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs text-muted">ວັນທີທຸລະກຳ</div>
+                  <div className="text-xs text-muted">ວັນທີ / ເວລາທຸລະກຳ</div>
                   <div className="text-sm font-semibold text-fg mt-1">
-                    {formatDate(viewingHistory.businessDate)}
+                    {viewingHistory.createdAt
+                      ? formatDateTime(viewingHistory.createdAt)
+                      : formatDate(viewingHistory.businessDate)}
                   </div>
                 </div>
               </div>
@@ -412,9 +611,9 @@ export function ApArCashModule({
               {/* Grid Information */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                 <div className="p-3 rounded-lg border border-line bg-panel/40">
-                  <div className="text-xs text-muted">ແຫຼ່ງ Supplier / ຄູ່ຄ້າ</div>
+                  <div className="text-xs text-muted">{partnerColLabel}</div>
                   <div className="font-semibold text-fg mt-1">
-                    {viewingHistory.partner?.nameLo ?? '—'}
+                    {viewingHistory.partner?.nameLo ?? (viewingHistory.refType.startsWith('CREDIT') ? 'ລູກຄ້າສິນເຊື່ອ' : '—')}
                   </div>
                 </div>
 
@@ -442,8 +641,8 @@ export function ApArCashModule({
 
               {/* Amounts Card */}
               <div className="rounded-xl border border-line bg-panel/30 p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs font-semibold text-[var(--gold)] uppercase tracking-wider">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-xs font-semibold text-gold uppercase tracking-wider">
                     ຍອດເງິນ ແລະ ການເຄື່ອນໄຫວ
                   </div>
                   {resolvedMethod && (
@@ -468,7 +667,7 @@ export function ApArCashModule({
                   <div>
                     <span className="text-xs text-muted block">ເພີ່ມ (+)</span>
                     <span className="num font-semibold text-success block text-base mt-0.5">
-                      {Number(viewingHistory.amountIn) > 0
+                      {safeDec(viewingHistory.amountIn).gt(0)
                         ? `+${formatByCurrency(viewingHistory.amountIn, viewingHistory.currency)}`
                         : '0'}
                     </span>
@@ -476,14 +675,14 @@ export function ApArCashModule({
                   <div>
                     <span className="text-xs text-muted block">ຫຼຸດ (−)</span>
                     <span className="num font-semibold text-danger block text-base mt-0.5">
-                      {Number(viewingHistory.amountOut) > 0
+                      {safeDec(viewingHistory.amountOut).gt(0)
                         ? `−${formatByCurrency(viewingHistory.amountOut, viewingHistory.currency)}`
                         : '0'}
                     </span>
                   </div>
                   <div className="text-right">
                     <span className="text-xs text-muted block">ຍອດສະສົມ (Balance)</span>
-                    <span className="num font-bold text-[var(--gold)] block text-base mt-0.5">
+                    <span className="num font-bold text-gold block text-base mt-0.5">
                       {formatByCurrency(viewingHistory.balance, viewingHistory.currency)} {viewingHistory.currency}
                     </span>
                   </div>
@@ -495,24 +694,11 @@ export function ApArCashModule({
                     <span className="text-muted block text-[11px]">ຮູບແບບການຊຳລະ / ຮັບເງິນ</span>
                     <div className="font-medium text-fg mt-1 flex items-center gap-1.5">
                       {resolvedMethod === 'BANK' ? (
-                        <>
-                          <svg className="w-4 h-4 text-info shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <rect x="2" y="5" width="20" height="14" rx="2" />
-                            <line x1="2" y1="10" x2="22" y2="10" />
-                          </svg>
-                          <span>ເງິນໂອນ (Bank Transfer)</span>
-                        </>
+                        <span>ເງິນໂອນ (Bank Transfer)</span>
                       ) : resolvedMethod === 'CASH' ? (
-                        <>
-                          <svg className="w-4 h-4 text-success shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <rect x="2" y="6" width="20" height="12" rx="2" />
-                            <circle cx="12" cy="12" r="2" />
-                            <path d="M6 12h.01M18 12h.01" />
-                          </svg>
-                          <span>ເງິນສົດ (Cash)</span>
-                        </>
+                        <span>ເງິນສົດ (Cash)</span>
                       ) : (
-                        <span className="text-muted">— ບໍ່ໄດ້ລະບຸ —</span>
+                        <span className="text-muted">ບັນທຶກຍອດຄ້າງ (ຍັງບໍ່ເຄື່ອນໄຫວເງິນ)</span>
                       )}
                     </div>
                   </div>
@@ -523,15 +709,9 @@ export function ApArCashModule({
                     </span>
                     <div className="font-medium text-fg mt-1 flex items-center gap-1.5">
                       {resolvedMethod === 'BANK' ? (
-                        <>
-                          <svg className="w-4 h-4 text-[var(--gold)] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                            <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
-                            <polyline points="9 22 9 12 15 12 15 22" />
-                          </svg>
-                          <span className="font-semibold text-fg truncate">
-                            {resolvedBankName ? resolvedBankName : '— ບໍ່ໄດ້ລະບຸ Bank —'}
-                          </span>
-                        </>
+                        <span className="font-semibold text-fg truncate">
+                          {resolvedBankName ?? '— ບໍ່ໄດ້ລະບຸ Bank —'}
+                        </span>
                       ) : resolvedMethod === 'CASH' ? (
                         <span className="text-muted">ລິ້ນຊັກເງິນສົດ (Cash Drawer)</span>
                       ) : (

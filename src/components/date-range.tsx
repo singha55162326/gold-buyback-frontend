@@ -88,6 +88,17 @@ export function useHistoryRange<T>(queryKey: readonly unknown[], path: string, o
   // them would request a window nobody asked for.
   const [applied, setApplied] = useState({ from: today(), to: today() });
 
+  const startTimeParam = params.start_time !== undefined ? String(params.start_time) : '';
+  const endTimeParam = params.end_time !== undefined ? String(params.end_time) : '';
+  const hasInvalidSameDayTime = Boolean(
+    applied.from &&
+      applied.to &&
+      applied.from === applied.to &&
+      startTimeParam &&
+      endTimeParam &&
+      startTimeParam > endTimeParam,
+  );
+
   // ສົ່ງສະເພາະຂອບທີ່ມີຄ່າ: `?from_date=` ວ່າງເປັນ 400 ຢູ່ server ແລະ ຈະເຮັດໃຫ້
   // ຕາຕະລາງຫວ່າງເປົ່າພ້ອມຂໍ້ຜິດພາດ ແທນທີ່ຈະສະແດງຊ່ວງເລີ່ມຕົ້ນ (= ມື້ນີ້).
   const search = new URLSearchParams({ all: 'true' });
@@ -100,7 +111,7 @@ export function useHistoryRange<T>(queryKey: readonly unknown[], path: string, o
   const query = useQuery({
     queryKey: [...queryKey, applied.from, applied.to, params],
     queryFn: () => api.get<PagedResult<T>>(`${path}?${search.toString()}`),
-    enabled,
+    enabled: enabled && !hasInvalidSameDayTime,
     placeholderData: keepPreviousData,
     refetchInterval,
     // ບໍ່ຍິງຄຳຂໍເມື່ອ tab ຖືກເຊື່ອງ; ກັບມາເບິ່ງເມື່ອໃດກໍ່ໂຫຼດຄືນໃຫ້ທັນທີ.

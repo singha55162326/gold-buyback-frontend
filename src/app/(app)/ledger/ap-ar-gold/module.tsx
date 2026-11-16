@@ -3,18 +3,20 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { TableStateRow } from '@/components/query-state';
-import { formatLak, formatWeight, formatDate } from '@/lib/format';
+import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
+import { formatLak, formatWeight, formatDate, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
+import { TimeSearchFilterBar, useTimeSearchFilter } from '@/components/time-search-filter';
+import {
+  SupplierGoldSummaryDashboard,
+  type GoldPartnerSummaryRow,
+} from './supplier-summary-dashboard';
 
 interface Summary { side: 'AP' | 'AR'; startG: string; netMovementG: string; totalG: string; totalBaht: string }
-interface PartnerRow {
-  partnerId: string; partnerCode: string; partnerNameLo: string; side: 'AP' | 'AR';
-  broughtForwardG: string; increasesG: string; decreasesG: string; currentG: string;
-}
+type PartnerRow = GoldPartnerSummaryRow;
 interface HistoryRow {
-  id: string; businessDate: string; side: 'AP' | 'AR'; typeLabel: string;
+  id: string; businessDate: string; createdAt?: string; side: 'AP' | 'AR'; typeLabel: string;
   goldInG: string; goldOutG: string; weightG: string;
   priceIn: string; priceOut: string; cost: string;
   note?: string | null;
@@ -31,6 +33,7 @@ const SIDE_LABEL = {
 /** TOR §8 — AP/AR (GOLD). */
 export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
   const [selectedPartnerId, setSelectedPartnerId] = useState<string>('');
+  const timeSearch = useTimeSearchFilter();
 
   // One window per side (TOR §8.2, §8.3); passing ?side= ensures server-side filtering
   const {
@@ -57,7 +60,7 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
 
   /*
    * ປະຫວັດ: ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້ ແລະ ກວ້າງອອກໄດ້ຈາກແຖບ filter.
-   * ສົ່ງ `side` ແລະ `partnerId` ເພື່ອກອງຢູ່ server ໂດຍກົງ.
+   * ສົ່ງ `side`, `partnerId`, `start_time`, `end_time`, ແລະ `search` ເພື່ອກອງຢູ່ server ໂດຍກົງ.
    */
   const historyRange = useHistoryRange<HistoryRow>(
     ['ledger', 'ap-ar', 'gold', 'history', side],
@@ -66,6 +69,9 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
       params: {
         side,
         partnerId: selectedPartnerId || undefined,
+        start_time: timeSearch.startTime || undefined,
+        end_time: timeSearch.endTime || undefined,
+        search: timeSearch.debouncedSearch || undefined,
       },
     },
   );
@@ -84,7 +90,7 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
         actions={
           <button
             type="button"
-            className="btn-secondary btn-sm h-8 py-0 px-3 text-xs"
+            className="btn-secondary btn-sm h-8 py-0 px-3 text-xs cursor-pointer"
             onClick={() => {
               void refetchSummary();
               void refetchPartners();
@@ -109,6 +115,19 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
           </div>
         </div>
       )}
+
+      {partnersFailed && (
+        <QueryErrorNotice error={partnersError} onRetry={() => void refetchPartners()} />
+      )}
+
+      <SupplierGoldSummaryDashboard
+        side={side}
+        partners={filteredPartners}
+        isLoading={partnersLoading}
+        isError={partnersFailed}
+        selectedPartnerId={selectedPartnerId}
+        onSelectPartner={setSelectedPartnerId}
+      />
 
       <div data-fade className="card">
         <div className="card-header"><h2 className="card-title">ຍອດລວມ {side} (GOLD)</h2></div>
@@ -148,6 +167,7 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
         </div>
       </div>
 
+      {/* ຕາຕະລາງ ແຍກຕາມແຫຼ່ງ (ຖືກແທນດ້ວຍ SupplierGoldSummaryDashboard ຂ້າງເທິງ)
       <div data-fade className="card">
         <div className="card-header flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -192,8 +212,8 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
                 return (
                   <tr
                     key={`${row.partnerId}-${row.side}`}
-                    className={`cursor-pointer transition-colors hover:bg-muted/30 ${
-                      isSelected ? 'bg-primary/10 font-medium' : ''
+                    className={`cursor-pointer transition-colors hover:bg-recessed/50 ${
+                      isSelected ? 'bg-recessed font-medium' : ''
                     }`}
                     onClick={() =>
                       setSelectedPartnerId((curr) => (curr === row.partnerId ? '' : row.partnerId))
@@ -204,7 +224,7 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
                       <div className="flex items-center gap-2">
                         <span>{row.partnerNameLo}</span>
                         {isSelected && (
-                          <span className="badge badge-sm badge-primary text-[10px]">ເລືອກຢູ່</span>
+                          <span className="badge recessed text-gold border-[var(--gold)] text-[10px]">ເລືອກຢູ່</span>
                         )}
                       </div>
                     </td>
@@ -220,6 +240,7 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
           </table>
         </div>
       </div>
+      */}
 
       <div data-fade className="card">
         <div className="card-header flex flex-wrap items-center justify-between gap-3">
@@ -230,7 +251,7 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
             </label>
             <select
               id="partner-filter"
-              className="select h-8 text-xs py-0 px-2"
+              className="input h-8 !w-auto text-xs py-0 px-2"
               value={selectedPartnerId}
               onChange={(e) => setSelectedPartnerId(e.target.value)}
             >
@@ -244,7 +265,7 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
             {selectedPartnerId && (
               <button
                 type="button"
-                className="btn-ghost btn-sm text-xs py-0 h-8"
+                className="btn-ghost btn-sm text-xs py-0 h-8 cursor-pointer"
                 onClick={() => setSelectedPartnerId('')}
                 title="ລ້າງການເລືອກແຫຼ່ງ"
               >
@@ -254,6 +275,12 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
           </div>
         </div>
         <DateRangeFilter history={historyRange} />
+        <TimeSearchFilterBar
+          filter={timeSearch}
+          fromDate={historyRange.from}
+          toDate={historyRange.to}
+          searchPlaceholder="ຄົ້ນຫາ ແຫຼ່ງ / ປະເພດ / ໝາຍເຫດ..."
+        />
         <div className="table-wrap" tabIndex={0} role="region" aria-label={`ປະຫວັດ AP-AR (GOLD)`}>
           <table className="table">
             <thead>
@@ -274,6 +301,7 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
               <TableStateRow
                 colSpan={10}
                 dense
+                isLoading={historyRange.isLoading}
                 isError={historyFailed}
                 error={historyError}
                 isEmpty={history.filter((r) => r.side === side).length === 0}
@@ -282,7 +310,14 @@ export function ApArGoldModule({ side }: { side: 'AP' | 'AR' }) {
               />
               {history.filter((r) => r.side === side).map((row) => (
                 <tr key={row.id}>
-                  <td>{formatDate(row.businessDate)}</td>
+                  <td>
+                    <div>{formatDate(row.businessDate)}</div>
+                    {row.createdAt && (
+                      <div className="num text-[11px] text-muted">
+                        {formatDateTime(row.createdAt).split(' ')[1]}
+                      </div>
+                    )}
+                  </td>
                   <td>{row.partner.nameLo}</td>
                   <td className="text-muted">
                     <div>{row.typeLabel}</div>

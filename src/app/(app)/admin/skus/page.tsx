@@ -32,6 +32,33 @@ interface Sku {
 }
 
 /**
+ * ແປງນ້ຳໜັກ (g) ເປັນຫົວໜ່ວຍນ້ຳໜັກຄຳ:
+ * - 7.5 g   -> 2ສະຫຼຶງ
+ * - 3.75 g  -> 1ສະຫຼຶງ
+ * - 1.87 g  (ຫຼື 1.875 g) -> 5ຫຸນ
+ * - 1.12 g  (ຫຼື 1.125 g) -> 3ຫຸນ
+ * - 0.75 g  -> 2ຫຸນ
+ * - 0.37 g  (ຫຼື 0.375 g) -> 1ຫຸນ
+ * - 1 g     -> 1ກຼາມ
+ * - ອື່ນໆ   -> X ບາດ
+ */
+function formatSkuWeightUnit(weightG: string): string {
+  const d = dec(weightG);
+  const n = d.toNumber();
+
+  if (n === 7.5) return '2ສະຫຼຶງ';
+  if (n === 3.75) return '1ສະຫຼຶງ';
+  if (n === 1.87 || n === 1.875) return '5ຫຸນ';
+  if (n === 1.12 || n === 1.125) return '3ຫຸນ';
+  if (n === 0.75) return '2ຫຸນ';
+  if (n === 0.37 || n === 0.375) return '1ຫຸນ';
+  if (n === 1) return '1ກຼາມ';
+
+  const baht = trimTrailingZeros(d.div(GRAMS_PER_BAHT).toDecimalPlaces(2).toFixed());
+  return `${baht} ບາດ`;
+}
+
+/**
  * Mirrors SkusService.buildFullSkuName on the server so the name previews as
  * the user types. The server still derives the stored name itself — this is a
  * display convenience, never the source of truth.
@@ -39,8 +66,8 @@ interface Sku {
 function previewSkuName(nameLo: string, weightG: string): string | null {
   const raw = weightG.trim();
   if (!nameLo.trim() || !raw || !/^\d+(\.\d+)?$/.test(raw) || Number(raw) <= 0) return null;
-  const baht = trimTrailingZeros(dec(raw).div(GRAMS_PER_BAHT).toDecimalPlaces(2).toFixed());
-  return `${nameLo.trim()} ${baht} ບາດ`;
+  const unit = formatSkuWeightUnit(raw);
+  return `${nameLo.trim()} ${unit}`;
 }
 
 /** TOR §3.6 — ລະບົບຈັດການ SKU ນ້ຳໜັກຂອງຄຳ. */

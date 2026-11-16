@@ -1,18 +1,15 @@
 'use client';
 
-import { useState } from 'react';
-import { useToast } from '@/components/toast';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, ApiError, getStoredUser } from '@/lib/api';
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 import { formatDateTime, formatByCurrency } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
-import { Dialog } from '@/components/dialog';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { BankBalanceCards } from '@/components/bank-balance-cards';
-import { NumberInput } from '@/components/number-input';
+import { BankSummaryDashboard, type BankCurrencyFilter } from '@/components/bank-summary-dashboard';
 import { DateRangeFilter, useHistoryRange } from '@/components/date-range';
 import { Pagination, usePagination } from '@/components/pagination';
-import { clean, isPositive } from '@/lib/validate';
 
 interface BankBalance {
   bankAccountId: string; bankCode: string; bankNameLo: string;
@@ -20,7 +17,6 @@ interface BankBalance {
   inflow: string; outflow: string; actual: string;
   net: string | null; variance: string | null;
 }
-interface Bank { id: string; nameLo: string }
 interface Row {
   id: string; type: string; currency: string; amount: string;
   refType: string | null;
@@ -36,33 +32,24 @@ const TYPE_LABEL: Record<string, string> = {
   EXPENSE: 'ລາຍຈ່າຍ',
 };
 
+const CURRENCY_TABS: Array<{ value: BankCurrencyFilter; label: string }> = [
+  { value: 'ALL', label: 'ທັງໝົດ' },
+  { value: 'LAK', label: 'LAK' },
+  { value: 'THB', label: 'THB' },
+  { value: 'USD', label: 'USD' },
+];
+
 /**
  * TOR §3.7 — Module Bank (To Day).
  *
  * ຍອດເງິນຂາດດຸນ = ຍອດຕົວຈິງ − ຍອດສຸດທິ. A non-zero variance is the shop's
  * signal that the ledger and the bank statement have diverged, so it is
- * surfaced rather than reconciled away. Only Admin/Manager may set ຍອດສຸດທິ.
+ * surfaced rather than reconciled away.
  */
 export default function FcBankPage() {
-  const queryClient = useQueryClient();
-  const toast = useToast();
-  const user = getStoredUser();
-  const canSetNet = user?.role === 'ADMIN' || user?.role === 'MANAGER';
-
-  const [bankAccountId, setBankAccountId] = useState('');
-  // INCOME / EXPENSE are posted by ຈັດການລາຍຮັບລາຍຈ່າຍ, which files them
-  // against a category; entering them here produced bank rows no report
-  // could account for.
-  const [type, setType] = useState<'DEPOSIT' | 'WITHDRAW'>('DEPOSIT');
-  const [currency, setCurrency] = useState<'LAK' | 'THB' | 'USD'>('LAK');
-  const [amount, setAmount] = useState('');
-  const [note, setNote] = useState('');
-  // ບັນທຶກທຸລະກຳຜ່ານ Modal ຕາມທີ່ລູກຄ້າຂໍ — ໜ້າຈໍຫຼັກຈຶ່ງເຫຼືອແຕ່ຍອດ ແລະ ປະຫວັດ.
-  const [showForm, setShowForm] = useState(false);
-  const [editingNet, setEditingNet] = useState<string | null>(null);
-  const [netAmount, setNetAmount] = useState('');
-  const [formError, setFormError] = useState<string | null>(null);
-  const [netError, setNetError] = useState<string | null>(null);
+  const [currencyFilter, setCurrencyFilter] = useState<BankCurrencyFilter>('ALL');
+  const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
+  const [selectedBank, setSelectedBank] = useState<string | null>(null);
 
   const balancesQuery = useQuery({
     queryKey: ['cash', 'bank', 'balances'],
@@ -72,292 +59,158 @@ export default function FcBankPage() {
   });
   const balances = balancesQuery.data ?? [];
 
-  const banksQuery = useQuery({
-    queryKey: ['catalog', 'bank-accounts'],
-    queryFn: () => api.get<Bank[]>('/catalog/bank-accounts'),
-  });
-  const banks = banksQuery.data ?? [];
-
   // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
   const history = useHistoryRange<Row>(['cash', 'bank', 'history'], '/cash/bank/history', {
     refetchInterval: 30_000,
   });
-  const rows = history.rows;
-  const pager = usePagination(rows);
 
-  const invalidate = () => {
-    void queryClient.invalidateQueries({ queryKey: ['cash'] });
-    void queryClient.invalidateQueries({ queryKey: ['ledger'] });
+  const filteredRows = useMemo(() => {
+    return history.rows.filter((row) => {
+      if (currencyFilter !== 'ALL' && row.currency !== currencyFilter) return false;
+      if (selectedBank && row.bankAccount?.nameLo !== selectedBank) return false;
+      return true;
+    });
+  }, [history.rows, currencyFilter, selectedBank]);
+
+  const pager = usePagination(filteredRows);
+
+  const hasFilters = currencyFilter !== 'ALL' || selectedBank !== null;
+
+  const handleSelectCurrency = (next: BankCurrencyFilter) => {
+    setCurrencyFilter(next);
+    pager.reset();
   };
 
-  const handleOpenForm = () => {
-    setFormError(null);
-    setAmount('');
-    setNote('');
-    setShowForm(true);
+  const handleSelectBank = (bankNameLo: string | null) => {
+    setSelectedBank(bankNameLo);
+    pager.reset();
   };
 
-  const handleCloseForm = () => {
-    setFormError(null);
-    setAmount('');
-    setNote('');
-    setShowForm(false);
+  const handleClearFilters = () => {
+    setCurrencyFilter('ALL');
+    setSelectedBank(null);
+    pager.reset();
   };
-
-  const create = useMutation({
-    mutationFn: () =>
-      api.post('/cash/bank/transactions', {
-        bankAccountId, type, currency,
-        amount: amount.replace(/,/g, '').trim(), note: note || undefined,
-      }),
-    onSuccess: () => {
-      setAmount('');
-      setNote('');
-      setFormError(null);
-      setShowForm(false);
-      invalidate();
-    },
-    onError: (e) => {
-      const detail = e instanceof ApiError ? e.message : 'ບັນທຶກບໍ່ສຳເລັດ';
-      setFormError(detail);
-      toast.error('ບໍ່ສຳເລັດ', detail);
-    },
-  });
-
-  const selectedBalance = balances.find(
-    (b) => b.bankAccountId === bankAccountId && b.currency === currency,
-  );
-  const currentActual = Number(clean(selectedBalance?.actual ?? '0'));
-  const requestedAmount = Number(clean(amount || '0'));
-  const isInsufficient =
-    type === 'WITHDRAW' && Boolean(bankAccountId) && isPositive(amount) && requestedAmount > currentActual;
-
-  const isNetValid = netAmount.trim() !== '' && !Number.isNaN(Number(netAmount.replace(/,/g, '')));
-
-  const setNet = useMutation({
-    // Only the key matters here, so the parameter asks for the key rather
-    // than a whole balance row — which lets the cards pass theirs straight in.
-    mutationFn: (row: Pick<BankBalance, 'bankAccountId' | 'currency'>) =>
-      api.post('/cash/bank/net-balance', {
-        bankAccountId: row.bankAccountId,
-        currency: row.currency,
-        netAmount: netAmount.replace(/,/g, '').trim(),
-      }),
-    onSuccess: () => {
-      setEditingNet(null);
-      setNetAmount('');
-      setNetError(null);
-      invalidate();
-    },
-    onError: (e) => {
-      const detail = e instanceof ApiError ? e.message : 'ບັນທຶກບໍ່ສຳເລັດ';
-      setNetError(detail);
-      toast.error('ບໍ່ສຳເລັດ', detail);
-    },
-  });
 
   return (
     <div className="space-y-6">
       <PageHead
         title="Module Bank"
         subtitle="ຍອດ Bank ຕົວຈິງ ແຍກຕາມທະນາຄານ ແລະ ສະກຸນເງິນ · ຍອດເງິນຂາດດຸນ (TOR §3.7)"
-        actions={
-          <button className="btn-primary" onClick={handleOpenForm}>
-            + ບັນທຶກທຸລະກຳ Bank
-          </button>
-        }
       />
 
-      {banksQuery.isError && (
-        <QueryErrorNotice error={banksQuery.error} onRetry={() => void banksQuery.refetch()} />
-      )}
-
-      {netError && (
-        <div id="bank-net-error" role="alert" className="notice status-danger">{netError}</div>
+      {!balancesQuery.isError && (
+        <BankSummaryDashboard
+          rows={balances}
+          isLoading={balancesQuery.isLoading}
+          activeCurrency={currencyFilter}
+          onSelectCurrency={handleSelectCurrency}
+        />
       )}
 
       <div data-fade className="card">
-        <div className="card-header">
-          <h2 className="card-title">ຍອດ Bank (To Day)</h2>
-          {!canSetNet && (
-            <span className="text-xs text-muted">ເງິນ Bank ສຸດທິ ແກ້ໄຂໄດ້ສະເພາະ Admin & Manager</span>
-          )}
+        <div className="card-header flex-wrap gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="card-title">ຍອດ Bank (To Day)</h2>
+            {selectedBank && (
+              <span className="badge bg-gold-tint text-gold">
+                {selectedBank}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="seg" role="tablist" aria-label="ກັ່ນຕອງຕາມສະກຸນເງິນ">
+              {CURRENCY_TABS.map((tab) => (
+                <button
+                  key={tab.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={currencyFilter === tab.value}
+                  onClick={() => handleSelectCurrency(tab.value)}
+                  className="seg-btn cursor-pointer"
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="seg" role="tablist" aria-label="ຮູບແບບການສະແດງຜົນ">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === 'cards'}
+                aria-label="ສະແດງແບບກາດ"
+                onClick={() => setViewMode('cards')}
+                className="seg-btn cursor-pointer"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.8}
+                    d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"
+                  />
+                </svg>
+                <span className="hidden sm:inline">ກາດ</span>
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={viewMode === 'table'}
+                aria-label="ສະແດງແບບຕາຕະລາງ"
+                onClick={() => setViewMode('table')}
+                className="seg-btn cursor-pointer"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={1.8}
+                    d="M3 10h18M3 14h18M9 4v16M5 4h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2z"
+                  />
+                </svg>
+                <span className="hidden sm:inline">ຕາຕະລາງ</span>
+              </button>
+            </div>
+          </div>
         </div>
+
         {balancesQuery.isError ? (
           <QueryErrorNotice error={balancesQuery.error} onRetry={() => void balancesQuery.refetch()} />
         ) : (
           <BankBalanceCards
             rows={balances}
-            renderNet={(row) => {
-              const key = `${row.bankAccountId}-${row.currency}`;
-              if (editingNet === key) {
-                return (
-                  <span className="flex flex-wrap items-center justify-end gap-2">
-                    <NumberInput
-                      className="input num w-28 text-right"
-                      decimals={row.currency === 'LAK' ? 0 : 2}
-                      aria-label={`ເງິນ Bank ສຸດທິ ${row.bankNameLo} ${row.currency}`}
-                      aria-describedby={netError ? 'bank-net-error' : undefined}
-                      value={netAmount}
-                      onValueChange={setNetAmount}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && isNetValid && !setNet.isPending) {
-                          setNet.mutate(row);
-                        } else if (e.key === 'Escape') {
-                          setEditingNet(null);
-                          setNetError(null);
-                        }
-                      }}
-                      autoFocus
-                    />
-                    <button
-                      className="btn-primary"
-                      onClick={() => setNet.mutate(row)}
-                      disabled={!isNetValid || setNet.isPending}
-                    >
-                      ບັນທຶກ
-                    </button>
-                    <button
-                      className="btn-secondary"
-                      onClick={() => {
-                        setEditingNet(null);
-                        setNetError(null);
-                      }}
-                    >
-                      ຍົກເລີກ
-                    </button>
-                  </span>
-                );
-              }
-              if (!canSetNet) return formatByCurrency(row.net, row.currency);
-              return (
-                <button
-                  className="btn-ghost"
-                  aria-label={`${row.net === null ? 'ຕັ້ງຄ່າ' : formatByCurrency(row.net, row.currency)} ${row.bankNameLo} ${row.currency}`}
-                  onClick={() => {
-                    setEditingNet(key);
-                    setNetAmount(row.net ?? '');
-                    setNetError(null);
-                  }}
-                >
-                  {row.net === null ? 'ຕັ້ງຄ່າ' : formatByCurrency(row.net, row.currency)}
-                </button>
-              );
-            }}
+            currencyFilter={currencyFilter}
+            viewMode={viewMode}
+            selectedBank={selectedBank}
+            onSelectBank={handleSelectBank}
+            renderNet={(row) => formatByCurrency(row.net, row.currency)}
           />
         )}
       </div>
 
-      <Dialog
-        open={showForm}
-        onClose={handleCloseForm}
-        title="ບັນທຶກທຸລະກຳ Bank"
-        size="lg"
-        footer={
-          <>
-            <button className="btn-secondary" onClick={handleCloseForm} disabled={create.isPending}>
-              ຍົກເລີກ
-            </button>
-            <button
-              className="btn-primary"
-              disabled={!bankAccountId || !isPositive(amount) || isInsufficient || create.isPending}
-              onClick={() => create.mutate()}
-            >
-              {create.isPending ? 'ກຳລັງບັນທຶກ...' : 'ບັນທຶກ'}
-            </button>
-          </>
-        }
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="bank">ທະນາຄານ</label>
-            <select
-              id="bank"
-              className="input"
-              value={bankAccountId}
-              disabled={create.isPending}
-              onChange={(e) => setBankAccountId(e.target.value)}
-            >
-              <option value="">— ເລືອກ —</option>
-              {banks.map((b) => <option key={b.id} value={b.id}>{b.nameLo}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="type">ປະເພດ</label>
-            <select
-              id="type"
-              className="input"
-              value={type}
-              disabled={create.isPending}
-              onChange={(e) => setType(e.target.value as typeof type)}
-            >
-              <option value="DEPOSIT">ຝາກ (Deposit)</option>
-              <option value="WITHDRAW">ຖອນ (Withdraw)</option>
-            </select>
-          </div>
-          <div>
-            <label className="label" htmlFor="cur">ສະກຸນເງິນ</label>
-            <select
-              id="cur"
-              className="input"
-              value={currency}
-              disabled={create.isPending}
-              onChange={(e) => setCurrency(e.target.value as 'LAK' | 'THB' | 'USD')}
-            >
-              <option value="LAK">LAK</option>
-              <option value="THB">THB</option>
-              <option value="USD">USD</option>
-            </select>
-          </div>
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="label" htmlFor="amt">ຈຳນວນເງິນ</label>
-              {bankAccountId && (
-                <span className="text-xs text-muted">
-                  ຍອດຄົງເຫຼືອ:{' '}
-                  <strong className="num text-fg-strong">
-                    {formatByCurrency(selectedBalance?.actual ?? '0', currency)}
-                  </strong>
-                </span>
-              )}
-            </div>
-            <NumberInput
-              id="amt"
-              className="input num"
-              decimals={currency === 'LAK' ? 0 : 2}
-              aria-describedby={formError || isInsufficient ? 'bank-form-error' : undefined}
-              value={amount}
-              disabled={create.isPending}
-              onValueChange={setAmount}
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label" htmlFor="note">Note</label>
-            <input
-              id="note"
-              className="input"
-              value={note}
-              disabled={create.isPending}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </div>
-        </div>
-
-        {isInsufficient && (
-          <div role="alert" className="notice status-danger mt-3">
-            ຍອດເງິນໃນບັນຊີບໍ່ພໍສຳລັບການຖອນ (ມີເຫຼືອ {formatByCurrency(selectedBalance?.actual ?? '0', currency)}, ຕ້ອງການຖອນ {formatByCurrency(clean(amount), currency)})
-          </div>
-        )}
-
-        {formError && (
-          <div id="bank-form-error" role="alert" className="notice status-danger mt-3">
-            {formError}
-          </div>
-        )}
-      </Dialog>
-
       <div data-fade className="card">
-        <div className="card-header"><h2 className="card-title">ປະຫວັດ Bank</h2></div>
+        <div className="card-header flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="card-title">ປະຫວັດ Bank</h2>
+            {selectedBank && (
+              <span className="badge bg-gold-tint text-gold">{selectedBank}</span>
+            )}
+            {currencyFilter !== 'ALL' && (
+              <span className="badge bg-gold-tint text-gold">{currencyFilter}</span>
+            )}
+          </div>
+          {hasFilters && (
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              className="filter-clear cursor-pointer"
+            >
+              ລ້າງຕົວກັ່ນຕອງ
+            </button>
+          )}
+        </div>
         <DateRangeFilter history={history} />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Bank">
           <table className="table">
@@ -379,8 +232,8 @@ export default function FcBankPage() {
                 isLoading={history.isLoading}
                 isError={history.isError}
                 error={history.error}
-                isEmpty={rows.length === 0}
-                emptyText="ຍັງບໍ່ມີລາຍການ"
+                isEmpty={filteredRows.length === 0}
+                emptyText={hasFilters ? 'ບໍ່ພົບລາຍການຕາມເງື່ອນໄຂທີ່ກັ່ນຕອງ' : 'ຍັງບໍ່ມີລາຍການ'}
                 onRetry={() => history.refetch()}
               />
               {pager.pageItems.map((row) => {

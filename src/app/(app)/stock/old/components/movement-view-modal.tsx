@@ -2,7 +2,7 @@
 
 import { dec } from '@kpv/domain';
 import { Dialog } from '@/components/dialog';
-import { formatDate, formatLak, formatWeight, formatGrams, gramsToBaht } from '@/lib/format';
+import { formatDate, formatDateTime, formatLak, formatWeight, gramsToBaht } from '@/lib/format';
 import { useMovementDetails } from '@/lib/stock-old-api';
 import { TRANSFORM_LABEL, type LedgerRow } from '../types';
 
@@ -45,8 +45,10 @@ export function MovementViewModal({ row, onClose }: MovementViewModalProps) {
             <span className="font-mono font-medium">{mv?.code ?? row.typeLabel}</span>
           </div>
           <div>
-            <span className="text-xs text-muted block">ວັນທີ</span>
-            <span className="font-medium">{formatDate(row.businessDate)}</span>
+            <span className="text-xs text-muted block">ວັນທີ / ເວລາ</span>
+            <span className="font-medium">
+              {row.createdAt ? formatDateTime(row.createdAt) : formatDate(row.businessDate)}
+            </span>
           </div>
           <div>
             <span className="text-xs text-muted block">ປະເພດການເຄື່ອນໄຫວ</span>
@@ -76,10 +78,10 @@ export function MovementViewModal({ row, onClose }: MovementViewModalProps) {
           )}
           {mv?.goldPercent && dec(mv.goldPercent).gt(0) && (
             <div>
-              <span className="text-xs text-muted block">%ຄຳ / ນ້ຳໜັກຄາດວ່າຈະໄດ້ຮັບ</span>
+              <span className="text-xs text-muted block">%ຄຳ / ນ້ຳໜັກຕັດຍອດ AP (GOLD)</span>
               <span className="font-medium num">
                 {formatWeight(mv.goldPercent)}%{' '}
-                {mv.expectedReturnG ? `(${formatGrams(mv.expectedReturnG)} g)` : ''}
+                {mv.expectedReturnG ? `(${formatWeight(mv.expectedReturnG)} g)` : ''}
               </span>
             </div>
           )}

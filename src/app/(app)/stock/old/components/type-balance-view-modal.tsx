@@ -2,7 +2,7 @@
 
 import { Dialog } from '@/components/dialog';
 import { formatLak, formatWeight, gramsToBaht } from '@/lib/format';
-import type { TypeBalance } from '../types';
+import { computeOldTypeRates, type TypeBalance } from '../types';
 
 interface TypeBalanceViewModalProps {
   balance: TypeBalance | null;
@@ -11,6 +11,11 @@ interface TypeBalanceViewModalProps {
 
 export function TypeBalanceViewModal({ balance, onClose }: TypeBalanceViewModalProps) {
   if (!balance) return null;
+
+  const { pricePerG, pricePerBaht } = computeOldTypeRates(
+    balance.closingWeightG,
+    balance.closingCost,
+  );
 
   return (
     <Dialog
@@ -66,6 +71,23 @@ export function TypeBalanceViewModal({ balance, onClose }: TypeBalanceViewModalP
               {formatLak(balance.closingCost)}
             </span>
             <span className="text-xs text-muted block">LAK</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="card p-3">
+            <span className="text-xs text-muted block">ລາຄາ/g</span>
+            <span className="num font-semibold text-base text-[var(--gold)]">
+              {pricePerG ? formatLak(pricePerG.toFixed()) : '—'}
+            </span>
+            <span className="text-xs text-muted block">LAK / g</span>
+          </div>
+          <div className="card p-3">
+            <span className="text-xs text-muted block">ລາຄາ/ບາດ</span>
+            <span className="num font-semibold text-base text-[var(--gold)]">
+              {pricePerBaht ? formatLak(pricePerBaht.toFixed()) : '—'}
+            </span>
+            <span className="text-xs text-muted block">ລາຄາ/g × 15</span>
           </div>
         </div>
       </div>

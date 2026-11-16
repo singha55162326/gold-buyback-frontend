@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { dec } from '@kpv/domain';
+import { dec, expectedReturnWeight } from '@kpv/domain';
 import { Dialog } from '@/components/dialog';
 import { NumberInput } from '@/components/number-input';
 import { formatLak, formatWeight } from '@/lib/format';
@@ -166,6 +166,13 @@ export function MovementEditModal({
     }
     return { totalGoldG, totalQty, cost, perG };
   }, [editLines, editTotalCost, editLedgerWeightG, activeMovement, wac]);
+
+  const editExpectedReturnG = useMemo(() => {
+    if (activeMovement?.type !== 'OUT') return null;
+    const pct = editGoldPercent.trim();
+    if (!/^\d+(\.\d+)?$/.test(pct) || editCalculations.totalGoldG.lte(0)) return null;
+    return expectedReturnWeight(editCalculations.totalGoldG, pct);
+  }, [activeMovement, editGoldPercent, editCalculations.totalGoldG]);
 
   const getEditAvailableOldWeight = (goldTypeId: string) => {
     if (!goldTypeId) return null;
@@ -790,6 +797,14 @@ export function MovementEditModal({
               {formatLak(editCalculations.perG.toFixed())} LAK
             </div>
           </div>
+          {editExpectedReturnG && (
+            <div className="col-span-2 border-t border-gold/25 pt-2 flex items-center justify-between">
+              <span className="text-xs text-muted">ນ້ຳໜັກ(g) ຕັດຍອດ AP (GOLD) (ປັດເສດຂຶ້ນ):</span>
+              <span className="num font-bold text-gold">
+                {formatWeight(editExpectedReturnG.toFixed())} g
+              </span>
+            </div>
+          )}
         </div>
 
         {editOverweightMessage && (

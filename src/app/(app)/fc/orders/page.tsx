@@ -24,9 +24,16 @@ import {
 import { statusClass } from '@/lib/status';
 import { DateRangeFilter, today, useHistoryRange } from '@/components/date-range';
 import { Dialog } from '@/components/dialog';
+import { EmployeeSelect, type EmployeeOption } from '@/components/employee-select';
+import {
+  TimeSearchFilterBar,
+  matchesOrderSearch,
+  useTimeSearchFilter,
+} from '@/components/time-search-filter';
 
 interface GoldItem { id: string; nameLo: string }
 interface Partner { id: string; nameLo: string }
+type Employee = EmployeeOption;
 
 type OrderStatus =
   | 'ORDER_PLACED'
@@ -322,19 +329,16 @@ export default function OrdersPage() {
 
   // filter & search state (supports ?search= from Module Advance link)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const timeSearch = useTimeSearchFilter();
+  const { setSearchImmediate } = timeSearch;
 
-  // Auto-fill logged-in staff name and initial ?search= query param if available
+  // Auto-fill initial ?search= query param if available
   useEffect(() => {
-    const user = getStoredUser();
-    if (user?.fullName && !staffName) {
-      setStaffName(user.fullName);
-    }
     if (typeof window !== 'undefined') {
       const q = new URLSearchParams(window.location.search).get('search');
-      if (q) setSearchTerm(q.trim());
+      if (q) setSearchImmediate(q.trim());
     }
-  }, []);
+  }, [setSearchImmediate]);
 
   const goldItemsQuery = useQuery({
     queryKey: ['catalog', 'gold-items'],
@@ -346,6 +350,19 @@ export default function OrdersPage() {
     queryFn: () => api.get<Partner[]>('/catalog/partners'),
   });
   const partners = partnersQuery.data ?? [];
+  const employeesQuery = useQuery({
+    queryKey: ['catalog', 'employees'],
+    queryFn: () => api.get<Employee[]>('/catalog/employees'),
+  });
+  const employees = employeesQuery.data ?? [];
+
+  // Default staffName to the logged-in user only when an exact active Employee record exists.
+  useEffect(() => {
+    if (!staffName && user?.fullName && employees.length > 0) {
+      const matched = employees.find((e) => e.fullName === user.fullName);
+      if (matched) setStaffName(matched.fullName);
+    }
+  }, [employees, user?.fullName, staffName]);
 
   const ratesQuery = useQuery({
     queryKey: ['rates', 'current'],
@@ -358,7 +375,12 @@ export default function OrdersPage() {
   const serverStatusParam =
     statusFilter && statusFilter !== 'PENDING_ACTION' ? statusFilter : undefined;
   const history = useHistoryRange<Order>(['orders'], '/orders', {
-    params: { status: serverStatusParam },
+    params: {
+      status: serverStatusParam,
+      start_time: timeSearch.startTime || undefined,
+      end_time: timeSearch.endTime || undefined,
+      search: timeSearch.debouncedSearch || undefined,
+    },
   });
   const orders = history.rows;
 
@@ -380,19 +402,22 @@ export default function OrdersPage() {
   const filteredOrders = useMemo(() => {
     const byStatus =
       statusFilter === 'PENDING_ACTION' ? orders.filter((o) => isPendingOrder(o)) : orders;
-    const q = searchTerm.trim().toLowerCase();
-    if (!q) return byStatus;
-    return byStatus.filter(
-      (o) =>
-        o.code.toLowerCase().includes(q) ||
-        o.billNo.toLowerCase().includes(q) ||
-        o.customer.phone.toLowerCase().includes(q) ||
-        o.staffName.toLowerCase().includes(q) ||
-        (o.supplier?.nameLo ?? '').toLowerCase().includes(q),
+    if (!timeSearch.searchTerm.trim()) return byStatus;
+    return byStatus.filter((o) =>
+      matchesOrderSearch(
+        {
+          code: o.code,
+          billNo: o.billNo,
+          phone: o.customer.phone,
+          staffName: o.staffName,
+          supplierNameLo: o.supplier?.nameLo,
+        },
+        timeSearch.searchTerm,
+      ),
     );
-  }, [orders, statusFilter, searchTerm]);
+  }, [orders, statusFilter, timeSearch.searchTerm]);
 
-  const catalogQuery = [goldItemsQuery, partnersQuery].find((q) => q.isError);
+  const catalogQuery = [goldItemsQuery, partnersQuery, employeesQuery].find((q) => q.isError);
 
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -624,9 +649,10 @@ export default function OrdersPage() {
     isDepositValid;
 
   const openCreateModal = () => {
-    const user = getStoredUser();
-    if (user?.fullName && !staffName) {
-      setStaffName(user.fullName);
+    const current = getStoredUser();
+    if (!staffName && current?.fullName) {
+      const matched = employees.find((e) => e.fullName === current.fullName);
+      if (matched) setStaffName(matched.fullName);
     }
     setOrderCurrency('LAK');
     setPayments(newPaymentLines('LAK'));
@@ -1088,13 +1114,18 @@ export default function OrdersPage() {
 
             <div>
               <label className="label" htmlFor="modal-staffName">ພະນັກງານຮັບ</label>
-              <input
+              <EmployeeSelect
                 id="modal-staffName"
-                className="input"
-                placeholder="ຊື່ພະນັກງານ"
                 value={staffName}
-                onChange={(e) => setStaffName(e.target.value)}
+                onChange={setStaffName}
+                employees={employees}
+                loading={employeesQuery.isLoading}
               />
+              {employeesQuery.isSuccess && employees.length === 0 && (
+                <p className="mt-1 text-[11px] text-warning">
+                  ຍັງບໍ່ມີຂໍ້ມູນພະນັກງານ (ເພີ່ມໄດ້ທີ່ Admin &gt; ຈັດການ Employee)
+                </p>
+              )}
             </div>
           </div>
 
@@ -1625,155 +1656,126 @@ export default function OrdersPage() {
           </span>
         </div>
         <DateRangeFilter history={history} />
-        <div className="filter-bar">
-          <div className="filter-dates">
-            <span className="filter-select-label" id="orders-status-filter-label">
-              ສະຖານະ
-            </span>
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
+        <TimeSearchFilterBar
+          filter={timeSearch}
+          fromDate={history.from}
+          toDate={history.to}
+          leftSlot={
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="filter-select-label" id="orders-status-filter-label">
+                ສະຖານະ
+              </span>
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <button
+                    type="button"
+                    id="orders-status-filter"
+                    aria-labelledby="orders-status-filter-label"
+                    className="filter-date group inline-flex min-w-[230px] items-center justify-between gap-2.5 pr-3 text-left"
+                  >
+                    <span className="inline-flex items-center gap-2 truncate">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{
+                          backgroundColor:
+                            STATUS_FILTER_OPTIONS.find((opt) => opt.value === statusFilter)?.dotColor ??
+                            'var(--gold)',
+                        }}
+                      />
+                      <span className="truncate font-medium text-fg">
+                        {STATUS_FILTER_OPTIONS.find((opt) => opt.value === statusFilter)?.labelLo ??
+                          'ທັງໝົດ (ລວມລາຍການຄ້າງ)'}
+                      </span>
+                    </span>
+                    <svg
+                      width="15"
+                      height="15"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="shrink-0 text-[var(--gold-icon)] transition-transform duration-150 group-data-[state=open]:rotate-180"
+                      aria-hidden="true"
+                    >
+                      <path d="m6 9 6 6 6-6" />
+                    </svg>
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    align="start"
+                    sideOffset={6}
+                    className="menu-panel z-50 min-w-[250px] p-1.5"
+                  >
+                    <DropdownMenu.RadioGroup
+                      value={statusFilter}
+                      onValueChange={(v) => setStatusFilter(v as StatusFilter)}
+                    >
+                      {STATUS_FILTER_OPTIONS.map((opt) => {
+                        const active = statusFilter === opt.value;
+                        return (
+                          <DropdownMenu.RadioItem
+                            key={opt.value || 'ALL'}
+                            value={opt.value}
+                            className={`flex min-h-[38px] cursor-pointer items-center justify-between gap-3 rounded-[10px] px-3 py-1.5 text-sm outline-none transition-colors ${
+                              active
+                                ? 'bg-[var(--gold-tint)] font-semibold text-[var(--gold)]'
+                                : 'text-fg data-[highlighted]:bg-[var(--row-hover)] data-[highlighted]:text-fg-strong'
+                            }`}
+                          >
+                            <span className="inline-flex items-center gap-2.5 truncate">
+                              <span
+                                className="h-2 w-2 shrink-0 rounded-full"
+                                style={{ backgroundColor: opt.dotColor }}
+                              />
+                              <span className="truncate">{opt.labelLo}</span>
+                            </span>
+                            {active && (
+                              <svg
+                                width="15"
+                                height="15"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.4"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="shrink-0 text-[var(--gold)]"
+                                aria-hidden="true"
+                              >
+                                <polyline points="20 6 9 17 4 12" />
+                              </svg>
+                            )}
+                          </DropdownMenu.RadioItem>
+                        );
+                      })}
+                    </DropdownMenu.RadioGroup>
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+              {statusFilter && (
                 <button
                   type="button"
-                  id="orders-status-filter"
-                  aria-labelledby="orders-status-filter-label"
-                  className="filter-date group inline-flex min-w-[230px] items-center justify-between gap-2.5 pr-3 text-left"
+                  className="filter-clear"
+                  onClick={() => setStatusFilter('')}
                 >
-                  <span className="inline-flex items-center gap-2 truncate">
-                    <span
-                      className="h-2 w-2 shrink-0 rounded-full"
-                      style={{
-                        backgroundColor:
-                          STATUS_FILTER_OPTIONS.find((opt) => opt.value === statusFilter)?.dotColor ??
-                          'var(--gold)',
-                      }}
-                    />
-                    <span className="truncate font-medium text-fg">
-                      {STATUS_FILTER_OPTIONS.find((opt) => opt.value === statusFilter)?.labelLo ??
-                        'ທັງໝົດ (ລວມລາຍການຄ້າງ)'}
-                    </span>
-                  </span>
-                  <svg
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="shrink-0 text-[var(--gold-icon)] transition-transform duration-150 group-data-[state=open]:rotate-180"
-                    aria-hidden="true"
-                  >
-                    <path d="m6 9 6 6 6-6" />
-                  </svg>
+                  ລ້າງສະຖານະ
                 </button>
-              </DropdownMenu.Trigger>
-              <DropdownMenu.Portal>
-                <DropdownMenu.Content
-                  align="start"
-                  sideOffset={6}
-                  className="menu-panel z-50 min-w-[250px] p-1.5"
-                >
-                  <DropdownMenu.RadioGroup
-                    value={statusFilter}
-                    onValueChange={(v) => setStatusFilter(v as StatusFilter)}
-                  >
-                    {STATUS_FILTER_OPTIONS.map((opt) => {
-                      const active = statusFilter === opt.value;
-                      return (
-                        <DropdownMenu.RadioItem
-                          key={opt.value || 'ALL'}
-                          value={opt.value}
-                          className={`flex min-h-[38px] cursor-pointer items-center justify-between gap-3 rounded-[10px] px-3 py-1.5 text-sm outline-none transition-colors ${
-                            active
-                              ? 'bg-[var(--gold-tint)] font-semibold text-[var(--gold)]'
-                              : 'text-fg data-[highlighted]:bg-[var(--row-hover)] data-[highlighted]:text-fg-strong'
-                          }`}
-                        >
-                          <span className="inline-flex items-center gap-2.5 truncate">
-                            <span
-                              className="h-2 w-2 shrink-0 rounded-full"
-                              style={{ backgroundColor: opt.dotColor }}
-                            />
-                            <span className="truncate">{opt.labelLo}</span>
-                          </span>
-                          {active && (
-                            <svg
-                              width="15"
-                              height="15"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.4"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              className="shrink-0 text-[var(--gold)]"
-                              aria-hidden="true"
-                            >
-                              <polyline points="20 6 9 17 4 12" />
-                            </svg>
-                          )}
-                        </DropdownMenu.RadioItem>
-                      );
-                    })}
-                  </DropdownMenu.RadioGroup>
-                </DropdownMenu.Content>
-              </DropdownMenu.Portal>
-            </DropdownMenu.Root>
-            {statusFilter && (
-              <button
-                type="button"
-                className="filter-clear"
-                onClick={() => setStatusFilter('')}
-              >
-                ລ້າງສະຖານະ
-              </button>
-            )}
-          </div>
-          <div className="filter-tail w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-64">
-              <svg
-                width="15"
-                height="15"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--gold-icon)]"
-                aria-hidden="true"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <input
-                type="search"
-                className="filter-date w-full pl-9"
-                placeholder="ຄົ້ນຫາ ລະຫັດ Order / ເລກບິນ / ເບີໂທ..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+              )}
             </div>
-            {searchTerm && (
-              <button
-                type="button"
-                className="filter-clear"
-                onClick={() => setSearchTerm('')}
-              >
-                ລ້າງ
-              </button>
-            )}
-          </div>
-        </div>
+          }
+        />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="ລາຍການ Order">
           <table className="table">
             <thead>
               <tr>
                 <th>ລະຫັດ Order</th>
-                <th>ວັນທີ</th>
+                <th>ວັນທີ / ເວລາ</th>
                 <th>ເບີໂທ</th>
                 <th>ເລກບິນ</th>
+                <th>ພະນັກງານຮັບ</th>
                 <th>ປະເພດສິນຄ້າ</th>
                 <th className="text-right">ນ້ຳໜັກລວມ (g)</th>
                 <th className="text-right">ຈຳນວນລວມ</th>
@@ -1785,12 +1787,16 @@ export default function OrdersPage() {
             </thead>
             <tbody>
               <TableStateRow
-                colSpan={11}
+                colSpan={12}
                 isLoading={history.isLoading}
                 isError={history.isError}
                 error={history.error}
                 isEmpty={filteredOrders.length === 0}
-                emptyText={searchTerm || statusFilter ? 'ບໍ່ພົບ Order ທີ່ຄົ້ນຫາ' : 'ຍັງບໍ່ມີ Order'}
+                emptyText={
+                  timeSearch.hasActiveFilter || statusFilter
+                    ? 'ບໍ່ພົບ Order ທີ່ຄົ້ນຫາ'
+                    : 'ຍັງບໍ່ມີ Order'
+                }
                 onRetry={() => history.refetch()}
               />
               {pager.pageItems.map((row) => {
@@ -1811,8 +1817,8 @@ export default function OrdersPage() {
                       )}
                     </td>
                     <td>
-                      <div className="flex items-center gap-1.5">
-                        <span>{formatDate(row.createdAt)}</span>
+                      <div className="flex items-center gap-1.5 whitespace-nowrap">
+                        <span className="num">{formatDateTime(row.createdAt)}</span>
                         {isCarryOver && (
                           <span className="status-warning text-[10px] px-1.5 py-0" title="ບິນຄ້າງຈາກມື້ກ່ອນໜ້າ">
                             ຄ້າງຂ້າມມື້
@@ -1822,6 +1828,7 @@ export default function OrdersPage() {
                     </td>
                     <td className="num">{row.customer.phone}</td>
                     <td className="font-mono text-xs">{row.billNo}</td>
+                    <td>{row.staffName || '—'}</td>
                     <td>{row.productType}</td>
                     <td className="num text-right">{formatWeight(row.weightG)}</td>
                     <td className="num text-right">{row.quantity}</td>
@@ -2214,11 +2221,12 @@ export default function OrdersPage() {
 
               <div>
                 <label className="label" htmlFor="edit-order-staffName">ພະນັກງານຮັບ</label>
-                <input
+                <EmployeeSelect
                   id="edit-order-staffName"
-                  className="input"
                   value={editStaffName}
-                  onChange={(e) => setEditStaffName(e.target.value)}
+                  onChange={setEditStaffName}
+                  employees={employees}
+                  loading={employeesQuery.isLoading}
                 />
               </div>
             </div>

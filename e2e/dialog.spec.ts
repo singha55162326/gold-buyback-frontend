@@ -118,3 +118,28 @@ test('[dialog] AP/AR cash history view detail modal', async ({ page }) => {
   await detailDialog.getByRole('button', { name: 'ປິດ (Close)' }).click();
   await expect(detailDialog).toBeHidden();
 });
+
+test('[dialog] AP/AR cash settle modal: open, full-fill, Esc, close', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockApi(page);
+  await seedSession(page, 'dark', true);
+
+  await page.goto('/ledger/ap-cash');
+  await page.waitForLoadState('networkidle');
+
+  const payOpener = page.getByRole('button', { name: 'Payment', exact: true }).first();
+  await payOpener.focus();
+  await payOpener.click();
+
+  const settleDialog = page.getByRole('dialog');
+  await expect(settleDialog).toBeVisible();
+  await expect(settleDialog).toHaveAttribute('aria-modal', 'true');
+  await expect(settleDialog.getByText('ຊຳຣະໜີ້ AP (Cash) — Payment')).toBeVisible();
+
+  await settleDialog.getByRole('button', { name: /ເຕັມຈຳນວນ/ }).click();
+  await expect(settleDialog.locator('#settle-amount')).toHaveValue('3,500,000');
+
+  await page.keyboard.press('Escape');
+  await expect(settleDialog).toBeHidden();
+  await expect(payOpener).toBeFocused();
+});

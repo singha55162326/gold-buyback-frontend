@@ -5,11 +5,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dec, GRAMS_PER_BAHT, lineGoldWeight, type Decimal } from '@kpv/domain';
 import { api, ApiError, getStoredUser } from '@/lib/api';
 import { StockMovementDialog, type MovementKind, type SkuBalance } from '@/components/stock-movement-dialog';
-import { formatLak, formatWeight, formatDate, gramsToBaht } from '@/lib/format';
+import { formatLak, formatWeight, formatDate, formatDateTime, gramsToBaht } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { StatCard } from '@/components/stat-card';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { DateRangeFilter, useHistoryRange, type HistoryRangeState } from '@/components/date-range';
+import {
+  TimeSearchFilterBar,
+  useTimeSearchFilter,
+  type TimeSearchFilterState,
+} from '@/components/time-search-filter';
+import { SkuCombobox, type SkuComboboxOption } from '@/components/sku-combobox';
 import { Dialog } from '@/components/dialog';
 import { NumberInput } from '@/components/number-input';
 import { useToast } from '@/components/toast';
@@ -69,6 +75,7 @@ interface LedgerRow {
   cost: string;
   /** ຜູ້ບັນທຶກລາຍການນີ້. */
   createdBy: string;
+  createdAt?: string;
   movement?: MovementDetail | null;
 }
 
@@ -91,6 +98,9 @@ export default function StockNewPage() {
   // View / Edit modal states for Ledger
   const [viewingRow, setViewingRow] = useState<LedgerRow | null>(null);
   const [editingRow, setEditingRow] = useState<LedgerRow | null>(null);
+
+  // Ready to Gold table search filter (ຊື່ SKU ເຕັມ, ນ້ຳໜັກ g)
+  const [skuSearch, setSkuSearch] = useState('');
 
   // View / Edit modal states for Ready to Gold (SKU Balance)
   const [viewingBalance, setViewingBalance] = useState<SkuBalance | null>(null);
@@ -124,7 +134,14 @@ export default function StockNewPage() {
   });
 
   // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
-  const historyRange = useHistoryRange<LedgerRow>(['stock', 'new', 'history'], '/stock/new/history');
+  const timeSearch = useTimeSearchFilter();
+  const historyRange = useHistoryRange<LedgerRow>(['stock', 'new', 'history'], '/stock/new/history', {
+    params: {
+      start_time: timeSearch.startTime || undefined,
+      end_time: timeSearch.endTime || undefined,
+      search: timeSearch.debouncedSearch || undefined,
+    },
+  });
   const history = historyRange.rows;
   const historyFailed = historyRange.isError;
   const historyError = historyRange.error;
@@ -247,6 +264,57 @@ export default function StockNewPage() {
     return rem.gt(0) ? rem.div(rowQty).toDecimalPlaces(4) : dec(0);
   };
 
+  const newWacMetrics = useMemo(() => {
+    if (!wac) return null;
+    const weightG = dec(wac.newWeightG || 0);
+    const cost = dec(wac.newCost || 0);
+    const pricePerG = weightG.gt(0) ? cost.div(weightG) : dec(0);
+    const pricePerBaht = pricePerG.mul(GRAMS_PER_BAHT);
+    return { pricePerG, pricePerBaht };
+  }, [wac]);
+
+  const filteredBalances = useMemo(() => {
+    const q = skuSearch.trim().toLowerCase();
+    if (!q) return balances;
+    const tokens = q.split(/\s+/).filter(Boolean);
+    return balances.filter((row) => {
+      const name = row.goldSku.fullSkuName.toLowerCase();
+      const rawWeight = row.goldSku.weightG.toLowerCase();
+      const fmtWeight = formatWeight(row.goldSku.weightG).toLowerCase();
+      const numericWeight = Number(row.goldSku.weightG);
+      return tokens.every((token) => {
+        if (name.includes(token) || fmtWeight.includes(token) || rawWeight.includes(token)) {
+          return true;
+        }
+        if (/^\d+(\.\d+)?$/.test(token) && Number.isFinite(numericWeight)) {
+          return numericWeight === Number(token);
+        }
+        return false;
+      });
+    });
+  }, [balances, skuSearch]);
+
+  const editSkuOptions = useMemo<SkuComboboxOption[]>(() => {
+    return skus.map((s) => {
+      if (isEditNewStockIn) {
+        return {
+          id: s.id,
+          fullSkuName: s.fullSkuName,
+          weightG: s.weightG,
+        };
+      }
+      const avail = getEditSkuAvailableWeight(s.id);
+      const bal = balances.find((b) => b.goldSkuId === s.id || b.goldSku?.id === s.id);
+      return {
+        id: s.id,
+        fullSkuName: s.fullSkuName,
+        weightG: s.weightG,
+        availableWeightG: avail.gt(0) ? avail.toFixed() : '0',
+        availableQty: bal ? bal.balanceQty : null,
+      };
+    });
+  }, [skus, balances, isEditNewStockIn, editingRow]);
+
   // Calculated totals for edit lines modal
   const editTotals = useMemo(() => {
     const goldG = editLines.reduce((sum, l) => {
@@ -312,11 +380,67 @@ export default function StockNewPage() {
         <StatCard label="GOLD (g) NEW" value={wac ? formatWeight(wac.newWeightG) : '—'}
           sub={wac ? `${gramsToBaht(wac.newWeightG)} ບາດ` : ''} />
         <StatCard label="ຕົ້ນທຶນຄຳ NEW" value={wac ? formatLak(wac.newCost) : '—'} sub="LAK" />
-        <StatCard label="ຈຳນວນ SKU" value={String(balances.length)} sub="ທີ່ມີຍອດໃນມື້ນີ້" />
+        <StatCard
+          label="ລາຄາ/g"
+          value={newWacMetrics ? formatLak(newWacMetrics.pricePerG.toFixed()) : '—'}
+          sub="LAK / g"
+          accent
+        />
+        <StatCard
+          label="ລາຄາ/ບາດ"
+          value={newWacMetrics ? formatLak(newWacMetrics.pricePerBaht.toFixed()) : '—'}
+          sub="ລາຄາ/g × 15"
+          accent
+        />
       </div>
 
       <div data-fade className="card">
-        <div className="card-header"><h2 className="card-title">Ready to Gold</h2></div>
+        <div className="card-header flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <h2 className="card-title">Ready to Gold</h2>
+            <span className="badge recessed num text-[11px]">
+              {skuSearch.trim()
+                ? `${filteredBalances.length} / ${balances.length}`
+                : `${balances.length} ລາຍການ`}
+            </span>
+          </div>
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <div className="relative flex-1 sm:w-72">
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--gold-icon)]"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="search"
+                className="filter-date h-9 w-full pl-9 text-xs"
+                placeholder="ຄົ້ນຫາ ຊື່ SKU ເຕັມ, ນ້ຳໜັກ(g)..."
+                aria-label="ຄົ້ນຫາ ຊື່ SKU ເຕັມ, ນ້ຳໜັກ(g)"
+                value={skuSearch}
+                onChange={(e) => setSkuSearch(e.target.value)}
+              />
+            </div>
+            {skuSearch && (
+              <button
+                type="button"
+                className="filter-clear cursor-pointer"
+                onClick={() => setSkuSearch('')}
+              >
+                ລ້າງ
+              </button>
+            )}
+          </div>
+        </div>
         <div className="table-wrap" tabIndex={0} role="region" aria-label="Ready to Gold">
           <table className="table">
             <thead>
@@ -333,7 +457,21 @@ export default function StockNewPage() {
             </thead>
             <tbody>
               <TableStateRow colSpan={8} isError={balancesFailed} error={balancesError} isEmpty={balances.length === 0} emptyText="ຍັງບໍ່ມີຍອດໃນມື້ນີ້" onRetry={() => void refetchBalances()} />
-              {balances.map((row) => (
+              {!balancesFailed && balances.length > 0 && filteredBalances.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-sm text-muted">
+                    <span>ບໍ່ພົບ SKU ທີ່ກົງກັບ &ldquo;{skuSearch.trim()}&rdquo;</span>
+                    <button
+                      type="button"
+                      className="ml-3 text-xs font-medium text-gold underline underline-offset-2 cursor-pointer"
+                      onClick={() => setSkuSearch('')}
+                    >
+                      ລ້າງການຄົ້ນຫາ
+                    </button>
+                  </td>
+                </tr>
+              )}
+              {filteredBalances.map((row) => (
                 <tr key={row.id}>
                   <td className="font-medium">{row.goldSku.fullSkuName}</td>
                   <td className="num text-right">{formatWeight(row.goldSku.weightG)}</td>
@@ -387,6 +525,7 @@ export default function StockNewPage() {
         titleLo="ປະຫວັດ Stock (NEW)"
         rows={history}
         history={historyRange}
+        timeSearch={timeSearch}
         isError={historyFailed}
         error={historyError}
         canManage={canManage}
@@ -417,8 +556,12 @@ export default function StockNewPage() {
                 <span className="font-mono font-medium">{viewingRow.movement?.code ?? viewingRow.movementId ?? '—'}</span>
               </div>
               <div>
-                <span className="text-xs text-muted block">ວັນທີ</span>
-                <span className="font-medium">{formatDate(viewingRow.businessDate)}</span>
+                <span className="text-xs text-muted block">ວັນທີ / ເວລາ</span>
+                <span className="font-medium">
+                  {viewingRow.createdAt
+                    ? formatDateTime(viewingRow.createdAt)
+                    : formatDate(viewingRow.businessDate)}
+                </span>
               </div>
               <div>
                 <span className="text-xs text-muted block">ປະເພດການເຄື່ອນໄຫວ</span>
@@ -607,15 +750,23 @@ export default function StockNewPage() {
                   const maxEditWeightStr = maxEditWeight !== null ? String(Number(maxEditWeight.toFixed())) : undefined;
                   return (
                     <div key={idx} className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-recessed border border-line">
-                      <div className="flex-1 min-w-[200px]">
-                        <select
-                          className="input text-sm py-1.5"
+                      <div className="flex-1 min-w-[220px]">
+                        <SkuCombobox
+                          ariaLabel="full_sku_name"
                           value={line.goldSkuId}
-                          onChange={(e) => {
-                            const nextSkuId = e.target.value;
-                            const selectedSku = skus.find((s) => s.id === nextSkuId);
-                            let nextWeight = selectedSku ? String(Number(selectedSku.weightG)) : line.weightG;
-                            if (!isEditNewStockIn && nextSkuId && selectedSku) {
+                          options={editSkuOptions}
+                          showAvailability={!isEditNewStockIn}
+                          placeholder="ຄົ້ນຫາ ຊື່ SKU ເຕັມ ຫຼື ນ້ຳໜັກ (g)..."
+                          onSelect={(selectedSku) => {
+                            if (!selectedSku) {
+                              setEditLines((p) =>
+                                p.map((l, i) => (i === idx ? { ...l, goldSkuId: '' } : l)),
+                              );
+                              return;
+                            }
+                            const nextSkuId = selectedSku.id;
+                            let nextWeight = String(Number(selectedSku.weightG));
+                            if (!isEditNewStockIn) {
                               const maxForSku = getEditMaxWeightForLine(idx, nextSkuId);
                               if (maxForSku !== null && dec(nextWeight).gt(maxForSku)) {
                                 nextWeight = maxForSku.gt(0) ? String(Number(maxForSku.toFixed())) : '0';
@@ -633,19 +784,7 @@ export default function StockNewPage() {
                               ),
                             );
                           }}
-                        >
-                          <option value="">— ເລືອກ SKU —</option>
-                          {skus.map((s) => {
-                            const avail = !isEditNewStockIn ? getEditSkuAvailableWeight(s.id) : null;
-                            return (
-                              <option key={s.id} value={s.id}>
-                                {avail !== null
-                                  ? `${s.fullSkuName} (ນ້ຳໜັກ g ລວມ: ${formatWeight(avail.toFixed())} g)`
-                                  : s.fullSkuName}
-                              </option>
-                            );
-                          })}
-                        </select>
+                        />
                       </div>
 
                       <div className="w-28">
@@ -964,6 +1103,7 @@ function LedgerTable({
   titleLo,
   rows,
   history,
+  timeSearch,
   isError,
   error,
   canManage,
@@ -975,6 +1115,7 @@ function LedgerTable({
   rows: LedgerRow[];
   /** Owns the ຈາກວັນທີ–ຫາວັນທີ controls and the request behind them. */
   history: HistoryRangeState<LedgerRow>;
+  timeSearch: TimeSearchFilterState;
   isError: boolean;
   error: unknown;
   canManage: boolean;
@@ -986,6 +1127,12 @@ function LedgerTable({
     <div data-fade className="card">
       <div className="card-header"><h2 className="card-title">{titleLo}</h2></div>
       <DateRangeFilter history={history} />
+      <TimeSearchFilterBar
+        filter={timeSearch}
+        fromDate={history.from}
+        toDate={history.to}
+        searchPlaceholder="ຄົ້ນຫາ ແຫຼ່ງ / ປະເພດ / ລະຫັດບິນ / ຊື່ SKU..."
+      />
       <div className="table-wrap" tabIndex={0} role="region" aria-label={titleLo}>
         <table className="table">
           <thead>
@@ -1009,7 +1156,14 @@ function LedgerTable({
               const hasMovement = Boolean(row.movementId || row.movement?.id);
               return (
                 <tr key={row.id}>
-                  <td>{formatDate(row.businessDate)}</td>
+                  <td>
+                    <div>{formatDate(row.businessDate)}</div>
+                    {row.createdAt && (
+                      <div className="num text-[11px] text-muted">
+                        {formatDateTime(row.createdAt).split(' ')[1]}
+                      </div>
+                    )}
+                  </td>
                   <td>{row.partnerLabel ?? row.movement?.partner?.nameLo ?? '—'}</td>
                   <td className="text-muted">{row.typeLabel}</td>
                   <td className="num text-right text-success">{formatWeight(row.goldInG)}</td>

@@ -7,11 +7,19 @@ import { api, ApiError, getStoredUser } from '@/lib/api';
 import { formatWeight, formatDateTime, gramsToBaht } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { DateRangeFilter, useHistoryRange, type PagedResult } from '@/components/date-range';
+import {
+  ORDER_SEARCH_PLACEHOLDER,
+  TimeSearchFilterBar,
+  matchesOrderSearch,
+  useTimeSearchFilter,
+} from '@/components/time-search-filter';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import { StatCard } from '@/components/stat-card';
 import { NumberInput } from '@/components/number-input';
 import { Dialog } from '@/components/dialog';
+import { EmployeeSelect, type EmployeeOption } from '@/components/employee-select';
+import { GoldItemCombobox } from '@/components/gold-item-combobox';
 import { dec } from '@kpv/domain';
 
 interface Line {
@@ -48,6 +56,8 @@ interface GoldItemCatalog {
   nameLo: string;
 }
 
+type Employee = EmployeeOption;
+
 const DEFAULT_POPULAR_ITEMS = ['ສາຍຄໍ', 'ສາຍແຂນ', 'ແຫວນ', 'ຕ່າງຫູ', 'ກີ້', 'ຄຳແທ່ງ'];
 
 /**
@@ -75,9 +85,37 @@ export default function ConsignmentsPage() {
   const [lines, setLines] = useState<Line[]>([{ nameLo: '', weightG: '', quantity: 1 }]);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // History query range
-  const history = useHistoryRange<Row>(['finance', 'consignments'], '/finance/consignments');
+  // History query range & filters
+  const [statusFilter, setStatusFilter] = useState<'' | 'HELD' | 'RETURNED'>('');
+  const timeSearch = useTimeSearchFilter();
+  const history = useHistoryRange<Row>(['finance', 'consignments'], '/finance/consignments', {
+    params: {
+      status: statusFilter || undefined,
+      start_time: timeSearch.startTime || undefined,
+      end_time: timeSearch.endTime || undefined,
+      search: timeSearch.debouncedSearch || undefined,
+    },
+  });
   const data = history.data as Payload | undefined;
+  const rows = history.rows;
+
+  const filteredRows = useMemo(() => {
+    const q = timeSearch.searchTerm.trim();
+    if (!q) return rows;
+    const lowerQ = q.toLowerCase();
+    return rows.filter(
+      (r) =>
+        matchesOrderSearch(
+          {
+            code: r.code,
+            billNo: r.billId,
+            phone: r.customer?.phone,
+            staffName: r.staffName,
+          },
+          q,
+        ) || r.customerName.toLowerCase().includes(lowerQ),
+    );
+  }, [rows, timeSearch.searchTerm]);
 
   // Active viewing item derived from history data
   const viewingRow = useMemo(() => {
@@ -91,6 +129,14 @@ export default function ConsignmentsPage() {
     queryFn: () => api.get<GoldItemCatalog[]>('/catalog/gold-items'),
     staleTime: 5 * 60 * 1000,
   });
+
+  // Active employees for ພະນັກງານຮັບ dropdown
+  const employeesQ = useQuery({
+    queryKey: ['catalog', 'employees'],
+    queryFn: () => api.get<Employee[]>('/catalog/employees'),
+    staleTime: 5 * 60 * 1000,
+  });
+  const employees = employeesQ.data ?? [];
 
   const suggestedItemNames = useMemo(() => {
     const fromApi = (goldItemsQ.data ?? []).map((i) => i.nameLo.trim()).filter(Boolean);
@@ -111,28 +157,13 @@ export default function ConsignmentsPage() {
     setLines((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleQuickAddItem = (itemName: string) => {
-    setLines((prev) => {
-      // If only one empty line exists, populate it
-      if (prev.length === 1 && !prev[0].nameLo.trim() && !prev[0].weightG) {
-        return [{ ...prev[0], nameLo: itemName }];
-      }
-      // If there's an unfilled line, fill the first one
-      const emptyIdx = prev.findIndex((l) => !l.nameLo.trim());
-      if (emptyIdx !== -1) {
-        return prev.map((l, i) => (i === emptyIdx ? { ...l, nameLo: itemName } : l));
-      }
-      // Otherwise append new line
-      return [...prev, { nameLo: itemName, weightG: '', quantity: 1 }];
-    });
-  };
-
   const resetForm = () => {
     setBillId('');
     setPhone('');
     setCustomerName('');
     const user = getStoredUser();
-    setStaffName(user?.fullName ?? '');
+    const matched = user?.fullName ? employees.find((e) => e.fullName === user.fullName) : undefined;
+    setStaffName(matched ? matched.fullName : '');
     setNote('');
     setLines([{ nameLo: '', weightG: '', quantity: 1 }]);
     setFormError(null);
@@ -141,7 +172,8 @@ export default function ConsignmentsPage() {
   const handleOpenCreate = () => {
     const user = getStoredUser();
     if (!staffName && user?.fullName) {
-      setStaffName(user.fullName);
+      const matched = employees.find((e) => e.fullName === user.fullName);
+      if (matched) setStaffName(matched.fullName);
     }
     setFormError(null);
     setIsCreateOpen(true);
@@ -284,8 +316,44 @@ export default function ConsignmentsPage() {
       <div data-fade className="card">
         <div className="card-header">
           <h2 className="card-title">History ຝາກສິນຄ້າ</h2>
+          <span className="num text-xs text-muted">
+            {filteredRows.length === rows.length
+              ? `${rows.length} ລາຍການ`
+              : `${filteredRows.length} / ${rows.length} ລາຍການ`}
+          </span>
         </div>
         <DateRangeFilter history={history} labelLo="ວັນທີຝາກ" />
+        <TimeSearchFilterBar
+          filter={timeSearch}
+          fromDate={history.from}
+          toDate={history.to}
+          searchPlaceholder={ORDER_SEARCH_PLACEHOLDER}
+          leftSlot={
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="filter-select-label">ສະຖານະ</span>
+              <div className="seg" role="tablist" aria-label="ກອງຕາມສະຖານະ">
+                {(
+                  [
+                    { value: '', label: 'ທັງໝົດ' },
+                    { value: 'HELD', label: 'ຝາກຢູ່' },
+                    { value: 'RETURNED', label: 'ສົ່ງຄືນແລ້ວ' },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.value || 'ALL'}
+                    type="button"
+                    role="tab"
+                    aria-selected={statusFilter === opt.value}
+                    className="seg-btn cursor-pointer"
+                    onClick={() => setStatusFilter(opt.value)}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          }
+        />
         <div className="table-wrap" tabIndex={0} role="region" aria-label="History ຝາກສິນຄ້າ">
           <table className="table">
             <thead>
@@ -310,11 +378,15 @@ export default function ConsignmentsPage() {
                 isLoading={history.isLoading}
                 isError={history.isError}
                 error={history.error}
-                isEmpty={(data?.rows ?? []).length === 0}
-                emptyText="ຍັງບໍ່ມີລາຍການຝາກສິນຄ້າ"
+                isEmpty={filteredRows.length === 0}
+                emptyText={
+                  timeSearch.hasActiveFilter || statusFilter
+                    ? 'ບໍ່ພົບລາຍການທີ່ຄົ້ນຫາ'
+                    : 'ຍັງບໍ່ມີລາຍການຝາກສິນຄ້າ'
+                }
                 onRetry={history.refetch}
               />
-              {(data?.rows ?? []).map((row) => (
+              {filteredRows.map((row) => (
                 <tr key={row.id}>
                   <td className="font-mono text-xs font-semibold">{row.code}</td>
                   <td className="font-mono text-xs">{row.billId}</td>
@@ -553,34 +625,39 @@ export default function ConsignmentsPage() {
               {/* Staff Name */}
               <div>
                 <label className="label mb-1" htmlFor="cons-staff">
-                  ຊື່ພະນັກງານຜູ້ຮັບ <span className="text-danger">*</span>
+                  ພະນັກງານຮັບ <span className="text-danger">*</span>
                 </label>
-                <input
+                <EmployeeSelect
                   id="cons-staff"
-                  className="input w-full"
-                  placeholder="ຊື່ພະນັກງານ"
+                  className={isStaffValid ? 'border-success/50' : ''}
                   value={staffName}
-                  onChange={(e) => setStaffName(e.target.value)}
+                  onChange={setStaffName}
+                  employees={employees}
+                  loading={employeesQ.isLoading}
                 />
-                <p className="mt-1 text-[11px] text-muted">ພະນັກງານປະຈຳການ</p>
+                <p className="mt-1 text-[11px] text-muted">
+                  {employeesQ.isSuccess && employees.length === 0
+                    ? 'ຍັງບໍ່ມີຂໍ້ມູນພະນັກງານ (ເພີ່ມທີ່ Admin > ຈັດການ Employee)'
+                    : 'ພະນັກງານປະຈຳການ'}
+                </p>
               </div>
             </div>
           </div>
 
           {/* Section 2: ລາຍການສິນຄ້າທີ່ຮັບຝາກ */}
-          <div className="rounded-lg border border-line bg-surface/40 p-4">
+          <div className="rounded-xl border border-line bg-recessed p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+                <span className="section-label font-semibold">
                   ລາຍການຄຳທີ່ຮັບຝາກ
                 </span>
-                <span className="badge recessed text-xs">
-                  {lines.length} {lines.length > 1 ? 'ລາຍການ' : 'ລາຍການ'}
+                <span className="badge bg-gold-tint text-gold text-xs">
+                  {lines.length} ລາຍການ
                 </span>
               </div>
               <button
                 type="button"
-                className="btn-secondary cursor-pointer transition-colors duration-150 inline-flex items-center gap-1.5 text-xs py-1 px-2.5"
+                className="btn-secondary cursor-pointer transition-colors duration-150 inline-flex items-center gap-1.5 text-xs min-h-[34px] px-3"
                 onClick={handleAddLine}
               >
                 <svg
@@ -596,70 +673,49 @@ export default function ConsignmentsPage() {
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
-                + ເພີ່ມແຖວ
+                ເພີ່ມແຖວ
               </button>
             </div>
 
-            {/* Quick preset chips */}
-            <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="text-muted text-[11px] mr-1">ລາຍການຍອດນິຍົມ:</span>
-              {suggestedItemNames.slice(0, 6).map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  className="rounded border border-line bg-surface px-2 py-0.5 text-xs text-foreground hover:bg-recessed hover:border-accent transition-colors duration-150 cursor-pointer"
-                  onClick={() => handleQuickAddItem(name)}
-                >
-                  + {name}
-                </button>
-              ))}
-            </div>
-
-            {/* Autocomplete datalist for item names */}
-            <datalist id="consignment-items-datalist">
-              {suggestedItemNames.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-
             {/* Lines Desktop Table View */}
-            <div className="hidden sm:block overflow-x-auto rounded border border-line bg-surface/30">
+            <div className="hidden sm:block overflow-x-auto rounded-xl border border-line">
               <table className="w-full text-left text-xs">
-                <thead className="bg-recessed/60 text-[11px] font-semibold text-muted uppercase border-b border-line">
+                <thead className="bg-recessed text-[11.5px] font-medium text-gold border-b border-line">
                   <tr>
-                    <th className="py-2 px-2.5 w-10 text-center">#</th>
-                    <th className="py-2 px-2.5">
+                    <th className="py-2.5 px-2.5 w-10 text-center">#</th>
+                    <th className="py-2.5 px-2.5">
                       ລາຍການສິນຄ້າ <span className="text-danger">*</span>
                     </th>
-                    <th className="py-2 px-2.5 w-44 text-right">
+                    <th className="py-2.5 px-2.5 w-44 text-right">
                       ນ້ຳໜັກ/ຊິ້ນ (g) <span className="text-danger">*</span>
                     </th>
-                    <th className="py-2 px-2.5 w-28 text-center">ຈຳນວນ</th>
-                    <th className="py-2 px-2.5 w-32 text-right">ນ້ຳໜັກລວມ (g)</th>
-                    <th className="py-2 px-2.5 w-12 text-center">ລຶບ</th>
+                    <th className="py-2.5 px-2.5 w-28 text-center">ຈຳນວນ</th>
+                    <th className="py-2.5 px-2.5 w-32 text-right">ນ້ຳໜັກລວມ (g)</th>
+                    <th className="py-2.5 px-2.5 w-12 text-center">ລຶບ</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-line">
+                <tbody className="divide-y divide-[var(--row-line)]">
                   {lines.map((line, index) => {
                     const lineTotalWeight = dec(line.weightG || 0).mul(
                       Math.max(1, Math.trunc(Number(line.quantity) || 1)),
                     );
                     return (
-                      <tr key={index} className="hover:bg-surface/60 transition-colors duration-150">
+                      <tr key={index} className="hover:bg-[var(--row-hover)] transition-colors duration-150">
                         <td className="py-2 px-2.5 text-center font-mono text-muted">{index + 1}</td>
                         <td className="py-2 px-2.5">
-                          <input
-                            list="consignment-items-datalist"
-                            className="input w-full text-xs h-8"
-                            aria-label={`ລາຍການ ${index + 1}`}
-                            placeholder="ຕົວຢ່າງ: ສາຍຄໍ, ແຫວນ..."
+                          <GoldItemCombobox
+                            className="h-9 text-xs"
+                            ariaLabel={`ລາຍການ ${index + 1}`}
+                            placeholder="ເລືອກ ຫຼື ພິມ: ສາຍຄໍ, ແຫວນ..."
                             value={line.nameLo}
-                            onChange={(e) => setLine(index, { nameLo: e.target.value })}
+                            options={suggestedItemNames}
+                            loading={goldItemsQ.isLoading}
+                            onChange={(val) => setLine(index, { nameLo: val })}
                           />
                         </td>
                         <td className="py-2 px-2.5">
                           <NumberInput
-                            className="input num w-full text-right text-xs h-8"
+                            className="input num w-full text-right text-xs h-9"
                             aria-label={`ນ້ຳໜັກ (g) ${index + 1}`}
                             decimals={4}
                             unit="g"
@@ -670,7 +726,7 @@ export default function ConsignmentsPage() {
                         </td>
                         <td className="py-2 px-2.5">
                           <input
-                            className="input num w-full text-center text-xs h-8"
+                            className="input num w-full text-center text-xs h-9"
                             aria-label={`ຈຳນວນ ${index + 1}`}
                             type="number"
                             min={1}
@@ -682,7 +738,7 @@ export default function ConsignmentsPage() {
                             }
                           />
                         </td>
-                        <td className="py-2 px-2.5 text-right font-mono text-xs tabular-nums text-foreground font-medium">
+                        <td className="py-2 px-2.5 text-right font-mono text-xs tabular-nums text-fg font-medium">
                           {line.weightG && Number(line.weightG) > 0
                             ? formatWeight(lineTotalWeight.toFixed(4))
                             : '—'}
@@ -690,7 +746,7 @@ export default function ConsignmentsPage() {
                         <td className="py-2 px-2.5 text-center">
                           <button
                             type="button"
-                            className="inline-flex h-7 w-7 items-center justify-center rounded text-muted hover:text-danger hover:bg-danger/10 transition-colors disabled:opacity-25 disabled:pointer-events-none cursor-pointer"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:text-danger hover:bg-[var(--danger-bg)] transition-colors disabled:opacity-25 disabled:pointer-events-none cursor-pointer"
                             aria-label={`ລຶບລາຍການ ${index + 1}`}
                             disabled={lines.length === 1}
                             onClick={() => handleRemoveLine(index)}
@@ -723,9 +779,9 @@ export default function ConsignmentsPage() {
                   Math.max(1, Math.trunc(Number(line.quantity) || 1)),
                 );
                 return (
-                  <div key={index} className="rounded border border-line bg-surface/50 p-3 space-y-2">
+                  <div key={index} className="rounded-xl border border-line bg-recessed p-3 space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs font-semibold text-muted">
+                      <span className="font-mono text-xs font-semibold text-gold">
                         #{index + 1}
                       </span>
                       <button
@@ -738,15 +794,16 @@ export default function ConsignmentsPage() {
                       </button>
                     </div>
                     <div>
-                      <label className="text-[11px] text-muted block mb-1">
+                      <label className="text-[11px] text-gold font-medium block mb-1">
                         ລາຍການສິນຄ້າ <span className="text-danger">*</span>
                       </label>
-                      <input
-                        list="consignment-items-datalist"
-                        className="input w-full text-xs"
-                        placeholder="ຕົວຢ່າງ: ສາຍຄໍ, ແຫວນ..."
+                      <GoldItemCombobox
+                        ariaLabel={`ລາຍການ ${index + 1}`}
+                        placeholder="ເລືອກ ຫຼື ພິມ: ສາຍຄໍ, ແຫວນ..."
                         value={line.nameLo}
-                        onChange={(e) => setLine(index, { nameLo: e.target.value })}
+                        options={suggestedItemNames}
+                        loading={goldItemsQ.isLoading}
+                        onChange={(val) => setLine(index, { nameLo: val })}
                       />
                     </div>
                     <div className="grid grid-cols-2 gap-2">

@@ -25,7 +25,8 @@ const bankRows = cashRows.map((r) => ({ ...r, bankAccount: { nameLo: bank.nameLo
 const apArCashHistory = [1, 2, 3].map((i) => ({
   id: `ah${i}`,
   businessDate: day(i),
-  refType: 'MANUAL',
+  createdAt: D,
+  refType: 'ADJUSTMENT',
   currency: 'LAK',
   amountIn: String(i * 1500000),
   amountOut: '0',
@@ -33,9 +34,9 @@ const apArCashHistory = [1, 2, 3].map((i) => ({
   note: 'ທົດສອບ',
   partner: { nameLo: partner.nameLo },
   category: { nameLo: 'ຄ່າສິນຄ້າ' },
-  method: i === 2 ? ('BANK' as const) : ('CASH' as const),
-  bankAccountId: i === 2 ? bank.id : null,
-  bankAccount: i === 2 ? { id: bank.id, nameLo: bank.nameLo, code: bank.code } : null,
+  method: null,
+  bankAccountId: null,
+  bankAccount: null,
   createdBy: 'admin',
 }));
 const goldLedger = [1, 2, 3].map((i) => ({ id: `g${i}`, businessDate: day(i), partnerLabel: partner.nameLo, typeLabel: 'ຮັບເຂົ້າ', goldInG: `${i * 15}.00`, goldOutG: '0.00', weightG: `${i * 15}.00`, priceIn: '2500000', priceOut: '0', cost: String(i * 37500000), goldType: { nameLo: 'ຄຳ 96.5%' }, side: i === 2 ? 'AR' : 'AP', partner: { nameLo: partner.nameLo } }));
@@ -144,7 +145,15 @@ const GET: Record<string, unknown> = {
 for (const side of ['AP', 'AR', 'ap', 'ar']) {
   GET[`/finance/ap-ar/${side}/totals`] = apArTotals;
   GET[`/finance/ap-ar/${side}/partners`] = apArPartners;
-  GET[`/finance/ap-ar/${side}/history`] = apArCashHistory;
+  GET[`/finance/ap-ar/${side}/history`] = {
+    rows: apArCashHistory,
+    page: 1,
+    pageSize: 5000,
+    total: apArCashHistory.length,
+    pageCount: 1,
+    fromDate: '2026-10-18',
+    toDate: '2026-10-18',
+  };
 }
 GET['/catalog/cabinets/c1'] = { cabinet: { id: 'c1', code: 'C01', nameLo: 'ຕູ້ ໜ້າຮ້ານ' }, totalWeightG: '22.50', lines: [{ id: 'cl1', weightG: '22.50', quantity: 6, goldSku: { fullSkuName: 'ແຫວນ 1 ສະລຶງ' } }] };
 

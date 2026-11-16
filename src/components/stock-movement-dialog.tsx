@@ -4,10 +4,11 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { dec, expectedReturnWeight, GRAMS_PER_BAHT, type Decimal } from '@kpv/domain';
 import { api, ApiError } from '@/lib/api';
-import { formatLak, formatWeight, formatGrams } from '@/lib/format';
+import { formatLak, formatWeight } from '@/lib/format';
 import { Dialog } from './dialog';
 import { NumberInput } from './number-input';
 import { QueryErrorNotice } from './query-state';
+import { SkuCombobox, type SkuComboboxOption } from './sku-combobox';
 import { useToast } from './toast';
 
 export type MovementKind = 'IN' | 'OUT' | 'TRANSFER';
@@ -228,8 +229,8 @@ export function StockMovementDialog({
     scope === 'OLD' &&
     !isFactoryOut &&
     (selectedPartner?.type === 'SMITH' ||
-      (!selectedPartner?.type &&
-        (selectedPartner?.code === 'OUTSOURCE_SMITH' || selectedPartner?.code === 'OTHER')));
+      selectedPartner?.code === 'OUTSOURCE_SMITH' ||
+      selectedPartner?.code === 'OTHER');
 
   /** Lines reference a SKU in the NEW warehouse and a ປະເພດຄຳ in OLD. */
   const usesSku = scope === 'NEW' || kind === 'TRANSFER';
@@ -239,11 +240,29 @@ export function StockMovementDialog({
    * server ກໍບັງຄັບເຊັ່ນກັນ, ຟອມນີ້ພຽງແຕ່ບໍ່ຖາມສິ່ງທີ່ບໍ່ມີທາງເລືອກ.
    */
   const isOldIn = kind === 'IN' && scope === 'OLD';
+  const isNewIn = kind === 'IN' && scope === 'NEW';
   /** ຄຳເກົ່າອອກ: ນັບເປັນນ້ຳໜັກລ້ວນ ບໍ່ມີຈຳນວນ ແລະ ບໍ່ເລືອກລາຍການຄຳ. */
   const isOldOut = kind === 'OUT' && scope === 'OLD';
   const isTransferOld = kind === 'TRANSFER' && scope === 'OLD';
   const isNewOut = kind === 'OUT' && scope === 'NEW';
   const isTransferNew = kind === 'TRANSFER' && scope === 'NEW';
+  const showSkuAvailability = isNewOut || isTransferNew;
+
+  const skuComboboxOptions = useMemo<SkuComboboxOption[]>(() => {
+    return skus.map((s) => {
+      const bal = showSkuAvailability
+        ? newBalances.find((b) => b.goldSkuId === s.id || b.goldSku?.id === s.id)
+        : undefined;
+      const availW = bal ? dec(bal.totalWeightG || 0) : null;
+      return {
+        id: s.id,
+        fullSkuName: s.fullSkuName,
+        weightG: s.weightG,
+        availableWeightG: availW ? (availW.gt(0) ? availW.toFixed() : '0') : null,
+        availableQty: bal ? bal.balanceQty : null,
+      };
+    });
+  }, [skus, newBalances, showSkuAvailability]);
 
   /**
    * ຄຳນວນນ້ຳໜັກສູງສຸດ (g) ທີ່ແຖວທີ `rowIndex` ສາມາດປ້ອນໄດ້ ໂດຍຫັກນ້ຳໜັກທີ່ແຖວອື່ນ
@@ -476,12 +495,15 @@ export function StockMovementDialog({
         ? `Stock OUT — ${scope === 'NEW' ? 'ສາງຄຳໃໝ່' : 'ສາງຄຳເກົ່າ'}`
         : `Transfer ${transferDirection === 'NEW_TO_OLD' ? '(NEW) ເປັນ (OLD)' : '(OLD) ເປັນ (NEW)'}`;
 
+  const hasValidLaborFee = /^\d+(\.\d+)?$/.test(laborFeeThb.trim());
+
   const canSubmit =
     totals.goldG.gt(0) &&
     !overweightMessage &&
     (kind === 'TRANSFER' || isOldIn ? Boolean(goldTypeId) : true) &&
     (kind === 'TRANSFER' || isOldIn ? true : Boolean(partnerId)) &&
     (kind !== 'IN' || Number(totalCost.replace(/,/g, '')) > 0) &&
+    (!isNewIn || hasValidLaborFee) &&
     (usesSku
       ? lines.some((l) => Boolean(l.goldSkuId) && Number(l.weightG) > 0)
       : isOldIn
@@ -512,7 +534,7 @@ export function StockMovementDialog({
           <QueryErrorNotice error={failedQuery.error} onRetry={retryFailed} />
         </div>
       )}
-      <div className={`grid gap-4 ${isOldIn ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
+      <div className={`grid gap-4 ${isOldIn || isSmithOut ? 'md:grid-cols-3' : 'md:grid-cols-2'}`}>
         {kind === 'TRANSFER' ? (
           /* ທິດທາງ ຕາມສາງທີ່ກົດເຂົ້າມາ ແລະ ເລືອກບໍ່ໄດ້: ຢູ່ສາງຄຳໃໝ່ ມີແຕ່
              (NEW) → (OLD), ຢູ່ສາງຄຳເກົ່າ ມີແຕ່ (OLD) → (NEW). */
@@ -540,12 +562,15 @@ export function StockMovementDialog({
                 const newId = e.target.value;
                 setPartnerId(newId);
                 const p = partners.find((item) => item.id === newId);
+                const isNextFactory =
+                  p?.type === 'FACTORY' || (!p?.type && p?.code === 'FACTORY');
                 const nextIsSmith =
                   kind === 'OUT' &&
                   scope === 'OLD' &&
-                  p?.type !== 'FACTORY' &&
+                  !isNextFactory &&
                   (p?.type === 'SMITH' ||
-                    (!p?.type && (p?.code === 'OUTSOURCE_SMITH' || p?.code === 'OTHER')));
+                    p?.code === 'OUTSOURCE_SMITH' ||
+                    p?.code === 'OTHER');
                 if (!nextIsSmith) {
                   setGoldPercent('');
                 }
@@ -631,7 +656,7 @@ export function StockMovementDialog({
         {isSmithOut && (
           <div>
             <label className="label" htmlFor="pct">%ຄຳ</label>
-            <NumberInput id="pct" className="input num" decimals={2} placeholder="96"
+            <NumberInput id="pct" className="input num" decimals={2} max="100" placeholder="96"
               value={goldPercent} onValueChange={setGoldPercent} />
           </div>
         )}
@@ -643,11 +668,35 @@ export function StockMovementDialog({
           <span className="label mb-0 font-semibold text-fg">
             {usesSku ? 'ລາຍການ SKU' : isOldIn ? 'ລາຍການຄຳ' : 'ປະເພດຄຳ'}
           </span>
-          <button className="btn-secondary"
+          <button className="btn-secondary cursor-pointer"
             onClick={() => setLines((p) => [...p, emptyLine()])}>
             + Add
           </button>
         </div>
+        {isOldOut && (
+          <div className="mb-1.5 hidden gap-2 px-0.5 text-[11px] font-medium text-muted md:grid md:grid-cols-[1.8fr_1.1fr_1.4fr_auto]">
+            <span>ປະເພດຄຳ</span>
+            <span className="text-right">ນ້ຳໜັກ (g)</span>
+            <span className="text-right">ຍອດລວມ (LAK)</span>
+            <span className="invisible px-3" aria-hidden="true">ລຶບ</span>
+          </div>
+        )}
+        {usesSku && (
+          <div
+            className={`mb-1.5 hidden gap-2 px-0.5 text-[11px] font-medium text-muted md:grid ${
+              isTransferOld
+                ? 'md:grid-cols-[1.8fr_0.9fr_0.7fr_0.9fr_1.3fr_auto]'
+                : 'md:grid-cols-[2fr_1fr_0.8fr_1fr_auto]'
+            }`}
+          >
+            <span>ຊື່ SKU ເຕັມ</span>
+            <span className="text-right">ນ້ຳໜັກ/ຊິ້ນ (g)</span>
+            <span className="text-right">ຈຳນວນ</span>
+            <span className="text-right">ລວມ (g)</span>
+            {isTransferOld && <span className="text-right">ຍອດລວມ (LAK)</span>}
+            <span className="invisible px-3" aria-hidden="true">ລຶບ</span>
+          </div>
+        )}
         <div className="space-y-3">
           {lines.map((line, i) => {
             const lineW = line.weightG.trim();
@@ -672,20 +721,16 @@ export function StockMovementDialog({
                   : 'md:grid-cols-[2fr_1fr_0.8fr_1fr_auto]'
               }`}>
                 {usesSku ? (
-                  /* ຂຽນຄົ້ນຫາໄດ້: ລາຍການ SKU ຍາວເກີນກວ່າຈະເລື່ອນຫາ. ໃຊ້ datalist
-                     ຂອງ browser ເອງ ຈຶ່ງໃຊ້ໄດ້ທັງແປ້ນພິມ ແລະ ຈໍສຳຜັດ ໂດຍບໍ່ຕ້ອງ
-                     ເພີ່ມ library. ພິມແລ້ວບໍ່ກົງກັບ SKU ໃດ = ຍັງບໍ່ໄດ້ເລືອກ. */
-                  <input
-                    className="input"
-                    aria-label="full_sku_name"
-                    list={`sku-options-${i}`}
-                    placeholder="ພິມຄົ້ນຫາ full_sku_name"
-                    value={line.skuQuery ?? (skus.find((s) => s.id === line.goldSkuId)?.fullSkuName ?? '')}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      const sku = skus.find((s) => s.fullSkuName === val);
+                  <SkuCombobox
+                    ariaLabel="full_sku_name"
+                    value={line.goldSkuId}
+                    options={skuComboboxOptions}
+                    loading={skusQ.isLoading}
+                    showAvailability={showSkuAvailability}
+                    placeholder="ຄົ້ນຫາ ຊື່ SKU ເຕັມ ຫຼື ນ້ຳໜັກ (g)..."
+                    onSelect={(sku) => {
                       if (!sku) {
-                        setLine(i, { skuQuery: val, goldSkuId: '' });
+                        setLine(i, { goldSkuId: '' });
                         return;
                       }
                       let nextWeight = String(Number(sku.weightG));
@@ -701,7 +746,6 @@ export function StockMovementDialog({
                         }
                       }
                       setLine(i, {
-                        skuQuery: val,
                         goldSkuId: sku.id,
                         weightG: nextWeight,
                       });
@@ -753,18 +797,6 @@ export function StockMovementDialog({
                       );
                     })}
                   </select>
-                )}
-                {usesSku && (
-                  <datalist id={`sku-options-${i}`}>
-                    {skus.map((s) => {
-                      const avail = isNewOut || isTransferNew ? getNewSkuAvailableWeight(s.id) : null;
-                      return (
-                        <option key={s.id} value={s.fullSkuName}>
-                          {avail !== null ? `ນ້ຳໜັກ g ລວມ: ${formatWeight(avail.toFixed())} g` : undefined}
-                        </option>
-                      );
-                    })}
-                  </datalist>
                 )}
                 {kind === 'IN' && usesSku && line.goldSkuId ? (
                   /* ນ້ຳໜັກມາຈາກ SKU ທີ່ເລືອກ — ແກ້ບໍ່ໄດ້ໃນໂໝດ IN, ບໍ່ດັ່ງນັ້ນນ້ຳໜັກໃນສາງ
@@ -885,11 +917,25 @@ export function StockMovementDialog({
           {/* ຄ່າແຮງ ເປັນເລື່ອງຂອງຊ່າງຝັ່ງຄຳໃໝ່; ຄຳເກົ່າມາຈາກ Cashier ບໍ່ມີຄ່າແຮງ. */}
           {!isOldIn && (
           <div>
-            <label className="label" htmlFor="labor">ຄ່າແຮງ (THB)</label>
-            <NumberInput id="labor" className="input num" decimals={2} value={laborFeeThb}
+            <label className="label" htmlFor="labor">
+              ຄ່າແຮງ (THB)
+              {isNewIn && <span className="ml-1 text-danger" aria-hidden="true">*</span>}
+            </label>
+            <NumberInput
+              id="labor"
+              className="input num"
+              decimals={2}
+              required={isNewIn}
+              placeholder="ປ້ອນຕົວເລກ (ເຊັ່ນ 0)"
+              value={laborFeeThb}
               aria-describedby="labor-hint"
-              onValueChange={setLaborFeeThb} />
-            <p id="labor-hint" className="mt-1 text-xs text-muted">ບັນທຶກເປັນ +AP (Cash) ຄ່າແຮງຄ້າງຈ່າຍ</p>
+              onValueChange={setLaborFeeThb}
+            />
+            <p id="labor-hint" className="mt-1 text-xs text-muted">
+              {isNewIn && !hasValidLaborFee
+                ? 'ບັນທຶກເປັນ +AP (Cash) ຄ່າແຮງຄ້າງຈ່າຍ · ກະລຸນາປ້ອນຕົວເລກຄ່າແຮງ (ປ້ອນ 0 ຖ້າບໍ່ມີ)'
+                : 'ບັນທຶກເປັນ +AP (Cash) ຄ່າແຮງຄ້າງຈ່າຍ'}
+            </p>
           </div>
           )}
         </div>
@@ -903,8 +949,10 @@ export function StockMovementDialog({
         <Field labelLo="ລາຄາ/ບາດ" value={formatLak(totals.pricePerBaht.toFixed())} />
         <Field labelLo="ຕົ້ນທຶນຄຳ" value={formatLak(totals.goldCost.toFixed())} strong />
         {totals.expectedReturnG && (
-          <Field labelLo="ນ້ຳໜັກ(g) ທີ່ໄດ້ຮັບ"
-            value={formatGrams(totals.expectedReturnG.toFixed())} />
+          <Field
+            labelLo="ນ້ຳໜັກ(g) ຕັດຍອດ AP (GOLD)"
+            value={`${formatWeight(totals.expectedReturnG.toFixed())} g`}
+          />
         )}
       </div>
 
@@ -918,7 +966,7 @@ export function StockMovementDialog({
           {isFactoryOut
             ? `OUT ໄປໂຮງງານ (${selectedPartner?.nameLo ?? 'FACTORY'}): ຕ້ອງລໍຖ້າ Admin/Manager Approve ແລ້ວ ລະບົບຍັງບໍ່ຕັດຍອດ — ຈະໄປຢູ່ Module ຕິດຕາມ Stock Out ໄປ FACTORY ຈົນກວ່າຈະປ້ອນນ້ຳໜັກທີ່ FACTORY ປະເມີນ.`
             : isSmithOut
-            ? `OUT ໄປຊ່າງ (${selectedPartner?.nameLo ?? 'ຊ່າງ'}): ຕັດຍອດສາງຕາມນ້ຳໜັກຕົວຈິງ ແລະ ຕັດຍອດ AP Gold ຕາມນ້ຳໜັກຄາດວ່າຈະໄດ້ຮັບ (${totals.expectedReturnG ? formatGrams(totals.expectedReturnG.toFixed()) : '—'} g).`
+            ? `OUT ໄປຊ່າງ (${selectedPartner?.nameLo ?? 'ຊ່າງ'}): ຕັດຍອດສາງຕາມນ້ຳໜັກຕົວຈິງ (${formatWeight(totals.goldG.toFixed())} g) ແລະ ຕັດຍອດ AP (GOLD) ຕາມນ້ຳໜັກຄາດວ່າຈະໄດ້ຮັບ (${totals.expectedReturnG ? `${formatWeight(totals.expectedReturnG.toFixed())} g — ປັດເສດຂຶ້ນບໍ່ມີຫຼັກຈຸດ` : '—'}).`
             : 'Stock OUT ຕ້ອງລໍຖ້າ Admin/Manager Approve ກ່ອນຈຶ່ງຕັດຍອດ.'}
         </div>
       )}

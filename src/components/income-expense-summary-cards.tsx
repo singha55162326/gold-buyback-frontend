@@ -167,7 +167,7 @@ export function IncomeExpenseSummaryCards({
 
           <div className="relative flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-recessed text-success">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
                     strokeLinecap="round"
@@ -179,7 +179,7 @@ export function IncomeExpenseSummaryCards({
               </span>
               <span className="section-label">ຍອດລວມລາຍຮັບ</span>
             </div>
-            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
+            <span className="status-success text-[11px]">
               {summary?.totalIncomeCount ?? 0} ລາຍການ
             </span>
           </div>
@@ -188,7 +188,7 @@ export function IncomeExpenseSummaryCards({
             <div className="text-[11px] text-muted">
               ສະກຸນເງິນ {activeCurrency}
             </div>
-            <div className="num mt-0.5 text-2xl font-bold tracking-tight text-emerald-400">
+            <div className="num mt-0.5 text-2xl font-bold tracking-tight text-success">
               {formatByCurrency(currentSummary.income, activeCurrency)}
             </div>
           </div>
@@ -251,7 +251,7 @@ export function IncomeExpenseSummaryCards({
 
           <div className="relative flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-rose-500/15 text-rose-400">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-recessed text-danger">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
                     strokeLinecap="round"
@@ -263,7 +263,7 @@ export function IncomeExpenseSummaryCards({
               </span>
               <span className="section-label">ຍອດລວມລາຍຈ່າຍ</span>
             </div>
-            <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[11px] font-medium text-rose-400">
+            <span className="status-danger text-[11px]">
               {summary?.totalExpenseCount ?? 0} ລາຍການ
             </span>
           </div>
@@ -272,7 +272,7 @@ export function IncomeExpenseSummaryCards({
             <div className="text-[11px] text-muted">
               ສະກຸນເງິນ {activeCurrency}
             </div>
-            <div className="num mt-0.5 text-2xl font-bold tracking-tight text-rose-400">
+            <div className="num mt-0.5 text-2xl font-bold tracking-tight text-danger">
               {formatByCurrency(currentSummary.expense, activeCurrency)}
             </div>
           </div>
@@ -335,7 +335,7 @@ export function IncomeExpenseSummaryCards({
 
           <div className="relative flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/15 text-gold">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-gold-tint text-gold">
                 <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path
                     strokeLinecap="round"
@@ -348,12 +348,12 @@ export function IncomeExpenseSummaryCards({
               <span className="section-label">ຍອດເງິນສຸດທິ (Net)</span>
             </div>
             <span
-              className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              className={`text-[11px] ${
                 netNumber > 0
-                  ? 'bg-emerald-500/15 text-emerald-400'
+                  ? 'status-success'
                   : netNumber < 0
-                    ? 'bg-rose-500/15 text-rose-400'
-                    : 'bg-line text-muted'
+                    ? 'status-danger'
+                    : 'badge text-fg'
               }`}
             >
               {netNumber > 0 ? '+ ເງິນເຂົ້າຫຼາຍກວ່າ' : netNumber < 0 ? '− ລາຍຈ່າຍຫຼາຍກວ່າ' : 'ສົມດຸນ'}
@@ -367,9 +367,9 @@ export function IncomeExpenseSummaryCards({
             <div
               className={`num mt-0.5 text-2xl font-bold tracking-tight ${
                 netNumber > 0
-                  ? 'text-emerald-400'
+                  ? 'text-success'
                   : netNumber < 0
-                    ? 'text-rose-400'
+                    ? 'text-danger'
                     : 'text-fg-strong'
               }`}
             >
@@ -386,9 +386,9 @@ export function IncomeExpenseSummaryCards({
                 <span
                   className={`num font-semibold ${
                     Number(lakData.net) > 0
-                      ? 'text-emerald-400'
+                      ? 'text-success'
                       : Number(lakData.net) < 0
-                        ? 'text-rose-400'
+                        ? 'text-danger'
                         : 'text-fg-strong'
                   }`}
                 >
@@ -402,9 +402,9 @@ export function IncomeExpenseSummaryCards({
                 <span
                   className={`num font-semibold ${
                     Number(thbData.net) > 0
-                      ? 'text-emerald-400'
+                      ? 'text-success'
                       : Number(thbData.net) < 0
-                        ? 'text-rose-400'
+                        ? 'text-danger'
                         : 'text-fg-strong'
                   }`}
                 >
@@ -420,9 +420,9 @@ export function IncomeExpenseSummaryCards({
               <span
                 className={`num font-semibold ${
                   Number(activeCurrency === 'USD' ? thbData.net : usdData.net) > 0
-                    ? 'text-emerald-400'
+                    ? 'text-success'
                     : Number(activeCurrency === 'USD' ? thbData.net : usdData.net) < 0
-                      ? 'text-rose-400'
+                      ? 'text-danger'
                       : 'text-fg-strong'
                 }`}
               >

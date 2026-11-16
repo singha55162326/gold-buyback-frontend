@@ -1,5 +1,5 @@
 import { dec, trimTrailingZeros, type Decimal, type Numeric } from './decimal.js';
-import { truncate } from './rounding.js';
+import { roundUp, truncate } from './rounding.js';
 import { GRAMS_PER_BAHT } from './constants.js';
 
 /* ------------------------------------------------------------------ *
@@ -212,11 +212,12 @@ export function checkStockOut(availableG: Numeric, requestedG: Numeric): StockOu
 }
 
 /**
- * ນ້ຳໜັກ(g) ທີ່ໄດ້ຮັບ = ລວມ GOLD(g) × %ຄຳ (ທົດສະນິຍົມ 3 ຕົວ) — TOR §7.2 OUT ກໍລະນີ 1.
+ * ນ້ຳໜັກ(g) ທີ່ໄດ້ຮັບ = ROUNDUP(ລວມ GOLD(g) × %ຄຳ, 0) — TOR §7.2 OUT ກໍລະນີ 1.
+ * ປັດເສດຂຶ້ນທຸກກໍລະນີ ແລະ ຕັດຫຼັກຈຸດອອກ ເພື່ອໃຊ້ຕັດຍອດ AP(GOLD).
  */
 export function expectedReturnWeight(totalGoldG: Numeric, goldPercent: Numeric): Decimal {
   const raw = dec(totalGoldG).mul(dec(goldPercent).div(100));
-  return raw.isZero() ? dec(0) : raw.toDecimalPlaces(3);
+  return raw.isZero() ? dec(0) : roundUp(raw, 0);
 }
 
 /** GOLD (g) = weight_g × ຈຳນວນ — used by every movement line form. */

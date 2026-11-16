@@ -2,13 +2,15 @@
 
 import { useMemo } from 'react';
 import { dec } from '@kpv/domain';
-import { formatDate, formatLak, formatWeight } from '@/lib/format';
+import { formatDate, formatDateTime, formatLak, formatWeight } from '@/lib/format';
 import { TableStateRow } from '@/components/query-state';
 import { DateRangeFilter, type HistoryRangeState } from '@/components/date-range';
+import { TimeSearchFilterBar, type TimeSearchFilterState } from '@/components/time-search-filter';
 import type { LedgerRow } from '../types';
 
 interface HistoryTableProps {
   historyRange: HistoryRangeState<LedgerRow>;
+  timeSearch: TimeSearchFilterState;
   history: LedgerRow[];
   isError: boolean;
   error: unknown;
@@ -19,12 +21,11 @@ interface HistoryTableProps {
   goldTypes?: Array<{ id: string; nameLo: string }>;
   selectedGoldTypeId?: string;
   onGoldTypeChange?: (id: string) => void;
-  searchQuery?: string;
-  onSearchChange?: (q: string) => void;
 }
 
 export function HistoryTable({
   historyRange,
+  timeSearch,
   history,
   isError,
   error,
@@ -35,8 +36,6 @@ export function HistoryTable({
   goldTypes,
   selectedGoldTypeId,
   onGoldTypeChange,
-  searchQuery,
-  onSearchChange,
 }: HistoryTableProps) {
   // Group rows that belong to the same stock movement into a single consolidated row
   const displayRows = useMemo(() => {
@@ -118,37 +117,36 @@ export function HistoryTable({
 
   return (
     <div data-fade className="card">
-      <div className="card-header flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div className="card-header">
         <h2 className="card-title">ປະຫວັດ Stock (OLD)</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          {goldTypes && goldTypes.length > 0 && onGoldTypeChange && (
-            <select
-              className="filter-date text-xs h-8 py-0"
-              value={selectedGoldTypeId ?? ''}
-              onChange={(e) => onGoldTypeChange(e.target.value)}
-              aria-label="ກອງຕາມປະເພດຄຳ"
-            >
-              <option value="">— ທຸກປະເພດຄຳ —</option>
-              {goldTypes.map((gt) => (
-                <option key={gt.id} value={gt.id}>
-                  {gt.nameLo}
-                </option>
-              ))}
-            </select>
-          )}
-          {onSearchChange && (
-            <input
-              type="search"
-              placeholder="ຄົ້ນຫາ (ແຫຼ່ງ / ປະເພດ / ລະຫັດ)..."
-              className="filter-date text-xs h-8 px-2 w-44 sm:w-56"
-              value={searchQuery ?? ''}
-              onChange={(e) => onSearchChange(e.target.value)}
-              aria-label="ຄົ້ນຫາປະຫວັດ Stock"
-            />
-          )}
-        </div>
       </div>
       <DateRangeFilter history={historyRange} />
+      <TimeSearchFilterBar
+        filter={timeSearch}
+        fromDate={historyRange.from}
+        toDate={historyRange.to}
+        searchPlaceholder="ຄົ້ນຫາ (ແຫຼ່ງ / ປະເພດ / ລະຫັດ)..."
+        leftSlot={
+          goldTypes && goldTypes.length > 0 && onGoldTypeChange ? (
+            <div className="flex items-center gap-2">
+              <span className="filter-select-label">ປະເພດຄຳ</span>
+              <select
+                className="filter-date text-xs h-[38px] py-0"
+                value={selectedGoldTypeId ?? ''}
+                onChange={(e) => onGoldTypeChange(e.target.value)}
+                aria-label="ກອງຕາມປະເພດຄຳ"
+              >
+                <option value="">— ທຸກປະເພດຄຳ —</option>
+                {goldTypes.map((gt) => (
+                  <option key={gt.id} value={gt.id}>
+                    {gt.nameLo}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : undefined
+        }
+      />
       <div className="table-wrap" tabIndex={0} role="region" aria-label="ປະຫວັດ Stock (OLD)">
         <table className="table">
           <thead>
@@ -186,7 +184,14 @@ export function HistoryTable({
 
               return (
                 <tr key={row.movementId ?? row.id}>
-                  <td>{formatDate(row.businessDate)}</td>
+                  <td>
+                    <div>{formatDate(row.businessDate)}</div>
+                    {row.createdAt && (
+                      <div className="num text-[11px] text-muted">
+                        {formatDateTime(row.createdAt).split(' ')[1]}
+                      </div>
+                    )}
+                  </td>
                   <td>{row.partnerLabel ?? '—'}</td>
                   <td>
                     <div className="flex items-center gap-1.5 flex-wrap">

@@ -2,16 +2,18 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { dec } from '@kpv/domain';
 import { api, ApiError } from '@/lib/api';
-import { isPositive } from '@/lib/validate';
+import { clean, isPositive } from '@/lib/validate';
 import { formatByCurrency } from '@/lib/format';
 import { Dialog } from './dialog';
 import { NumberInput } from './number-input';
+import { QueryErrorNotice } from './query-state';
 import { useToast } from './toast';
 
 interface Partner {
   id: string;
-  code?: string;
+  code: string;
   nameLo: string;
 }
 
@@ -21,11 +23,8 @@ interface Category {
   side?: string | null;
 }
 
-interface Bank {
-  id: string;
-  nameLo: string;
-  code?: string;
-}
+/** Internal warehouse-only partner codes that do not hold cash AP/AR debts. */
+const NON_APAR_PARTNER_CODES = new Set(['CABINET', 'CASHIER', 'WITHDRAW']);
 
 export interface AddApArCashModalProps {
   open: boolean;
@@ -35,7 +34,7 @@ export interface AddApArCashModalProps {
 
 /**
  * Modal form for creating an AP Cash or AR Cash ledger entry (TOR §9.3 / §9.4).
- * Replaces the previous inline form with an accessible, focus-trapped dialog modal.
+ * Records an unpaid obligation (accrual) — cash/bank only moves upon settlement.
  */
 export function AddApArCashModal({ open, onClose, side }: AddApArCashModalProps) {
   const queryClient = useQueryClient();
@@ -45,26 +44,32 @@ export function AddApArCashModal({ open, onClose, side }: AddApArCashModalProps)
   const [categoryId, setCategoryId] = useState('');
   const [currency, setCurrency] = useState<'LAK' | 'THB' | 'USD'>('LAK');
   const [amount, setAmount] = useState('');
-  const [method, setMethod] = useState<'CASH' | 'BANK'>('CASH');
-  const [bankAccountId, setBankAccountId] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const { data: partners = [], isLoading: partnersLoading } = useQuery({
+  const {
+    data: allPartners = [],
+    isLoading: partnersLoading,
+    isError: partnersFailed,
+    error: partnersError,
+    refetch: refetchPartners,
+  } = useQuery({
     queryKey: ['catalog', 'partners'],
     queryFn: () => api.get<Partner[]>('/catalog/partners'),
     enabled: open,
   });
 
-  const { data: categories = [], isLoading: categoriesLoading } = useQuery({
+  const partners = allPartners.filter((p) => !NON_APAR_PARTNER_CODES.has(p.code));
+
+  const {
+    data: categories = [],
+    isLoading: categoriesLoading,
+    isError: categoriesFailed,
+    error: categoriesError,
+    refetch: refetchCategories,
+  } = useQuery({
     queryKey: ['finance', 'ap-ar-categories', side],
     queryFn: () => api.get<Category[]>(`/finance/ap-ar/categories?side=${side}`),
-    enabled: open,
-  });
-
-  const { data: banks = [], isLoading: banksLoading } = useQuery({
-    queryKey: ['catalog', 'bank-accounts'],
-    queryFn: () => api.get<Bank[]>('/catalog/bank-accounts'),
     enabled: open,
   });
 
@@ -73,8 +78,6 @@ export function AddApArCashModal({ open, onClose, side }: AddApArCashModalProps)
     setCategoryId('');
     setCurrency('LAK');
     setAmount('');
-    setMethod('CASH');
-    setBankAccountId('');
     setNote('');
     setError(null);
   };
@@ -90,14 +93,11 @@ export function AddApArCashModal({ open, onClose, side }: AddApArCashModalProps)
         partnerId,
         categoryId,
         currency,
-        amount: amount.replace(/,/g, '').trim(),
-        method,
-        bankAccountId: method === 'BANK' ? bankAccountId : undefined,
+        amount: clean(amount),
         note: note.trim() || undefined,
       }),
     onSuccess: () => {
-      const cleanAmt = Number(amount.replace(/,/g, '').trim());
-      const formattedAmt = formatByCurrency(cleanAmt, currency);
+      const formattedAmt = formatByCurrency(clean(amount), currency);
       const partner = partners.find((p) => p.id === partnerId);
       toast.success(
         `ເພີ່ມລາຍການ ${side} (Cash) ສຳເລັດ`,
@@ -108,7 +108,9 @@ export function AddApArCashModal({ open, onClose, side }: AddApArCashModalProps)
       handleClose();
     },
     onError: (e) => {
-      setError(e instanceof ApiError ? e.message : 'ບັນທຶກບໍ່ສຳເລັດ');
+      const msg = e instanceof ApiError ? e.message : 'ບັນທຶກບໍ່ສຳເລັດ';
+      setError(msg);
+      toast.error('ບໍ່ສຳເລັດ', msg);
     },
   });
 
@@ -116,7 +118,6 @@ export function AddApArCashModal({ open, onClose, side }: AddApArCashModalProps)
     Boolean(partnerId) &&
     Boolean(categoryId) &&
     isPositive(amount) &&
-    (method === 'CASH' || Boolean(bankAccountId)) &&
     !add.isPending;
 
   const titleLo =
@@ -124,7 +125,7 @@ export function AddApArCashModal({ open, onClose, side }: AddApArCashModalProps)
       ? 'ເພີ່ມລາຍການ AP (Cash) — ໜີ້ຕ້ອງສົ່ງ'
       : 'ເພີ່ມລາຍການ AR (Cash) — ໜີ້ຕ້ອງຮັບ';
 
-  const partnerLabel = side === 'AP' ? 'Supplier / ຄູ່ຄ້າ' : 'Supplier / ລູກຄ້າ';
+  const partnerLabel = side === 'AP' ? 'Supplier / ຊ່າງ / ຄູ່ຄ້າ' : 'Supplier / ລູກຄ້າ';
 
   return (
     <Dialog
@@ -166,15 +167,22 @@ export function AddApArCashModal({ open, onClose, side }: AddApArCashModalProps)
           </div>
         )}
 
-        {/* Info banner explaining the side */}
-        <div className="rounded-xl border border-line bg-recessed/60 p-3 text-xs flex items-center justify-between">
+        {partnersFailed && (
+          <QueryErrorNotice error={partnersError} onRetry={() => void refetchPartners()} />
+        )}
+        {categoriesFailed && (
+          <QueryErrorNotice error={categoriesError} onRetry={() => void refetchCategories()} />
+        )}
+
+        {/* Info banner explaining accrual semantics */}
+        <div className="rounded-xl border border-line bg-recessed/60 p-3 text-xs flex items-center justify-between gap-2">
           <span className="text-muted">
             {side === 'AP'
-              ? 'ບັນທຶກຍອດໜີ້ຄ້າງຈ່າຍເງິນສົດ (AP) ໃຫ້ກັບ Supplier / ຊ່າງ'
-              : 'ບັນທຶກຍອດໜີ້ຄ້າງຮັບເງິນສົດ (AR) ຈາກ Supplier ຫຼື ລູກຄ້າ'}
+              ? 'ບັນທຶກຍອດໜີ້ຄ້າງຈ່າຍເງິນສົດ (AP) — ຍັງບໍ່ຕັດເງິນຈາກລິ້ນຊັກ/ທະນາຄານ ຈົນກວ່າຈະກົດຊຳຣະ'
+              : 'ບັນທຶກຍອດໜີ້ຄ້າງຮັບເງິນສົດ (AR) — ຍັງບໍ່ເພີ່ມເງິນເຂົ້າລິ້ນຊັກ/ທະນາຄານ ຈົນກວ່າຈະກົດຮັບເງິນ'}
           </span>
           <span
-            className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ml-2 ${
+            className={`px-2 py-0.5 rounded-full text-[11px] font-semibold shrink-0 ${
               side === 'AP' ? 'status-danger' : 'status-success'
             }`}
           >
@@ -196,7 +204,9 @@ export function AddApArCashModal({ open, onClose, side }: AddApArCashModalProps)
             required
             autoFocus
           >
-            <option value="">— ເລືອກ {partnerLabel} —</option>
+            <option value="">
+              {partnersLoading ? 'ກຳລັງໂຫຼດ...' : `— ເລືອກ ${partnerLabel} —`}
+            </option>
             {partners.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.nameLo}
@@ -218,7 +228,9 @@ export function AddApArCashModal({ open, onClose, side }: AddApArCashModalProps)
             disabled={categoriesLoading || add.isPending}
             required
           >
-            <option value="">— ເລືອກປະເພດລາຍການ —</option>
+            <option value="">
+              {categoriesLoading ? 'ກຳລັງໂຫຼດ...' : '— ເລືອກປະເພດລາຍການ —'}
+            </option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.nameLo}
@@ -272,57 +284,11 @@ export function AddApArCashModal({ open, onClose, side }: AddApArCashModalProps)
               </span>
             </div>
             {isPositive(amount) && (
-              <p className="mt-1 text-right text-xs text-[var(--gold)]">
-                ຍອດລວມ: {formatByCurrency(Number(amount.replace(/,/g, '').trim()), currency)} {currency}
+              <p className="mt-1 text-right text-xs text-gold">
+                ຍອດລວມ: {formatByCurrency(dec(clean(amount)), currency)} {currency}
               </p>
             )}
           </div>
-        </div>
-
-        {/* Payment Method & Bank */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <label className="label" htmlFor="cash-modal-method">
-              ຮູບແບບການຊຳລະ / ຮັບເງິນ
-            </label>
-            <select
-              id="cash-modal-method"
-              className="input w-full font-medium"
-              value={method}
-              onChange={(e) => {
-                const next = e.target.value as 'CASH' | 'BANK';
-                setMethod(next);
-                if (next === 'CASH') setBankAccountId('');
-              }}
-              disabled={add.isPending}
-            >
-              <option value="CASH">ເງິນສົດ (Cash)</option>
-              <option value="BANK">ເງິນໂອນ (Bank Transfer)</option>
-            </select>
-          </div>
-
-          {method === 'BANK' && (
-            <div>
-              <label className="label" htmlFor="cash-modal-bank">
-                ທະນາຄານ (Bank) <span className="text-danger">*</span>
-              </label>
-              <select
-                id="cash-modal-bank"
-                className="input w-full"
-                value={bankAccountId}
-                onChange={(e) => setBankAccountId(e.target.value)}
-                disabled={banksLoading || add.isPending}
-                required
-              >
-                <option value="">— ເລືອກທະນາຄານ —</option>
-                {banks.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.nameLo}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
         </div>
 
         {/* Note */}
@@ -348,4 +314,3 @@ export function AddApArCashModal({ open, onClose, side }: AddApArCashModalProps)
     </Dialog>
   );
 }
-

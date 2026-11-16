@@ -6,11 +6,12 @@ import {
   StockMovementDialog,
   type MovementKind,
 } from '@/components/stock-movement-dialog';
-import { formatLak, formatWeight, gramsToBaht } from '@/lib/format';
+import { formatGrams, formatLak, gramsToBaht } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
 import { StatCard } from '@/components/stat-card';
 import { QueryErrorNotice } from '@/components/query-state';
 import { useHistoryRange } from '@/components/date-range';
+import { useTimeSearchFilter } from '@/components/time-search-filter';
 import {
   stockOldKeys,
   useOldStockWac,
@@ -18,7 +19,7 @@ import {
   useNewStockBalances,
   useStockMasterData,
 } from '@/lib/stock-old-api';
-import type { TypeBalance, LedgerRow } from './types';
+import { computeOldTypeRates, type TypeBalance, type LedgerRow } from './types';
 import { TypeBalanceTable } from './components/type-balance-table';
 import { TypeBalanceViewModal } from './components/type-balance-view-modal';
 import { TypeBalanceEditModal } from './components/type-balance-edit-modal';
@@ -60,18 +61,20 @@ export default function StockOldPage() {
   const { data: newBalances = [] } = useNewStockBalances(Boolean(editingRow));
   const masterData = useStockMasterData(true);
 
-  // Search & goldType filter state
+  // Search, time & goldType filter state
   const [selectedGoldTypeId, setSelectedGoldTypeId] = useState<string>('');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+  const timeSearch = useTimeSearchFilter();
 
-  // Ledger history with date range filter
+  // Ledger history with date range, time range, search & goldType filter
   const historyRange = useHistoryRange<LedgerRow>(
-    stockOldKeys.history(selectedGoldTypeId, searchQuery),
+    stockOldKeys.history(selectedGoldTypeId),
     '/stock/old/history',
     {
       params: {
         ...(selectedGoldTypeId ? { goldTypeId: selectedGoldTypeId } : {}),
-        ...(searchQuery.trim() ? { q: searchQuery.trim() } : {}),
+        start_time: timeSearch.startTime || undefined,
+        end_time: timeSearch.endTime || undefined,
+        search: timeSearch.debouncedSearch || undefined,
       },
     },
   );
@@ -115,22 +118,64 @@ export default function StockOldPage() {
         <QueryErrorNotice error={wacError} onRetry={() => void refetchWac()} />
       )}
 
-      <div className="stat-grid">
-        <StatCard
-          label="GOLD (g) OLD"
-          value={wac ? formatWeight(wac.oldWeightG) : '—'}
-          sub={wac ? `${gramsToBaht(wac.oldWeightG)} ບາດ` : ''}
-        />
-        <StatCard
-          label="ຕົ້ນທຶນຄຳ OLD"
-          value={wac ? formatLak(wac.oldCost) : '—'}
-          sub="LAK"
-        />
-        <StatCard
-          label="ປະເພດຄຳ"
-          value={String(balances.length)}
-          sub="ທີ່ມີຍອດໃນມື້ນີ້"
-        />
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <StatCard
+            label="GOLD (g) OLD"
+            value={wac ? formatGrams(wac.oldWeightG) : '—'}
+            sub={wac ? `${gramsToBaht(wac.oldWeightG)} ບາດ` : ''}
+          />
+          <StatCard
+            label="ຕົ້ນທຶນຄຳ OLD"
+            value={wac ? formatLak(wac.oldCost) : '—'}
+            sub="LAK"
+          />
+        </div>
+
+        {balances.length > 0 && (
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {balances.map((b) => {
+              const { pricePerG, pricePerBaht } = computeOldTypeRates(
+                b.closingWeightG,
+                b.closingCost,
+              );
+              const perGText = pricePerG ? formatLak(pricePerG.toFixed()) : '—';
+              const perBahtText = pricePerBaht ? formatLak(pricePerBaht.toFixed()) : '—';
+              return (
+                <div key={b.id} data-fade className="card relative p-5">
+                  <span
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]"
+                  >
+                    <span className="stat-glow" />
+                  </span>
+                  <div className="relative flex items-center justify-between gap-2">
+                    <span className="section-label">{b.goldType.nameLo}</span>
+                    <span className="badge recessed num text-[11px] text-muted">
+                      {formatGrams(b.closingWeightG)} g
+                    </span>
+                  </div>
+                  <div className="relative mt-3 space-y-2 border-t border-line/60 pt-3">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-xs text-muted">ລາຄາ/g</span>
+                      <span className="num whitespace-nowrap text-base font-semibold text-gold" title={perGText}>
+                        {perGText}{' '}
+                        {pricePerG && <span className="text-[11px] font-normal text-muted">LAK</span>}
+                      </span>
+                    </div>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className="text-xs text-muted">ລາຄາ/ບາດ</span>
+                      <span className="num whitespace-nowrap text-base font-semibold text-gold" title={perBahtText}>
+                        {perBahtText}{' '}
+                        {pricePerBaht && <span className="text-[11px] font-normal text-muted">LAK</span>}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ຍອດແຍກຕາມປະເພດຄຳ */}
@@ -147,6 +192,7 @@ export default function StockOldPage() {
       {/* ປະຫວັດ Stock (OLD) */}
       <HistoryTable
         historyRange={historyRange}
+        timeSearch={timeSearch}
         history={history}
         isError={historyFailed}
         error={historyError}
@@ -157,8 +203,6 @@ export default function StockOldPage() {
         goldTypes={masterData.goldTypes}
         selectedGoldTypeId={selectedGoldTypeId}
         onGoldTypeChange={setSelectedGoldTypeId}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
       />
 
       {/* ─── Modals ─── */}

@@ -74,7 +74,7 @@ export function ShiftBanner({ role }: { role: Role }) {
   const populateCountsFromWallet = (balances?: Balance[]) => {
     const list = balances ?? wallet?.balances;
     if (!list) return;
-    const next: Record<Currency, string> = { LAK: '', THB: '', USD: '' };
+    const next: Record<Currency, string> = { LAK: '0', THB: '0', USD: '0' };
     for (const currency of CURRENCIES) {
       const b = list.find((item) => item.currency === currency);
       if (b && b.balance !== undefined && b.balance !== null && b.balance !== '') {
@@ -102,31 +102,16 @@ export function ShiftBanner({ role }: { role: Role }) {
 
   useEffect(() => {
     if (closing && wallet?.balances) {
-      setCounts((prev) => {
-        const allEmpty = CURRENCIES.every((c) => !prev[c]);
-        if (allEmpty) {
-          const next: Record<Currency, string> = { LAK: '', THB: '', USD: '' };
-          for (const currency of CURRENCIES) {
-            const b = wallet.balances.find((item) => item.currency === currency);
-            if (b && b.balance !== undefined && b.balance !== null && b.balance !== '') {
-              next[currency] = sanitizeNumeric(b.balance, {
-                decimals: currency === 'LAK' ? 0 : 2,
-              });
-            }
-          }
-          return next;
-        }
-        return prev;
-      });
+      populateCountsFromWallet(wallet.balances);
     }
   }, [closing, wallet]);
 
   const close = useMutation({
     mutationFn: () =>
       api.post('/shifts/close', {
-        balances: CURRENCIES.filter((c) => counts[c].trim() !== '').map((currency) => ({
+        balances: CURRENCIES.map((currency) => ({
           currency,
-          amount: counts[currency].replace(/,/g, '').trim(),
+          amount: counts[currency].replace(/,/g, '').trim() || '0',
         })),
         note: note || undefined,
       }),
@@ -184,12 +169,17 @@ export function ShiftBanner({ role }: { role: Role }) {
         >
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-xs">
             <span className="text-muted">
-              ລະບົບດຶງຍອດຄົງເຫຼືອໃນກະເປົ໋າມາໃສ່ໃຫ້ອັດຕະໂນມັດ (ສາມາດແກ້ໄຂໄດ້ຕາມເງິນນັບຕົວຈິງ)
+              ລະບົບດຶງຍອດຄົງເຫຼືອໃນກະເປົ໋າມາໃສ່ໃຫ້ອັດຕະໂນມັດ (ບໍ່ສາມາດແກ້ໄຂໄດ້)
             </span>
             <button
               type="button"
               className="btn-ghost text-xs py-1 px-2 cursor-pointer"
-              onClick={() => populateCountsFromWallet()}
+              onClick={async () => {
+                const res = await refetchWallet();
+                if (res.data?.balances) {
+                  populateCountsFromWallet(res.data.balances);
+                }
+              }}
             >
               ດຶງຍອດຄົງເຫຼືອຄືນໃໝ່
             </button>
@@ -206,30 +196,18 @@ export function ShiftBanner({ role }: { role: Role }) {
                   </div>
                   <NumberInput
                     id={`close-${currency}`}
-                    className="input num"
+                    className="input num cursor-not-allowed select-none font-medium"
                     decimals={currency === 'LAK' ? 0 : 2}
                     value={counts[currency]}
-                    onValueChange={(v) => setCounts((p) => ({ ...p, [currency]: v }))}
+                    onValueChange={() => {}}
+                    readOnly
+                    disabled
                   />
                   <div className="mt-1.5 flex items-center justify-between text-xs text-muted">
-                    <span>ຍອດຄົງເຫຼືອ:</span>
-                    <button
-                      type="button"
-                      className="num font-medium text-fg-strong hover:underline cursor-pointer"
-                      title="ກົດເພື່ອດຶງຍອດຄົງເຫຼືອໃສ່ຊ່ອງປ້ອນຂໍ້ມູນນີ້"
-                      onClick={() => {
-                        if (remBalance !== undefined && remBalance !== null) {
-                          setCounts((p) => ({
-                            ...p,
-                            [currency]: sanitizeNumeric(remBalance, {
-                              decimals: currency === 'LAK' ? 0 : 2,
-                            }),
-                          }));
-                        }
-                      }}
-                    >
+                    <span>ຍອດຄົງເຫຼືອໃນລະບົບ:</span>
+                    <span className="num font-medium text-fg-strong">
                       {remBalance !== undefined ? formatByCurrency(remBalance, currency) : '—'}
-                    </button>
+                    </span>
                   </div>
                 </div>
               );
