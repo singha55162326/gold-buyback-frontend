@@ -17,17 +17,22 @@ export function Dialog({
   open,
   onClose,
   title,
+  subtitle,
   children,
   footer,
   size = 'md',
+  flushBody = false,
   dismissOnScrim = false,
 }: {
   open: boolean;
   onClose: () => void;
   title: React.ReactNode;
+  subtitle?: React.ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  size?: 'md' | 'lg' | 'xl';
+  size?: 'md' | 'lg' | 'xl' | '2xl';
+  /** Let the caller own body padding & scrolling (e.g. a 2-column split modal). */
+  flushBody?: boolean;
   /** Close on a click outside the panel. Off by default: a stray click must not discard a half-filled form. */
   dismissOnScrim?: boolean;
 }) {
@@ -113,19 +118,34 @@ export function Dialog({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`dialog-panel menu-panel ${size === 'xl' ? 'max-w-[960px]' : size === 'lg' ? 'max-w-[760px]' : 'max-w-[560px]'}`}
+        className={`dialog-panel menu-panel ${
+          size === '2xl'
+            ? 'max-w-[1140px]'
+            : size === 'xl'
+            ? 'max-w-[960px]'
+            : size === 'lg'
+            ? 'max-w-[760px]'
+            : 'max-w-[560px]'
+        }`}
       >
         <div className="dialog-head">
-          <h2 id={titleId} className="text-gold-gradient font-serif text-[22px] font-bold leading-[1.5]">
-            {title}
-          </h2>
+          <div>
+            <h2 id={titleId} className="text-gold-gradient font-serif text-[22px] font-bold leading-[1.35]">
+              {title}
+            </h2>
+            {subtitle && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
+          </div>
           <button type="button" className="chrome-btn shrink-0" aria-label="ປິດ" onClick={onClose}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
           </button>
         </div>
-        <div data-dialog-body className="dialog-body">
+        <div
+          data-dialog-body
+          tabIndex={flushBody ? undefined : 0}
+          className={flushBody ? 'flex min-h-0 flex-1 flex-col overflow-y-auto lg:overflow-hidden' : 'dialog-body'}
+        >
           {children}
         </div>
         {footer && <div className="dialog-foot">{footer}</div>}

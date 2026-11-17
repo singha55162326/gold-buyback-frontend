@@ -143,3 +143,74 @@ test('[dialog] AP/AR cash settle modal: open, full-fill, Esc, close', async ({ p
   await expect(settleDialog).toBeHidden();
   await expect(payOpener).toBeFocused();
 });
+
+test('[dialog] payment approvals: Approve opens confirmation modal before submitting', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockApi(page);
+  await seedSession(page, 'dark', true);
+
+  const reviewCalls: Array<{ url: string; body: unknown }> = [];
+  await page.route(/^http:\/\/api\.mock\/api\/buyback/, async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    if (req.method() === 'GET' && url.pathname === '/api/buyback') {
+      return route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'application/json',
+        body: JSON.stringify({
+          rows: [
+            {
+              id: 'bb1',
+              code: 'BB-001',
+              weightG: '15.20',
+              quantity: 1,
+              payableAmount: '35000000',
+              createdAt: '2026-10-18T09:30:00.000Z',
+              customer: { phone: '020 5551 2345' },
+              goldType: { nameLo: 'ຄຳ 96.5%' },
+            },
+          ],
+          page: 1,
+          pageSize: 50,
+          total: 1,
+          pageCount: 1,
+        }),
+      });
+    }
+    if (req.method() === 'POST' && url.pathname === '/api/buyback/bb1/review') {
+      reviewCalls.push({ url: url.pathname, body: req.postDataJSON() });
+      return route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'application/json',
+        body: JSON.stringify({ ok: true }),
+      });
+    }
+    return route.fallback();
+  });
+
+  await page.goto('/payment/approvals');
+  await page.waitForLoadState('networkidle');
+
+  const approveBtn = page.getByRole('button', { name: 'Approve', exact: true }).first();
+  await approveBtn.click();
+
+  // Clicking Approve opens the confirmation modal without submitting yet.
+  expect(reviewCalls).toHaveLength(0);
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('ຢືນຢັນ Approve BB-001')).toBeVisible();
+
+  // Cancelling closes the modal without submitting.
+  await dialog.getByRole('button', { name: 'ຍົກເລີກ' }).click();
+  await expect(dialog).toBeHidden();
+  expect(reviewCalls).toHaveLength(0);
+
+  // Re-opening and clicking Confirm submits the approval.
+  await approveBtn.click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Confirm', exact: true }).click();
+  await expect(dialog).toBeHidden();
+  expect(reviewCalls).toEqual([{ url: '/api/buyback/bb1/review', body: { decision: 'APPROVED' } }]);
+});

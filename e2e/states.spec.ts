@@ -76,6 +76,283 @@ for (const theme of THEMES) {
     await check(page, 'stock movement dialog');
   });
 
+  test(`[state] buyback create modal open ${theme}`, async ({ page }) => {
+    await open(page, theme, DESKTOP, '/valuer/buyback');
+    await page.getByRole('button', { name: '+ ສ້າງລາຍການ Buyback' }).click();
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await check(page, 'buyback create modal');
+  });
+
+  test(`[state] buyback create modal multi-line scroll ${theme}`, async ({ page }) => {
+    await open(page, theme, DESKTOP, '/valuer/buyback');
+    await page.getByRole('button', { name: '+ ສ້າງລາຍການ Buyback' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    const addBtn = dialog.getByRole('button', { name: 'ເພີ່ມແຖວຄຳ' });
+    await addBtn.click();
+    await addBtn.click();
+
+    await expect(dialog.getByText('3 ລາຍການ · ເລື່ອນເບິ່ງໄດ້')).toBeVisible();
+    await expect(dialog.locator('#buyback-step-1')).toBeInViewport();
+    await expect(dialog.locator('#buyback-step-2')).toBeInViewport();
+
+    const list = dialog.getByTestId('buyback-lines-list');
+    await expect(list).toBeVisible();
+    const dims = await list.evaluate((el) => ({
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }));
+    expect(dims.scrollHeight).toBeGreaterThan(dims.clientHeight);
+    await check(page, 'buyback create modal multi-line');
+  });
+
+  test(`[state] buyback payment lak cap and foreign change ${theme}`, async ({ page }) => {
+    await open(page, theme, DESKTOP, '/valuer/buyback');
+    await page.route('http://api.mock/api/buyback/preview', async (route) => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      return route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'application/json',
+        body: JSON.stringify({
+          snapshotId: 'pb1',
+          goldTypeCode: 'GOOD',
+          kind: 'GOOD',
+          shopBuybackPrice: '36200000',
+          deduction: '0',
+          payableAmount: '36200000',
+          branch: 'ຄຳດີ — ຫານ 15 ລົງໂຕ',
+          totalWeightG: '15',
+          totalQuantity: 1,
+          lines: [
+            {
+              goldTypeId: 'gt1',
+              goldTypeNameLo: 'ຄຳດີ',
+              goldItemId: null,
+              weightG: '15',
+              quantity: 1,
+              goldPercent: null,
+              shopBuybackPrice: '36200000',
+              deduction: '0',
+              payableAmount: '36200000',
+              branch: 'ຄຳດີ — ຫານ 15 ລົງໂຕ',
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.getByRole('button', { name: '+ ສ້າງລາຍການ Buyback' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    await dialog.locator('#line-type-0').selectOption({ index: 1 });
+    await dialog.locator('#line-weight-0').fill('15');
+    await expect(dialog.getByText('36,200,000 LAK').first()).toBeVisible();
+
+    // LAK is capped at payableAmount (36,200,000)
+    const payAmt = dialog.locator('#pay-amt-0');
+    await expect(payAmt).toHaveAttribute('placeholder', '36,200,000');
+    await payAmt.fill('40000000');
+    await expect(payAmt).toHaveValue('36,200,000');
+
+    // Switch to USD (buyback rate 22,300 in mock) -> guideline shows 1,623.32 USD (shortfall = 0)
+    await payAmt.fill('');
+    await dialog.locator('#pay-cur-0').selectOption('USD');
+    await expect(payAmt).toHaveAttribute('placeholder', '1,623.32');
+    await expect(dialog.getByText('ໃຫ້ຍອດຂາດເປັນ 0')).toBeVisible();
+    await expect(dialog.getByText('≈ 1,623.32 USD')).toBeVisible();
+
+    // THB (buyback rate 640 in mock) -> guideline shows 56,562.50 THB, allows overpay & calculates CHANGE (LAK ONLY)
+    await dialog.locator('#pay-cur-0').selectOption('THB');
+    await expect(payAmt).toHaveAttribute('placeholder', '56,562.50');
+    await expect(dialog.getByText('≈ 56,562.50 THB')).toBeVisible();
+    await payAmt.fill('60000');
+    await expect(payAmt).toHaveValue('60,000');
+    await expect(dialog.getByText('CHANGE (LAK ONLY)')).toBeVisible();
+    await expect(dialog.getByText('ເງິນທອນ 2,200,000 LAK')).toBeVisible();
+    await check(page, 'buyback payment foreign change');
+  });
+
+  test(`[state] buyback history table and filter dropdowns ${theme}`, async ({ page }) => {
+    const D = '2026-11-17T09:30:00.000Z';
+    const sampleRows = [
+      {
+        id: 'bb1',
+        code: 'BB-001',
+        source: 'KPV',
+        goldPercent: null,
+        paidAmount: '36200000',
+        outstandingAmount: '0',
+        createdBy: 'ຜູ້ປະເມີນ A',
+        updatedBy: 'ຜູ້ປະເມີນ A',
+        payments: [
+          {
+            id: 'pay1',
+            method: 'CASH',
+            currency: 'LAK',
+            amount: '36200000',
+            amountLak: '36200000',
+            changeLak: '0',
+          },
+        ],
+        goldItem: { nameLo: 'ສາຍຄໍ' },
+        goldType: { nameLo: 'ຄຳດີ (ສູດ A)' },
+        lines: [
+          {
+            id: 'l1',
+            weightG: '15.00',
+            quantity: 1,
+            goldPercent: null,
+            shopBuybackPrice: '36200000',
+            deduction: '0',
+            payableAmount: '36200000',
+            branch: '2.1 >=15g',
+            goldType: { nameLo: 'ຄຳດີ (ສູດ A)' },
+            goldItem: { nameLo: 'ສາຍຄໍ' },
+          },
+          {
+            id: 'l2',
+            weightG: '7.50',
+            quantity: 1,
+            goldPercent: null,
+            shopBuybackPrice: '18100000',
+            deduction: '0',
+            payableAmount: '18100000',
+            branch: '2.1 <15g',
+            goldType: { nameLo: 'ຄຳດີ (ສູດ A)' },
+            goldItem: { nameLo: 'ແຫວນ' },
+          },
+        ],
+        status: 'PENDING',
+        weightG: '22.50',
+        quantity: 2,
+        payableAmount: '54300000',
+        createdAt: D,
+        customer: { phone: '02055512345' },
+      },
+      {
+        id: 'bb2',
+        code: 'BB-002',
+        source: 'OTHER_SHOP',
+        goldPercent: '90',
+        paidAmount: '20000000',
+        outstandingAmount: '10000000',
+        createdBy: 'ຜູ້ປະເມີນ B',
+        updatedBy: 'Payment C',
+        payments: [
+          {
+            id: 'pay2',
+            method: 'BANK',
+            bankAccountId: 'b1',
+            bankAccount: { nameLo: 'BCEL' },
+            currency: 'THB',
+            amount: '31250',
+            amountLak: '20000000',
+            changeLak: '0',
+          },
+        ],
+        goldItem: { nameLo: 'ແຫວນ' },
+        goldType: { nameLo: 'ຄຳຕົ້ມ (ຮ້ານອື່ນ)' },
+        lines: [],
+        status: 'COMPLETED',
+        weightG: '15.00',
+        quantity: 1,
+        payableAmount: '30000000',
+        createdAt: D,
+        customer: { phone: '02099998888' },
+      },
+    ];
+
+    await open(page, theme, DESKTOP, '/valuer/buyback');
+    await page.route(/^http:\/\/api\.mock\/api\/buyback(\?.*)?$/, async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      return route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'application/json',
+        body: JSON.stringify({
+          rows: sampleRows,
+          page: 1,
+          pageSize: 5000,
+          total: sampleRows.length,
+          pageCount: 1,
+          fromDate: '2026-11-17',
+          toDate: '2026-11-17',
+        }),
+      });
+    });
+    await page.route('http://api.mock/api/buyback/bb1', async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      return route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'application/json',
+        body: JSON.stringify({
+          ...sampleRows[0],
+          audits: [
+            {
+              id: 'aud1',
+              action: 'CREATE',
+              summary: 'ສ້າງລາຍການ Buyback BB-001 — 54300000 LAK',
+              createdAt: D,
+              actor: { fullName: 'ຜູ້ປະເມີນ A' },
+            },
+            {
+              id: 'aud2',
+              action: 'UPDATE',
+              summary: 'ແກ້ໄຂ Buyback BB-001 — 54300000 LAK',
+              createdAt: '2026-11-17T09:35:00.000Z',
+              actor: { fullName: 'ຜູ້ປະເມີນ A' },
+            },
+          ],
+        }),
+      });
+    });
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await waitForAnimations(page);
+
+    // Time filter is removed; unified OrderFilterBar is used instead
+    await expect(page.locator('.filter-select-label', { hasText: 'ເວລາ' })).toHaveCount(0);
+    await expect(page.getByText('BB-001')).toBeVisible();
+    await expect(page.getByText('BB-002')).toBeVisible();
+    await check(page, 'buyback history table rendered');
+
+    // Status & Source custom dropdowns work and pass a11y + contrast
+    const statusTrigger = page.locator('#buyback-status-filter');
+    await expect(statusTrigger).toBeVisible();
+    await statusTrigger.click();
+    await expect(page.getByRole('menuitemradio', { name: 'ລໍຖ້າອະນຸມັດ' })).toBeVisible();
+    await check(page, 'buyback status dropdown open', { modalMenu: true });
+    await page.getByRole('menuitemradio', { name: 'ລໍຖ້າອະນຸມັດ' }).click();
+    await expect(page.getByText('BB-001')).toBeVisible();
+    await expect(page.getByText('BB-002')).toHaveCount(0);
+
+    const sourceTrigger = page.locator('#buyback-source-filter');
+    await sourceTrigger.click();
+    await expect(page.getByRole('menuitemradio', { name: 'ຄຳຮ້ານອື່ນ (ຄຳຕົ້ມ)' })).toBeVisible();
+    await page.getByRole('menuitemradio', { name: 'ຄຳຮ້ານ KPV' }).click();
+    await expect(page.getByText('BB-001')).toBeVisible();
+
+    await page.getByRole('button', { name: 'ລ້າງຕົວກອງ' }).click();
+    await expect(page.getByText('BB-002')).toBeVisible();
+
+    // Open View Detail modal
+    await page.getByRole('button', { name: 'View BB-001' }).click();
+    const detailDialog = page.getByRole('dialog', { name: /ລາຍລະອຽດ Buyback — BB-001/ });
+    await expect(detailDialog).toBeVisible();
+    await expect(detailDialog.getByText('ລາຍການຄຳໃນບິນ')).toBeVisible();
+    await expect(detailDialog.getByText('ປະຫວັດການດຳເນີນການ (Timeline)')).toBeVisible();
+    await expect(detailDialog.getByText('1. ສ້າງລາຍການ (Pending)')).toBeVisible();
+    await expect(detailDialog.getByText('2. Payment ອະນຸມັດ (Approve)')).toBeVisible();
+    await expect(detailDialog.getByText('2 ເຫດການ')).toBeVisible();
+    await check(page, 'buyback detail modal');
+    await detailDialog.getByRole('button', { name: 'ປິດ', exact: true }).last().click();
+    await expect(detailDialog).toHaveCount(0);
+  });
+
   test(`[state] transaction error notice ${theme}`, async ({ page }) => {
     await open(page, theme, DESKTOP, '/payment/wallet');
     // Registered after mockApi, so it wins for this one POST; everything else falls through.

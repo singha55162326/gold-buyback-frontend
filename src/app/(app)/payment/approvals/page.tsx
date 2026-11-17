@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError } from '@/lib/api';
 import { formatLak, formatWeight, formatDateTime } from '@/lib/format';
 import { PageHead } from '@/components/page-head';
+import { Dialog } from '@/components/dialog';
 import { QueryErrorNotice } from '@/components/query-state';
 import { today, type PagedResult } from '@/components/date-range';
 
@@ -42,6 +43,11 @@ interface PendingCredit {
   customer: { phone: string };
 }
 
+type ApproveTarget =
+  | { path: 'buyback'; label: 'Buyback'; row: PendingBuyback }
+  | { path: 'exchange'; label: 'ລາຍການປ່ຽນເປັນເງິນ'; row: PendingExchange }
+  | { path: 'credit'; label: 'ລາຍການສິນເຊື່ອ'; row: PendingCredit };
+
 /**
  * TOR §4.2 — payment reviews what the Valuer created.
  *
@@ -54,6 +60,7 @@ export default function PaymentApprovalsPage() {
   const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [rejecting, setRejecting] = useState<string | null>(null);
+  const [approving, setApproving] = useState<ApproveTarget | null>(null);
 
   const buybacks = useQuery({
     queryKey: ['buyback', 'PENDING'],
@@ -92,6 +99,7 @@ export default function PaymentApprovalsPage() {
       }),
     onSuccess: () => {
       toast.success('ດຳເນີນການສຳເລັດ');
+      setApproving(null);
       setRejecting(null);
       setReason('');
       setError(null);
@@ -104,8 +112,15 @@ export default function PaymentApprovalsPage() {
     },
   });
 
-  const actions = (path: string, id: string) =>
-    rejecting === id ? (
+  const closeApproveModal = () => {
+    if (review.isPending) return;
+    setApproving(null);
+    setError(null);
+  };
+
+  const actions = (target: ApproveTarget) => {
+    const { path, row } = target;
+    return rejecting === row.id ? (
       <div className="flex flex-wrap items-center justify-end gap-2">
         <input
           className="input w-44"
@@ -118,7 +133,7 @@ export default function PaymentApprovalsPage() {
         />
         <button
           className="btn-danger"
-          onClick={() => review.mutate({ path, id, decision: 'REJECTED', reason })}
+          onClick={() => review.mutate({ path, id: row.id, decision: 'REJECTED', reason })}
           disabled={review.isPending}
         >
           ຢືນຢັນ Reject
@@ -130,18 +145,30 @@ export default function PaymentApprovalsPage() {
     ) : (
       <div className="flex justify-end gap-6">
         <button
+          type="button"
           className="btn-primary"
           aria-describedby={error ? 'approvals-error' : undefined}
-          onClick={() => review.mutate({ path, id, decision: 'APPROVED' })}
+          onClick={() => {
+            setError(null);
+            setRejecting(null);
+            setReason('');
+            setApproving(target);
+          }}
           disabled={review.isPending}
         >
           Approve
         </button>
-        <button className="btn-danger" aria-describedby={error ? 'approvals-error' : undefined} onClick={() => setRejecting(id)}>
+        <button
+          type="button"
+          className="btn-danger"
+          aria-describedby={error ? 'approvals-error' : undefined}
+          onClick={() => setRejecting(row.id)}
+        >
           Reject
         </button>
       </div>
     );
+  };
 
   const total = buybackRows.length + exchangeRows.length + creditRows.length;
 
@@ -156,7 +183,7 @@ export default function PaymentApprovalsPage() {
       {exchanges.isError && <QueryErrorNotice error={exchanges.error} onRetry={() => void exchanges.refetch()} />}
       {credits.isError && <QueryErrorNotice error={credits.error} onRetry={() => void credits.refetch()} />}
 
-      {error && (
+      {error && !approving && (
         <div id="approvals-error" role="alert" className="notice status-danger">
           {error}
         </div>
@@ -196,7 +223,7 @@ export default function PaymentApprovalsPage() {
                     <td className="num text-right">{formatWeight(row.weightG)}</td>
                     <td className="num text-right">{row.quantity}</td>
                     <td className="num text-right font-medium">{formatLak(row.payableAmount)}</td>
-                    <td className="text-right">{actions('buyback', row.id)}</td>
+                    <td className="text-right">{actions({ path: 'buyback', label: 'Buyback', row })}</td>
                   </tr>
                 ))}
               </tbody>
@@ -229,7 +256,7 @@ export default function PaymentApprovalsPage() {
                     <td>{formatDateTime(row.createdAt)}</td>
                     <td className="num">{row.customer.phone}</td>
                     <td className="num text-right font-medium">{formatLak(row.totalPayable)}</td>
-                    <td className="text-right">{actions('exchange', row.id)}</td>
+                    <td className="text-right">{actions({ path: 'exchange', label: 'ລາຍການປ່ຽນເປັນເງິນ', row })}</td>
                   </tr>
                 ))}
               </tbody>
@@ -266,7 +293,7 @@ export default function PaymentApprovalsPage() {
                     <td className="num sell-price text-right">{formatLak(row.sellPrice)}</td>
                     <td className="num text-right">{formatLak(row.downPayment)}</td>
                     <td className="num text-right font-medium">{formatLak(row.outstanding)}</td>
-                    <td className="text-right">{actions('credit', row.id)}</td>
+                    <td className="text-right">{actions({ path: 'credit', label: 'ລາຍການສິນເຊື່ອ', row })}</td>
                   </tr>
                 ))}
               </tbody>
@@ -274,6 +301,81 @@ export default function PaymentApprovalsPage() {
           </div>
         </div>
       )}
+
+      <Dialog
+        open={Boolean(approving)}
+        onClose={closeApproveModal}
+        title={`ຢືນຢັນ Approve ${approving?.row.code ?? ''}`}
+        subtitle={approving?.label}
+        footer={
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={review.isPending}
+              onClick={closeApproveModal}
+            >
+              ຍົກເລີກ
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={review.isPending}
+              onClick={() =>
+                approving &&
+                review.mutate({
+                  path: approving.path,
+                  id: approving.row.id,
+                  decision: 'APPROVED',
+                })
+              }
+            >
+              {review.isPending ? 'ກຳລັງດຳເນີນການ...' : 'Confirm'}
+            </button>
+          </div>
+        }
+      >
+        {approving && (
+          <div className="space-y-3 text-sm">
+            <p>
+              ທ່ານແນ່ໃຈບໍ່ວ່າຕ້ອງການ Approve ລາຍການ{' '}
+              <b className="font-mono text-fg">{approving.row.code}</b>?
+            </p>
+            <div className="recessed rounded-lg p-3 space-y-1 text-xs">
+              <div>ປະເພດ: <b className="text-fg">{approving.label}</b></div>
+              <div>ວັນທີ: <b className="text-fg">{formatDateTime(approving.row.createdAt)}</b></div>
+              <div>ເບີໂທລູກຄ້າ: <b className="num text-fg">{approving.row.customer.phone}</b></div>
+              {approving.path === 'buyback' && (
+                <>
+                  <div>ປະເພດຄຳ: <b className="text-fg">{approving.row.goldType.nameLo}</b></div>
+                  <div>
+                    ນ້ຳໜັກ / ຈຳນວນ:{' '}
+                    <b className="num text-fg">
+                      {formatWeight(approving.row.weightG)} g · {approving.row.quantity}
+                    </b>
+                  </div>
+                  <div>ລາຄາຈ່າຍ: <b className="num text-fg">{formatLak(approving.row.payableAmount)} ກີບ</b></div>
+                </>
+              )}
+              {approving.path === 'exchange' && (
+                <div>ລວມເງິນຕ້ອງຈ່າຍ: <b className="num text-fg">{formatLak(approving.row.totalPayable)} ກີບ</b></div>
+              )}
+              {approving.path === 'credit' && (
+                <>
+                  <div>ລາຄາຂາຍ: <b className="num text-fg">{formatLak(approving.row.sellPrice)} ກີບ</b></div>
+                  <div>ເງິນວາງດາວ: <b className="num text-fg">{formatLak(approving.row.downPayment)} ກີບ</b></div>
+                  <div>ຍອດຕິດໜີ້: <b className="num text-fg">{formatLak(approving.row.outstanding)} ກີບ</b></div>
+                </>
+              )}
+            </div>
+            {error && (
+              <div role="alert" className="notice status-danger text-xs">
+                {error}
+              </div>
+            )}
+          </div>
+        )}
+      </Dialog>
     </div>
   );
 }
