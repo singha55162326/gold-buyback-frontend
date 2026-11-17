@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { type MutableRefObject, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser } from '@/lib/api';
@@ -161,6 +161,7 @@ const isNewLineReady = (l: NewLine) => Boolean(l.goldSkuId && Number(l.weightG) 
 const isRemainingLineReady = (l: RemainingLine) => Number(l.weightG) > 0;
 
 const REALTIME_KEYS = ['exchange', 'cash', 'notifications'] as const;
+const STANDARD_WEIGHT_PRESETS = ['15', '7.5', '3.75', '1.875', '1.125', '0.75', '0.375'] as const;
 
 /**
  * TOR §5.2 — ລາຍການປ່ຽນເປັນເງິນ (Gold Exchange & Trade-in).
@@ -177,6 +178,7 @@ export default function ExchangePage() {
 
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   const [phone, setPhone] = useState('');
   const [txnType, setTxnType] = useState<'EXCHANGE_TO_CASH' | 'FREE_EXCHANGE'>('EXCHANGE_TO_CASH');
@@ -184,6 +186,12 @@ export default function ExchangePage() {
   const [oldLines, setOldLines] = useState<OldLine[]>([emptyOld()]);
   const [newLines, setNewLines] = useState<NewLine[]>([emptyNew()]);
   const [remainingLines, setRemainingLines] = useState<RemainingLine[]>([]);
+  const oldListRef = useRef<HTMLDivElement | null>(null);
+  const newListRef = useRef<HTMLDivElement | null>(null);
+  const remainingListRef = useRef<HTMLDivElement | null>(null);
+  const scrollOldRef = useRef(false);
+  const scrollNewRef = useRef(false);
+  const scrollRemainingRef = useRef(false);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [payments, setPayments] = useState<PaymentLine[]>(newPaymentLines);
@@ -339,6 +347,7 @@ export default function ExchangePage() {
   const resetForm = () => {
     setShowForm(false);
     setEditingId(null);
+    setStep(1);
     setPhone('');
     setTxnType('EXCHANGE_TO_CASH');
     setShapeCondition('GOOD');
@@ -506,6 +515,56 @@ export default function ExchangePage() {
   const setRemaining = (i: number, patch: Partial<RemainingLine>) =>
     setRemainingLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
 
+  const handleAddOld = () => {
+    setStep(1);
+    scrollOldRef.current = true;
+    setOldLines((p) => [...p, emptyOld()]);
+  };
+  const handleAddNew = () => {
+    setStep(2);
+    scrollNewRef.current = true;
+    setNewLines((p) => [...p, emptyNew()]);
+  };
+  const handleAddRemaining = () => {
+    setStep(3);
+    scrollRemainingRef.current = true;
+    setRemainingLines((p) => [...p, emptyRemaining()]);
+  };
+
+  const fillRemainingDifference = () => {
+    if (!preview) return;
+    const diff = Number(preview.difference);
+    if (!Number.isFinite(diff) || diff <= 0) return;
+    const diffStr = formatWeight(preview.difference);
+    setStep(3);
+    setRemainingLines((prev) => {
+      const emptyIdx = prev.findIndex((l) => !l.weightG.trim() || Number(l.weightG) <= 0);
+      if (emptyIdx !== -1) {
+        return prev.map((l, idx) => (idx === emptyIdx ? { ...l, weightG: diffStr, quantity: '1' } : l));
+      }
+      scrollRemainingRef.current = true;
+      return [...prev, { goldTypeId: '', weightG: diffStr, quantity: '1' }];
+    });
+  };
+
+  const oldStdWeightSum = useMemo(
+    () => oldLines.reduce((s, l) => s + (Number(l.standardWeightG) || 0) * qty(l.quantity), 0),
+    [oldLines],
+  );
+  const newWeightSum = useMemo(
+    () => newLines.reduce((s, l) => s + (Number(l.weightG) || 0) * qty(l.quantity), 0),
+    [newLines],
+  );
+  const remainingWeightSum = useMemo(
+    () => remainingLines.reduce((s, l) => s + (Number(l.weightG) || 0) * qty(l.quantity), 0),
+    [remainingLines],
+  );
+  const differenceNum = preview ? Number(preview.difference) : 0;
+
+  useScrollOnAdd(oldLines.length, scrollOldRef, oldListRef, 'old-type');
+  useScrollOnAdd(newLines.length, scrollNewRef, newListRef, 'new-sku');
+  useScrollOnAdd(remainingLines.length, scrollRemainingRef, remainingListRef, 'rem-type');
+
   const paymentLines = paymentPayload(payments);
   const bankLegReady = paymentLines.every((l) => l.method !== 'BANK' || Boolean(l.bankAccountId));
   const insufficientFundsError = useInsufficientFundsError(
@@ -582,14 +641,14 @@ export default function ExchangePage() {
         <div id="exchange-error" role="alert" className="notice status-danger">{error}</div>
       )}
 
-      {/* ── Form Dialog (Create / Edit PENDING) ── */}
+      {/* ── Form Dialog (4-Step Full-Width Wizard) ── */}
       <Dialog
         open={showForm}
         onClose={resetForm}
-        size="2xl"
+        size="xl"
         flushBody
         title={editingId ? 'ແກ້ໄຂລາຍການປ່ຽນເປັນເງິນ' : 'ສ້າງລາຍການປ່ຽນເປັນເງິນ'}
-        subtitle="ປ້ອນຄຳເກົ່າ, ຄຳໃໝ່ ແລະ ຄຳເກົ່າຄົງເຫຼືອ — ກວດຄວາມສົມດຸນອັດຕະໂນມັດ (TOR §5.2)"
+        subtitle="ດຳເນີນການຕາມ 4 ຂັ້ນຕອນ — ກວດສອບຄວາມສົມດຸນອັດຕະໂນມັດ (TOR §5.2)"
         footer={
           <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -599,407 +658,857 @@ export default function ExchangePage() {
               <StatusPill ok={paymentReady} label="ການຈ່າຍເງິນ" />
             </div>
 
-            <div className="ml-auto flex items-center gap-2.5">
-              <button type="button" className="btn-secondary" onClick={resetForm}>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <button type="button" className="btn-secondary cursor-pointer" onClick={resetForm}>
                 ຍົກເລີກ
               </button>
-              <button
-                type="button"
-                className="btn-primary min-w-[200px]"
-                aria-describedby={error ? 'exchange-error-modal' : undefined}
-                disabled={!canSave || saveMutation.isPending}
-                onClick={() => saveMutation.mutate()}
-              >
-                {saveMutation.isPending
-                  ? 'ກຳລັງບັນທຶກ...'
-                  : editingId
-                    ? 'ບັນທຶກການແກ້ໄຂ'
-                    : 'ບັນທຶກລາຍການ'}
-              </button>
+              {step > 1 && (
+                <button
+                  type="button"
+                  className="btn-secondary cursor-pointer"
+                  onClick={() => setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3 | 4) : s))}
+                >
+                  ← ກັບຄືນ
+                </button>
+              )}
+              {step < 4 ? (
+                <button
+                  type="button"
+                  className="btn-primary min-w-[150px] cursor-pointer"
+                  onClick={() => setStep((s) => (s < 4 ? ((s + 1) as 1 | 2 | 3 | 4) : s))}
+                >
+                  ຖັດໄປ →
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-primary min-w-[190px] cursor-pointer"
+                  aria-describedby={error ? 'exchange-error-modal' : undefined}
+                  disabled={!canSave || saveMutation.isPending}
+                  onClick={() => saveMutation.mutate()}
+                >
+                  {saveMutation.isPending
+                    ? 'ກຳລັງບັນທຶກ...'
+                    : editingId
+                      ? 'ບັນທຶກການແກ້ໄຂ'
+                      : 'ບັນທຶກລາຍການ'}
+                </button>
+              )}
             </div>
           </div>
         }
       >
-        <div className="space-y-5 p-5 sm:p-6">
-          {error && (
-            <div id="exchange-error-modal" role="alert" className="notice status-danger">{error}</div>
-          )}
+        <div className="flex min-h-0 flex-1 flex-col">
+          {/* ── Sticky Top: 4-Step Bar + Live Mini-Summary Strip ── */}
+          <div className="shrink-0 space-y-3 border-b border-line bg-recessed px-5 py-3.5 sm:px-6">
+            <nav aria-label="ຂັ້ນຕອນການປ່ຽນເປັນເງິນ">
+              <ol className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                {(
+                  [
+                    {
+                      num: 1 as const,
+                      title: 'ລູກຄ້າ & ຄຳເກົ່າ',
+                      meta: `${oldLines.length} ແຖວ · ${formatWeight(String(oldStdWeightSum))} g`,
+                      done: phoneValid && allOldValid,
+                      warn: false,
+                    },
+                    {
+                      num: 2 as const,
+                      title: 'ລາຍການຄຳໃໝ່',
+                      meta: `${newLines.length} ແຖວ · ${formatWeight(String(newWeightSum))} g`,
+                      done: allNewValid && (newLines.length > 0 || remainingLines.length > 0),
+                      warn: false,
+                    },
+                    {
+                      num: 3 as const,
+                      title: 'ຄຳເກົ່າຄົງເຫຼືອ',
+                      meta: `${remainingLines.length} ແຖວ · ${formatWeight(String(remainingWeightSum))} g`,
+                      done: preview?.isBalanced === true && (remainingLines.length > 0 || differenceNum === 0),
+                      warn: differenceNum > 0,
+                    },
+                    {
+                      num: 4 as const,
+                      title: 'ສະຫຼຸບ & ຈ່າຍເງິນ',
+                      meta: preview ? `${formatLak(String(Math.abs(payableNum)))} LAK` : 'ລໍຖ້າຄຳນວນ',
+                      done: preview?.isBalanced === true && paymentReady,
+                      warn: false,
+                    },
+                  ] as const
+                ).map((s) => {
+                  const active = step === s.num;
+                  return (
+                    <li key={s.num}>
+                      <button
+                        type="button"
+                        aria-current={active ? 'step' : undefined}
+                        onClick={() => setStep(s.num)}
+                        className={`flex w-full cursor-pointer items-center gap-2.5 rounded-xl border px-3 py-2 text-left transition-colors duration-150 ${
+                          active
+                            ? 'border-[var(--border-active)] bg-[var(--gold-tint)]'
+                            : s.done
+                              ? 'border-[var(--success-border)] bg-[var(--success-bg)]/40 hover:border-[var(--border-hover)]'
+                              : 'border-line bg-surface hover:border-[var(--border-hover)]'
+                        }`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`num flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                            active
+                              ? 'bg-[var(--gold)] text-canvas'
+                              : s.done
+                                ? 'border border-[var(--success-border)] bg-[var(--success-bg)] text-success'
+                                : 'border border-line bg-recessed text-muted'
+                          }`}
+                        >
+                          {s.done && !active ? (
+                            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M20 6L9 17l-5-5" />
+                            </svg>
+                          ) : (
+                            s.num
+                          )}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className={`truncate text-xs font-bold ${active ? 'text-gold' : 'text-fg-strong'}`}>
+                              {s.title}
+                            </span>
+                            {s.warn && !active && (
+                              <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-full bg-[var(--gold)]" />
+                            )}
+                          </div>
+                          <div className="num truncate text-[11px] text-muted">{s.meta}</div>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            </nav>
 
-          {!hasOpenShift && (
-            <div role="alert" className="notice status-warning text-xs">
-              ຍັງບໍ່ໄດ້ເປີດກະ — ກະລຸນາກົດ &quot;ເປີດກະ&quot; ກ່ອນຈຶ່ງຈະບັນທຶກລາຍການໄດ້
-            </div>
-          )}
-
-          {/* Header fields */}
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <div>
-              <label className="label" htmlFor="phone">ເບີໂທ (8 ໂຕ)</label>
-              <input
-                id="phone"
-                className="input input-lg num"
-                inputMode="numeric"
-                maxLength={8}
-                placeholder="20XXXXXX"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-              />
-            </div>
-            <div>
-              <label className="label" htmlFor="txnType">ທຸລະກຳ</label>
-              <select
-                id="txnType"
-                className="input input-lg"
-                value={txnType}
-                onChange={(e) => setTxnType(e.target.value as typeof txnType)}
-              >
-                <option value="EXCHANGE_TO_CASH">ປ່ຽນເປັນເງິນ</option>
-                <option value="FREE_EXCHANGE">ປ່ຽນຟຣີ</option>
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="shape">ຮູບປະພັນ</label>
-              <select
-                id="shape"
-                className="input input-lg"
-                value={shapeCondition}
-                onChange={(e) => setShapeCondition(e.target.value as 'GOOD' | 'DAMAGED')}
-              >
-                <option value="GOOD">ດີ</option>
-                <option value="DAMAGED">ເສຍ</option>
-              </select>
+            {/* Compact Live Mini-Summary Strip */}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface px-3.5 py-2 text-xs">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span className="text-muted">
+                  ເກນເກົ່າ: <strong className="num text-fg-strong">{preview ? `${formatWeight(preview.standardOldWeightG)} g` : `${formatWeight(String(oldStdWeightSum))} g`}</strong>
+                </span>
+                <span className="text-muted">
+                  ຄຳໃໝ່: <strong className="num text-fg-strong">{preview ? `${formatWeight(preview.totalNewWeightG)} g` : `${formatWeight(String(newWeightSum))} g`}</strong>
+                </span>
+                <span className="text-muted">
+                  ຄົງເຫຼືອ: <strong className="num text-fg-strong">{preview ? `${formatWeight(preview.totalRemainingWeightG)} g` : `${formatWeight(String(remainingWeightSum))} g`}</strong>
+                </span>
+                {preview && (
+                  <span className={preview.isBalanced ? 'status-success' : 'status-danger'}>
+                    {preview.isBalanced
+                      ? 'ສົມດຸນ'
+                      : differenceNum > 0
+                        ? `ຂາດ ${formatWeight(preview.difference)} g`
+                        : `ເກີນ ${formatWeight(String(Math.abs(differenceNum)))} g`}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {isPreviewing && <span className="live-dot text-[11px]">ກຳລັງຄຳນວນ...</span>}
+                <span className="text-muted">
+                  {isIncomingPayment ? 'ລູກຄ້າຈ່າຍເພີ່ມ:' : 'ຍອດສຸດທິ:'}{' '}
+                  <strong className="num text-sm font-bold text-gold">
+                    {preview ? `${formatLak(String(Math.abs(payableNum)))} LAK` : '0 LAK'}
+                  </strong>
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* ---- ລາຍການຄຳເກົ່າ ---- */}
-          <div className="rounded-xl border border-line">
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <h3 className="text-sm font-semibold text-fg-strong">ລາຍການຄຳເກົ່າ</h3>
-              <button
-                type="button"
-                className="btn-secondary h-8 min-h-0 px-3 text-xs"
-                onClick={() => setOldLines((p) => [...p, emptyOld()])}
-              >
-                + Add
-              </button>
-            </div>
-            <div className="space-y-3 p-4">
-              {oldLines.map((line, i) => (
-                <div key={i} className="grid gap-2 rounded-xl border border-line p-3 sm:grid-cols-2 lg:grid-cols-[1.2fr_1.2fr_1fr_0.75fr_1fr_auto]">
-                  <select
-                    aria-label={`ລາຍການຄຳເກົ່າ — ປະເພດຄຳ ${i + 1}`}
-                    className="input"
-                    value={line.goldTypeId}
-                    onChange={(e) => setOld(i, { goldTypeId: e.target.value })}
-                  >
-                    <option value="">ປະເພດຄຳ</option>
-                    {selectableGoldTypes.map((t) => (
-                      <option key={t.id} value={t.id}>{t.nameLo}</option>
-                    ))}
-                  </select>
-                  <select
-                    aria-label={`ລາຍການຄຳເກົ່າ — ລາຍການຄຳ ${i + 1}`}
-                    className="input"
-                    value={line.goldItemId}
-                    onChange={(e) => setOld(i, { goldItemId: e.target.value })}
-                  >
-                    <option value="">ລາຍການຄຳ</option>
-                    {goldItems.map((it) => (
-                      <option key={it.id} value={it.id}>{it.nameLo}</option>
-                    ))}
-                  </select>
-                  <NumberInput
-                    decimals={4}
-                    aria-label={`ລາຍການຄຳເກົ່າ — ນ້ຳໜັກ (g) ${i + 1}`}
-                    className="input num"
-                    placeholder="ນ້ຳໜັກ (g)"
-                    value={line.weightG}
-                    onValueChange={(v) => setOld(i, { weightG: v })}
-                  />
-                  <input
-                    aria-label={`ລາຍການຄຳເກົ່າ — ຈຳນວນ ${i + 1}`}
-                    className="input num"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={line.quantity}
-                    onChange={(e) => setOld(i, { quantity: e.target.value })}
-                    onBlur={(e) => setOld(i, { quantity: String(qty(e.target.value)) })}
-                  />
-                  <NumberInput
-                    decimals={4}
-                    aria-label={`ລາຍການຄຳເກົ່າ — ເກນ standard (g) ${i + 1}`}
-                    className="input num"
-                    placeholder="ເກນ standard (g)"
-                    value={line.standardWeightG}
-                    onValueChange={(v) => setOld(i, { standardWeightG: v })}
-                  />
+          {/* ── Scrollable Step Body ── */}
+          <div className="nav-scroll min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
+            {error && (
+              <div id="exchange-error-modal" role="alert" className="notice status-danger mb-4 text-xs">
+                {error}
+              </div>
+            )}
+
+            {!hasOpenShift && (
+              <div role="alert" className="notice status-warning mb-4 text-xs">
+                ຍັງບໍ່ໄດ້ເປີດກະ — ກະລຸນາກົດ &quot;ເປີດກະ&quot; ກ່ອນຈຶ່ງຈະບັນທຶກລາຍການໄດ້
+              </div>
+            )}
+
+            {/* ── Step 1: ຂໍ້ມູນລູກຄ້າ & ຄຳເກົ່າ ── */}
+            {step === 1 && (
+              <div className="space-y-5">
+                <section className="space-y-2.5" aria-label="ຂໍ້ມູນລູກຄ້າ ແລະ ທຸລະກຳ">
+                  <div className="grid gap-3.5 sm:grid-cols-12">
+                    <div className="sm:col-span-4">
+                      <div className="mb-1 flex items-center justify-between">
+                        <label className="label mb-0 text-xs" htmlFor="phone">ເບີໂທ (8 ໂຕ)</label>
+                        <span className={`num text-[11px] font-semibold ${phoneValid ? 'text-success' : 'text-muted'}`}>
+                          {phone.length}/8
+                        </span>
+                      </div>
+                      <input
+                        id="phone"
+                        className="input num font-medium tracking-wide"
+                        inputMode="numeric"
+                        maxLength={8}
+                        placeholder="20XXXXXX"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-5">
+                      <span className="label mb-1 text-xs">ທຸລະກຳ</span>
+                      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="ທຸລະກຳ">
+                        {(
+                          [
+                            ['EXCHANGE_TO_CASH', 'ປ່ຽນເປັນເງິນ'],
+                            ['FREE_EXCHANGE', 'ປ່ຽນຟຣີ'],
+                          ] as const
+                        ).map(([val, labelLo]) => {
+                          const active = txnType === val;
+                          return (
+                            <button
+                              key={val}
+                              type="button"
+                              role="radio"
+                              aria-checked={active}
+                              onClick={() => setTxnType(val)}
+                              className={`cursor-pointer rounded-xl border px-3 py-2 text-xs font-semibold transition-colors duration-150 ${
+                                active
+                                  ? 'border-[var(--border-active)] bg-[var(--gold-tint)] text-gold'
+                                  : 'recessed text-fg hover:border-[var(--border-hover)]'
+                              }`}
+                            >
+                              {labelLo}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="sm:col-span-3">
+                      <span className="label mb-1 text-xs">ຮູບປະພັນ</span>
+                      <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="ຮູບປະພັນ">
+                        {(
+                          [
+                            ['GOOD', 'ດີ'],
+                            ['DAMAGED', 'ເສຍ'],
+                          ] as const
+                        ).map(([val, labelLo]) => {
+                          const active = shapeCondition === val;
+                          return (
+                            <button
+                              key={val}
+                              type="button"
+                              role="radio"
+                              aria-checked={active}
+                              onClick={() => setShapeCondition(val)}
+                              className={`cursor-pointer rounded-xl border px-3 py-2 text-xs font-semibold transition-colors duration-150 ${
+                                active
+                                  ? 'border-[var(--border-active)] bg-[var(--gold-tint)] text-gold'
+                                  : 'recessed text-fg hover:border-[var(--border-hover)]'
+                              }`}
+                            >
+                              {labelLo}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <div className="divider" aria-hidden="true" />
+
+                <section className="space-y-3" aria-label="ລາຍການຄຳເກົ່າ">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-sm font-semibold text-fg-strong">ລາຍການຄຳເກົ່າ</h3>
+                      {oldLines.length > 1 && (
+                        <span className="num badge bg-[var(--gold-tint)] text-[11px] font-semibold text-gold">
+                          {oldLines.length} ລາຍການ
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn-secondary h-8 min-h-[32px] shrink-0 cursor-pointer px-3 text-xs"
+                      onClick={handleAddOld}
+                    >
+                      <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-gold" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
+                      ເພີ່ມຄຳເກົ່າ
+                    </button>
+                  </div>
+
+                  <div ref={oldListRef} className="space-y-3">
+                    {oldLines.map((line, i) => {
+                      const ready = isOldLineReady(line);
+                      return (
+                        <div
+                          key={i}
+                          className={`recessed space-y-3 rounded-2xl p-4 transition-colors duration-150 ${
+                            ready ? 'border-[var(--border-hover)]' : ''
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2 border-b border-[var(--row-line)] pb-2">
+                            <div className="flex items-center gap-2">
+                              <span className="badge bg-[var(--gold-tint)] font-bold text-gold">#{i + 1}</span>
+                              <span className={ready ? 'status-success' : 'status-warning'}>
+                                {ready ? 'ພ້ອມຄຳນວນ' : 'ປ້ອນໃຫ້ຄົບ'}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn-ghost h-7 min-h-[28px] cursor-pointer px-2 text-xs text-danger"
+                              disabled={oldLines.length === 1}
+                              aria-label={`ລຶບຄຳເກົ່າແຖວທີ ${i + 1}`}
+                              onClick={() => setOldLines((p) => p.filter((_, idx) => idx !== i))}
+                            >
+                              ✕
+                            </button>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                            <div className="min-w-0">
+                              <label className="label mb-1 text-xs" htmlFor={`old-type-${i}`}>ປະເພດຄຳ</label>
+                              <select
+                                id={`old-type-${i}`}
+                                className="input"
+                                value={line.goldTypeId}
+                                onChange={(e) => setOld(i, { goldTypeId: e.target.value })}
+                              >
+                                <option value="">— ເລືອກປະເພດຄຳ —</option>
+                                {selectableGoldTypes.map((t) => (
+                                  <option key={t.id} value={t.id}>{t.nameLo}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="min-w-0">
+                              <label className="label mb-1 text-xs" htmlFor={`old-item-${i}`}>ລາຍການຄຳ</label>
+                              <select
+                                id={`old-item-${i}`}
+                                className="input"
+                                value={line.goldItemId}
+                                onChange={(e) => setOld(i, { goldItemId: e.target.value })}
+                              >
+                                <option value="">— ບໍ່ລະບຸ —</option>
+                                {goldItems.map((it) => (
+                                  <option key={it.id} value={it.id}>{it.nameLo}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="min-w-0">
+                              <label className="label mb-1 text-xs" htmlFor={`old-weight-${i}`}>ນ້ຳໜັກຈິງ (g)</label>
+                              <NumberInput
+                                id={`old-weight-${i}`}
+                                decimals={4}
+                                className="input num font-semibold"
+                                placeholder="0.00"
+                                value={line.weightG}
+                                onValueChange={(v) => setOld(i, { weightG: v })}
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <label className="label mb-1 text-xs" htmlFor={`old-qty-${i}`}>ຈຳນວນ</label>
+                              <input
+                                id={`old-qty-${i}`}
+                                className="input num"
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={line.quantity}
+                                onChange={(e) => setOld(i, { quantity: e.target.value })}
+                                onBlur={(e) => setOld(i, { quantity: String(qty(e.target.value)) })}
+                              />
+                            </div>
+                            <div className="min-w-0">
+                              <div className="mb-1 flex flex-wrap items-center justify-between gap-1">
+                                <label className="label mb-0 text-xs" htmlFor={`old-std-${i}`}>ເກນ standard (g)</label>
+                                {Number(line.weightG) > 0 && line.standardWeightG !== line.weightG && (
+                                  <button
+                                    type="button"
+                                    className="cursor-pointer whitespace-nowrap text-[10px] font-semibold text-gold hover:underline"
+                                    onClick={() => setOld(i, { standardWeightG: line.weightG })}
+                                  >
+                                    ເທົ່ານ້ຳໜັກຈິງ
+                                  </button>
+                                )}
+                              </div>
+                              <NumberInput
+                                id={`old-std-${i}`}
+                                decimals={4}
+                                className="input num font-semibold"
+                                placeholder="15"
+                                value={line.standardWeightG}
+                                onValueChange={(v) => setOld(i, { standardWeightG: v })}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-[11px] text-muted">ເກນດ່ວນ:</span>
+                            {STANDARD_WEIGHT_PRESETS.map((preset) => (
+                              <button
+                                key={preset}
+                                type="button"
+                                onClick={() => setOld(i, { standardWeightG: preset })}
+                                className={`cursor-pointer rounded-md border px-2 py-0.5 text-[11px] num transition-colors duration-150 ${
+                                  line.standardWeightG === preset
+                                    ? 'border-[var(--border-active)] bg-[var(--gold-tint)] font-semibold text-gold'
+                                    : 'border-line bg-transparent text-muted hover:border-[var(--border-hover)] hover:text-fg'
+                                }`}
+                              >
+                                {preset}g
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-muted">
+                    ຄ່າອ່ອນຄິດສະເພາະຄຳຫຍຸບຕາມນ້ຳໜັກທີ່ຫຼຸດຈາກເກນ standard (0.1g ຕໍ່ຂັ້ນ) — ຄຳດີ ແລະ ຄຳແທ່ງບໍ່ເສຍຄ່າອ່ອນ
+                  </p>
+                </section>
+              </div>
+            )}
+
+            {/* ── Step 2: ລາຍການຄຳໃໝ່ ── */}
+            {step === 2 && (
+              <section className="space-y-3" aria-label="ລາຍການຄຳໃໝ່">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold text-fg-strong">ລາຍການຄຳໃໝ່</h3>
+                    {newLines.length > 1 && (
+                      <span className="num badge bg-[var(--gold-tint)] text-[11px] font-semibold text-gold">
+                        {newLines.length} ລາຍການ
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="button"
-                    className="btn-danger px-3"
-                    disabled={oldLines.length === 1}
-                    onClick={() => setOldLines((p) => p.filter((_, idx) => idx !== i))}
+                    className="btn-secondary h-8 min-h-[32px] shrink-0 cursor-pointer px-3 text-xs"
+                    onClick={handleAddNew}
                   >
-                    ລຶບ
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-gold" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    ເພີ່ມຄຳໃໝ່
                   </button>
                 </div>
-              ))}
-              <p className="text-xs text-muted">
-                ຄ່າອ່ອນຄິດສະເພາະຄຳຫຍຸບຕາມນ້ຳໜັກທີ່ຫຼຸດຈາກເກນ standard (0.1g ຕໍ່ຂັ້ນ) — ຄຳດີ ແລະ ຄຳແທ່ງບໍ່ເສຍຄ່າອ່ອນ
-              </p>
-            </div>
-          </div>
 
-          {/* ---- ລາຍການຄຳໃໝ່ ---- */}
-          <div className="rounded-xl border border-line">
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <h3 className="text-sm font-semibold text-fg-strong">ລາຍການຄຳໃໝ່</h3>
-              <button
-                type="button"
-                className="btn-secondary h-8 min-h-0 px-3 text-xs"
-                onClick={() => setNewLines((p) => [...p, emptyNew()])}
-              >
-                + Add
-              </button>
-            </div>
-            <div className="space-y-3 p-4">
-              {newLines.length === 0 && (
-                <p className="text-sm text-muted">ບໍ່ມີລາຍການຄຳໃໝ່ (ປ່ຽນຄຳເກົ່າເປັນເງິນທັງໝົດ)</p>
-              )}
-              {(() => {
-                let readyIdx = -1;
-                return newLines.map((line, i) => {
-                  const ready = isNewLineReady(line);
-                  if (ready) readyIdx += 1;
-                  const linePreview = ready ? preview?.newLines?.[readyIdx] : undefined;
-                  return (
-                    <div key={i} className="space-y-2 rounded-xl border border-line p-3">
-                      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_0.75fr_1fr_1.2fr_auto]">
-                        <select
-                          aria-label={`ລາຍການຄຳໃໝ່ — ລາຍການ (SKU) ${i + 1}`}
-                          className="input"
-                          value={line.goldSkuId}
-                          onChange={(e) => {
-                            const sku = skus.find((s) => s.id === e.target.value);
-                            setNew(i, {
-                              goldSkuId: e.target.value,
-                              weightG: sku ? String(Number(sku.weightG)) : line.weightG,
-                            });
-                          }}
-                        >
-                          <option value="">ລາຍການ (SKU)</option>
-                          {skus.map((s) => (
-                            <option key={s.id} value={s.id}>{s.fullSkuName}</option>
-                          ))}
-                        </select>
-                        <NumberInput
-                          decimals={4}
-                          aria-label={`ລາຍການຄຳໃໝ່ — ນ້ຳໜັກ (g) ${i + 1}`}
-                          className="input num"
-                          placeholder="ນ້ຳໜັກ (g)"
-                          value={line.weightG}
-                          onValueChange={(v) => setNew(i, { weightG: v })}
-                        />
-                        <input
-                          aria-label={`ລາຍການຄຳໃໝ່ — ຈຳນວນ ${i + 1}`}
-                          className="input num"
-                          type="number"
-                          min={1}
-                          step={1}
-                          value={line.quantity}
-                          onChange={(e) => setNew(i, { quantity: e.target.value })}
-                          onBlur={(e) => setNew(i, { quantity: String(qty(e.target.value)) })}
-                        />
-                        <NumberInput
-                          decimals={0}
-                          aria-label={`ລາຍການຄຳໃໝ່ — ຄ່າລາຍ ${i + 1}`}
-                          className="input num"
-                          placeholder={txnType === 'FREE_EXCHANGE' ? '0 (ຟຣີ)' : 'ຄ່າລາຍ'}
-                          disabled={txnType === 'FREE_EXCHANGE'}
-                          value={txnType === 'FREE_EXCHANGE' ? '0' : line.patternFee}
-                          onValueChange={(v) => setNew(i, { patternFee: v })}
-                        />
-                        <select
-                          aria-label={`ລາຍການຄຳໃໝ່ — ຕູ້ເຄື່ອງ ${i + 1}`}
-                          className="input"
-                          value={line.cabinetId}
-                          onChange={(e) => setNew(i, { cabinetId: e.target.value })}
-                        >
-                          <option value="">ຕູ້ເຄື່ອງ</option>
-                          {cabinets.map((c) => (
-                            <option key={c.id} value={c.id}>{c.nameLo}</option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          className="btn-danger px-3"
-                          disabled={newLines.length === 1 && remainingLines.length === 0}
-                          onClick={() => setNewLines((p) => p.filter((_, idx) => idx !== i))}
-                        >
-                          ລຶບ
-                        </button>
+                {newLines.length === 0 ? (
+                  <div className="recessed flex flex-col items-center justify-center gap-2 rounded-2xl p-8 text-center">
+                    <p className="text-sm text-muted">ບໍ່ມີລາຍການຄຳໃໝ່ (ປ່ຽນຄຳເກົ່າເປັນເງິນທັງໝົດ)</p>
+                    <button type="button" className="btn-secondary cursor-pointer text-xs" onClick={handleAddNew}>
+                      + ເພີ່ມລາຍການຄຳໃໝ່
+                    </button>
+                  </div>
+                ) : (
+                  <div ref={newListRef} className="space-y-3">
+                    {(() => {
+                      let readyIdx = -1;
+                      return newLines.map((line, i) => {
+                        const ready = isNewLineReady(line);
+                        if (ready) readyIdx += 1;
+                        const linePreview = ready ? preview?.newLines?.[readyIdx] : undefined;
+                        const lineFeeTotal = linePreview
+                          ? Number(linePreview.humpFee) +
+                            Number(linePreview.barConvertFee) +
+                            Number(linePreview.patternFee)
+                          : 0;
+                        return (
+                          <div
+                            key={i}
+                            className={`recessed space-y-3 rounded-2xl p-4 transition-colors duration-150 ${
+                              ready ? 'border-[var(--border-hover)]' : ''
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2 border-b border-[var(--row-line)] pb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="badge bg-[var(--gold-tint)] font-bold text-gold">#{i + 1}</span>
+                                <span className={ready ? 'status-success' : 'status-warning'}>
+                                  {ready ? 'ພ້ອມຄຳນວນ' : 'ເລືອກ SKU'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {linePreview && (
+                                  <span className="num text-xs font-bold text-fg-strong">
+                                    ຄ່າປ່ຽນ {formatLak(String(lineFeeTotal))} LAK
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn-ghost h-7 min-h-[28px] cursor-pointer px-2 text-xs text-danger"
+                                  disabled={newLines.length === 1 && remainingLines.length === 0}
+                                  aria-label={`ລຶບຄຳໃໝ່ແຖວທີ ${i + 1}`}
+                                  onClick={() => setNewLines((p) => p.filter((_, idx) => idx !== i))}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                              <div className="min-w-0 lg:col-span-2">
+                                <label className="label mb-1 text-xs" htmlFor={`new-sku-${i}`}>ລາຍການ (SKU)</label>
+                                <select
+                                  id={`new-sku-${i}`}
+                                  className="input"
+                                  value={line.goldSkuId}
+                                  onChange={(e) => {
+                                    const sku = skus.find((s) => s.id === e.target.value);
+                                    setNew(i, {
+                                      goldSkuId: e.target.value,
+                                      weightG: sku ? String(Number(sku.weightG)) : line.weightG,
+                                    });
+                                  }}
+                                >
+                                  <option value="">— ເລືອກ SKU —</option>
+                                  {skus.map((s) => (
+                                    <option key={s.id} value={s.id}>{s.fullSkuName}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="min-w-0">
+                                <label className="label mb-1 text-xs" htmlFor={`new-weight-${i}`}>ນ້ຳໜັກ (g)</label>
+                                <NumberInput
+                                  id={`new-weight-${i}`}
+                                  decimals={4}
+                                  className="input num font-semibold"
+                                  placeholder="0.00"
+                                  value={line.weightG}
+                                  onValueChange={(v) => setNew(i, { weightG: v })}
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <label className="label mb-1 text-xs" htmlFor={`new-qty-${i}`}>ຈຳນວນ</label>
+                                <input
+                                  id={`new-qty-${i}`}
+                                  className="input num"
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={line.quantity}
+                                  onChange={(e) => setNew(i, { quantity: e.target.value })}
+                                  onBlur={(e) => setNew(i, { quantity: String(qty(e.target.value)) })}
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <label className="label mb-1 text-xs" htmlFor={`new-cabinet-${i}`}>ຕູ້ເຄື່ອງ</label>
+                                <select
+                                  id={`new-cabinet-${i}`}
+                                  className="input"
+                                  value={line.cabinetId}
+                                  onChange={(e) => setNew(i, { cabinetId: e.target.value })}
+                                >
+                                  <option value="">— ເລືອກຕູ້ —</option>
+                                  {cabinets.map((c) => (
+                                    <option key={c.id} value={c.id}>{c.nameLo}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-4 sm:items-end">
+                              {txnType === 'FREE_EXCHANGE' ? (
+                                <div className="sm:col-span-1">
+                                  <span className="label mb-1 text-xs">ຄ່າລາຍ</span>
+                                  <div className="input flex items-center text-xs font-semibold text-success select-none">
+                                    ປ່ຽນຟຣີ (0 LAK)
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="min-w-0 sm:col-span-1">
+                                  <label className="label mb-1 text-xs" htmlFor={`new-pattern-${i}`}>ຄ່າລາຍ (LAK)</label>
+                                  <NumberInput
+                                    id={`new-pattern-${i}`}
+                                    decimals={0}
+                                    className="input num"
+                                    placeholder="0"
+                                    value={line.patternFee}
+                                    onValueChange={(v) => setNew(i, { patternFee: v })}
+                                  />
+                                </div>
+                              )}
+                              {linePreview && (
+                                <div className="flex flex-wrap gap-5 pb-2 text-xs text-muted sm:col-span-3">
+                                  <span>ຄ່າຫຍຸບ: <strong className="num text-fg">{formatLak(linePreview.humpFee)} LAK</strong></span>
+                                  <span>ຄ່າປ່ຽນຄຳແທ່ງ: <strong className="num text-fg">{formatLak(linePreview.barConvertFee)} LAK</strong></span>
+                                  <span>ຄ່າລາຍ: <strong className="num text-fg">{formatLak(linePreview.patternFee)} LAK</strong></span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                )}
+                <p className="text-xs text-muted">
+                  ຄ່າຫຍຸບ ແລະ ຄ່າປ່ຽນຄຳແທ່ງ ດຶງຈາກຕາຕະລາງ ຄ່າປ່ຽນ ອັດຕະໂນມັດ
+                  {txnType === 'FREE_EXCHANGE' && ' — ປ່ຽນຟຣີ: ຄ່າປ່ຽນທັງໝົດ = 0'}
+                </p>
+              </section>
+            )}
+
+            {/* ── Step 3: ຄຳເກົ່າຄົງເຫຼືອ ── */}
+            {step === 3 && (
+              <section className="space-y-3" aria-label="ຄຳເກົ່າຄົງເຫຼືອ">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-semibold text-fg-strong">ຄຳເກົ່າຄົງເຫຼືອ</h3>
+                    {remainingLines.length > 1 && (
+                      <span className="num badge bg-[var(--gold-tint)] text-[11px] font-semibold text-gold">
+                        {remainingLines.length} ລາຍການ
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-secondary h-8 min-h-[32px] shrink-0 cursor-pointer px-3 text-xs"
+                    onClick={handleAddRemaining}
+                  >
+                    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-gold" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    ເພີ່ມຄົງເຫຼືອ
+                  </button>
+                </div>
+
+                {differenceNum > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--border-active)] bg-[var(--gold-tint)] px-4 py-3 text-xs">
+                    <span className="text-fg">
+                      ຍັງມີນ້ຳໜັກຄົງເຫຼືອ <strong className="num text-gold">{formatWeight(preview!.difference)} g</strong> ທີ່ຍັງບໍ່ທັນໄດ້ບັນທຶກ
+                    </span>
+                    <button
+                      type="button"
+                      onClick={fillRemainingDifference}
+                      className="btn-primary !h-8 !min-h-0 cursor-pointer !px-3 text-xs"
+                    >
+                      + ຕື່ມ {formatWeight(preview!.difference)} g ໃຫ້ສົມດຸນ
+                    </button>
+                  </div>
+                )}
+
+                {remainingLines.length === 0 ? (
+                  <div className="recessed flex flex-col items-center justify-center gap-2 rounded-2xl p-8 text-center">
+                    <p className="text-sm text-muted">
+                      ບໍ່ມີຄຳເກົ່າຄົງເຫຼືອ — ຖ້າປ່ຽນຄົບຕາມເກນແລ້ວ ສາມາດກົດ &quot;ຖັດໄປ&quot; ໄປຂັ້ນຕອນສະຫຼຸບໄດ້ເລີຍ
+                    </p>
+                    <button type="button" className="btn-secondary cursor-pointer text-xs" onClick={handleAddRemaining}>
+                      + ເພີ່ມຄຳເກົ່າຄົງເຫຼືອ
+                    </button>
+                  </div>
+                ) : (
+                  <div ref={remainingListRef} className="space-y-3">
+                    {(() => {
+                      let readyIdx = -1;
+                      return remainingLines.map((line, i) => {
+                        const ready = isRemainingLineReady(line);
+                        if (ready) readyIdx += 1;
+                        const remPreview = ready ? preview?.remainingLines?.[readyIdx] : undefined;
+                        return (
+                          <div
+                            key={i}
+                            className={`recessed space-y-3 rounded-2xl p-4 transition-colors duration-150 ${
+                              ready ? 'border-[var(--border-hover)]' : ''
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2 border-b border-[var(--row-line)] pb-2">
+                              <div className="flex items-center gap-2">
+                                <span className="badge bg-[var(--gold-tint)] font-bold text-gold">#{i + 1}</span>
+                                <span className={ready ? 'status-success' : 'status-warning'}>
+                                  {ready ? 'ພ້ອມຄຳນວນ' : 'ປ້ອນນ້ຳໜັກ'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {remPreview && (
+                                  <span className="num text-xs font-bold text-fg-strong">
+                                    ລາຄາຊື້ຄືນ: {formatLak(remPreview.shopBuybackPrice)} LAK
+                                  </span>
+                                )}
+                                <button
+                                  type="button"
+                                  className="btn-ghost h-7 min-h-[28px] cursor-pointer px-2 text-xs text-danger"
+                                  aria-label={`ລຶບຄົງເຫຼືອແຖວທີ ${i + 1}`}
+                                  onClick={() => setRemainingLines((p) => p.filter((_, idx) => idx !== i))}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-3">
+                              <div className="min-w-0">
+                                <label className="label mb-1 text-xs" htmlFor={`rem-type-${i}`}>ປະເພດຄຳ</label>
+                                <select
+                                  id={`rem-type-${i}`}
+                                  className="input"
+                                  value={line.goldTypeId}
+                                  onChange={(e) => setRemaining(i, { goldTypeId: e.target.value })}
+                                >
+                                  <option value="">ຕາມຄຳເກົ່າຫຼັກ</option>
+                                  {selectableGoldTypes.map((t) => (
+                                    <option key={t.id} value={t.id}>{t.nameLo}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div className="min-w-0">
+                                <label className="label mb-1 text-xs" htmlFor={`rem-weight-${i}`}>ນ້ຳໜັກ (g)</label>
+                                <NumberInput
+                                  id={`rem-weight-${i}`}
+                                  decimals={4}
+                                  className="input num font-semibold"
+                                  placeholder="0.00"
+                                  value={line.weightG}
+                                  onValueChange={(v) => setRemaining(i, { weightG: v })}
+                                />
+                              </div>
+                              <div className="min-w-0">
+                                <label className="label mb-1 text-xs" htmlFor={`rem-qty-${i}`}>ຈຳນວນ</label>
+                                <input
+                                  id={`rem-qty-${i}`}
+                                  className="input num"
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={line.quantity}
+                                  onChange={(e) => setRemaining(i, { quantity: e.target.value })}
+                                  onBlur={(e) => setRemaining(i, { quantity: String(qty(e.target.value)) })}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* ── Step 4: ສະຫຼຸບ & ການຈ່າຍເງິນ ── */}
+            {step === 4 && (
+              <div className="space-y-5">
+                <section aria-label="ສະຫຼຸບການຄຳນວນ" className="summary-card rounded-2xl p-4 sm:p-5">
+                  <div className="flex items-center justify-between border-b border-[var(--row-line)] pb-2.5">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-gold">
+                      ສະຫຼຸບການຄຳນວນ (§5.2)
+                    </span>
+                    <span className="live-dot text-[11px]">
+                      {isPreviewing ? 'ກຳລັງຄຳນວນ...' : 'ຄຳນວນສົດ'}
+                    </span>
+                  </div>
+
+                  <div className="my-4 flex flex-wrap items-end justify-between gap-4">
+                    <div>
+                      <div className="text-xs text-muted">
+                        {isIncomingPayment
+                          ? 'ລູກຄ້າຕ້ອງຈ່າຍເພີ່ມໃຫ້ຮ້ານ'
+                          : isZeroPayable
+                            ? 'ມູນຄ່າສຸດທິ'
+                            : 'ລວມເງິນຕ້ອງຈ່າຍໃຫ້ລູກຄ້າ'}
                       </div>
-                      {linePreview && (
-                        <div className="flex flex-wrap gap-4 text-xs text-muted">
-                          <span>ຄ່າຫຍຸບ: <strong className="num text-fg">{formatLak(linePreview.humpFee)}</strong></span>
-                          <span>ຄ່າປ່ຽນຄຳແທ່ງ: <strong className="num text-fg">{formatLak(linePreview.barConvertFee)}</strong></span>
-                          <span>ຄ່າລາຍ: <strong className="num text-fg">{formatLak(linePreview.patternFee)}</strong></span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                });
-              })()}
-              <p className="text-xs text-muted">
-                ຄ່າຫຍຸບ ແລະ ຄ່າປ່ຽນຄຳແທ່ງ ດຶງຈາກຕາຕະລາງ ຄ່າປ່ຽນ ອັດຕະໂນມັດ
-                {txnType === 'FREE_EXCHANGE' && ' — ປ່ຽນຟຣີ: ຄ່າປ່ຽນທັງໝົດ = 0'}
-              </p>
-            </div>
-          </div>
-
-          {/* ---- ຄຳເກົ່າຄົງເຫຼືອ ---- */}
-          <div className="rounded-xl border border-line">
-            <div className="flex items-center justify-between border-b border-line px-4 py-3">
-              <h3 className="text-sm font-semibold text-fg-strong">ຄຳເກົ່າຄົງເຫຼືອ</h3>
-              <button
-                type="button"
-                className="btn-secondary h-8 min-h-0 px-3 text-xs"
-                onClick={() => setRemainingLines((p) => [...p, emptyRemaining()])}
-              >
-                + Add
-              </button>
-            </div>
-            <div className="space-y-3 p-4">
-              {remainingLines.length === 0 && (
-                <p className="text-sm text-muted">ບໍ່ມີຄຳເກົ່າຄົງເຫຼືອ</p>
-              )}
-              {(() => {
-                let readyIdx = -1;
-                return remainingLines.map((line, i) => {
-                  const ready = isRemainingLineReady(line);
-                  if (ready) readyIdx += 1;
-                  const remPreview = ready ? preview?.remainingLines?.[readyIdx] : undefined;
-                  return (
-                    <div key={i} className="space-y-2 rounded-xl border border-line p-3">
-                      <div className="grid gap-2 sm:grid-cols-[1.2fr_1fr_0.8fr_auto]">
-                        <select
-                          aria-label={`ຄຳເກົ່າຄົງເຫຼືອ — ປະເພດຄຳ ${i + 1}`}
-                          className="input"
-                          value={line.goldTypeId}
-                          onChange={(e) => setRemaining(i, { goldTypeId: e.target.value })}
-                        >
-                          <option value="">ຕາມປະເພດຄຳເກົ່າຫຼັກ</option>
-                          {selectableGoldTypes.map((t) => (
-                            <option key={t.id} value={t.id}>{t.nameLo}</option>
-                          ))}
-                        </select>
-                        <NumberInput
-                          decimals={4}
-                          aria-label={`ຄຳເກົ່າຄົງເຫຼືອ — ນ້ຳໜັກ (g) ${i + 1}`}
-                          className="input num"
-                          placeholder="ນ້ຳໜັກ (g)"
-                          value={line.weightG}
-                          onValueChange={(v) => setRemaining(i, { weightG: v })}
-                        />
-                        <input
-                          aria-label={`ຄຳເກົ່າຄົງເຫຼືອ — ຈຳນວນ ${i + 1}`}
-                          className="input num"
-                          type="number"
-                          min={1}
-                          step={1}
-                          value={line.quantity}
-                          onChange={(e) => setRemaining(i, { quantity: e.target.value })}
-                          onBlur={(e) => setRemaining(i, { quantity: String(qty(e.target.value)) })}
-                        />
-                        <button
-                          type="button"
-                          className="btn-danger px-3"
-                          onClick={() => setRemainingLines((p) => p.filter((_, idx) => idx !== i))}
-                        >
-                          ລຶບ
-                        </button>
+                      <div className="num mt-0.5 text-3xl font-bold tracking-tight text-gold-gradient">
+                        {preview ? `${formatLak(String(Math.abs(payableNum)))} LAK` : '0 LAK'}
                       </div>
-                      {remPreview && (
-                        <div className="text-xs text-muted">
-                          ລາຄາຊື້ຄືນໜ້າຮ້ານ: <strong className="num text-fg">{formatLak(remPreview.shopBuybackPrice)} LAK</strong>
-                        </div>
-                      )}
                     </div>
-                  );
-                });
-              })()}
-            </div>
-          </div>
+                  </div>
 
-          {/* ---- ສະຫຼຸບ + Zero-balance + ການຈ່າຍເງິນ ---- */}
-          <div className="rounded-xl border border-line p-4 space-y-4">
-            <div className="recessed rounded-xl p-4 sm:p-5">
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-                <Field labelLo="ລາຄາຊື້ຄືນໜ້າຮ້ານ" value={preview ? formatLak(preview.shopBuybackPrice) : '—'} />
-                <Field labelLo="ຄ່າອ່ອນ" value={preview ? formatLak(preview.softGoldFee) : '—'} />
-                <Field labelLo="ຄ່າຫຍຸບ" value={preview ? formatLak(preview.humpFee) : '—'} />
-                <Field labelLo="ຄ່າປ່ຽນຄຳແທ່ງ" value={preview ? formatLak(preview.barConvertFee) : '—'} />
-                <Field labelLo="ຄ່າລາຍ" value={preview ? formatLak(preview.patternFee) : '—'} />
+                  <div className="recessed grid grid-cols-2 gap-3 rounded-xl p-3 sm:grid-cols-5">
+                    <div>
+                      <div className="text-[11px] text-muted">ລາຄາຊື້ຄືນໜ້າຮ້ານ</div>
+                      <div className="num mt-0.5 text-sm font-semibold text-fg-strong">
+                        {preview ? formatLak(preview.shopBuybackPrice) : '0'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-muted">ຄ່າອ່ອນ</div>
+                      <div className="num mt-0.5 text-sm font-semibold text-fg-strong">
+                        {preview ? formatLak(preview.softGoldFee) : '0'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-muted">ຄ່າຫຍຸບ</div>
+                      <div className="num mt-0.5 text-sm font-semibold text-fg-strong">
+                        {preview ? formatLak(preview.humpFee) : '0'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-muted">ຄ່າປ່ຽນຄຳແທ່ງ</div>
+                      <div className="num mt-0.5 text-sm font-semibold text-fg-strong">
+                        {preview ? formatLak(preview.barConvertFee) : '0'}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-muted">ຄ່າລາຍ</div>
+                      <div className="num mt-0.5 text-sm font-semibold text-fg-strong">
+                        {preview ? formatLak(preview.patternFee) : '0'}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <div
+                  role="status"
+                  className={`notice flex flex-wrap items-center justify-between gap-2 text-xs ${
+                    !preview
+                      ? 'recessed border border-line text-muted'
+                      : preview.isBalanced
+                        ? 'status-success'
+                        : 'status-danger'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    {preview?.isBalanced && (
+                      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                    )}
+                    {!preview
+                      ? 'ກະລຸນາປ້ອນລາຍການຄຳເກົ່າໃນຂັ້ນຕອນທີ 1'
+                      : preview.isBalanced
+                        ? 'ນ້ຳໜັກສົມດຸນ — ບັນທຶກໄດ້'
+                        : preview.messageLo}
+                  </span>
+                  {differenceNum > 0 && (
+                    <button
+                      type="button"
+                      onClick={fillRemainingDifference}
+                      className="btn-secondary !h-7 !min-h-0 cursor-pointer !px-2.5 text-[11px]"
+                    >
+                      + ຕື່ມຄົງເຫຼືອ {formatWeight(preview!.difference)} g
+                    </button>
+                  )}
+                </div>
+
+                <section aria-label="ການຈ່າຍເງິນ">
+                  {isZeroPayable ? (
+                    <div className="notice status-success flex items-center gap-2 text-xs">
+                      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span>ມູນຄ່າສຸດທິເທົ່າກັບ 0 LAK — ບໍ່ຕ້ອງຈ່າຍ ຫຼື ຮັບເງິນເພີ່ມ</span>
+                    </div>
+                  ) : (
+                    <MultiPayment
+                      lines={payments}
+                      onChange={setPayments}
+                      owedLak={absOwedLak}
+                      direction={isIncomingPayment ? 'in' : 'out'}
+                      labelLo={
+                        isIncomingPayment
+                          ? 'ຮັບເງິນຈາກລູກຄ້າ — ສົດ / ໂອນ (ແຍກແຖວໄດ້)'
+                          : 'ຈ່າຍເງິນໃຫ້ລູກຄ້າ — ສົດ / ໂອນ (ແຍກແຖວໄດ້)'
+                      }
+                    />
+                  )}
+                </section>
               </div>
-              <div className="mt-4 flex flex-wrap items-end justify-between gap-4 border-t border-line pt-4">
-                <Field
-                  labelLo={isIncomingPayment ? 'ລູກຄ້າຕ້ອງຈ່າຍເພີ່ມໃຫ້ຮ້ານ' : 'ລວມເງິນຕ້ອງຈ່າຍໃຫ້ລູກຄ້າ'}
-                  value={preview ? `${formatLak(String(Math.abs(payableNum)))} LAK` : '—'}
-                  strong
-                />
-                {isPreviewing && <span className="text-xs text-muted">ກຳລັງຄຳນວນ...</span>}
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Field
-                labelLo="ເກນນ້ຳໜັກຄຳເກົ່າ"
-                value={preview ? `${formatWeight(preview.standardOldWeightG)} g` : '—'}
-              />
-              <Field
-                labelLo="ລວມນ້ຳໜັກຄຳໃໝ່"
-                value={preview ? `${formatWeight(preview.totalNewWeightG)} g` : '—'}
-              />
-              <Field
-                labelLo="ລວມຄຳເກົ່າຄົງເຫຼືອ"
-                value={preview ? `${formatWeight(preview.totalRemainingWeightG)} g` : '—'}
-              />
-            </div>
-
-            {/* ⚠ TOR §5.2 CRITICAL — the gate on saving. */}
-            <div
-              role="status"
-              className={`notice ${
-                !preview
-                  ? 'recessed border border-line text-muted'
-                  : preview.isBalanced
-                    ? 'status-success'
-                    : 'status-danger'
-              }`}
-            >
-              {!preview
-                ? 'ປ້ອນລາຍການຄຳເກົ່າເພື່ອກວດສອບຄວາມສົມດຸນ'
-                : preview.isBalanced
-                  ? '✓ ນ້ຳໜັກສົມດຸນ — ບັນທຶກໄດ້'
-                  : preview.messageLo}
-            </div>
-
-            {isZeroPayable ? (
-              <div className="notice status-success text-xs">
-                ມູນຄ່າສຸດທິເທົ່າກັບ 0 LAK — ບໍ່ຕ້ອງຈ່າຍ ຫຼື ຮັບເງິນເພີ່ມ
-              </div>
-            ) : (
-              <MultiPayment
-                lines={payments}
-                onChange={setPayments}
-                owedLak={absOwedLak}
-                direction={isIncomingPayment ? 'in' : 'out'}
-                labelLo={
-                  isIncomingPayment
-                    ? 'ຮັບເງິນຈາກລູກຄ້າ — ສົດ / ໂອນ (ແຍກແຖວໄດ້)'
-                    : 'ຈ່າຍເງິນໃຫ້ລູກຄ້າ — ສົດ / ໂອນ (ແຍກແຖວໄດ້)'
-                }
-              />
             )}
           </div>
         </div>
@@ -1223,7 +1732,7 @@ export default function ExchangePage() {
 
             <div>
               <h4 className="section-label mb-1.5">ລາຍການຄຳເກົ່າ</h4>
-              <div className="space-y-1 text-xs">
+              <div className={viewingDetail.oldLines.length > 1 ? 'nav-scroll max-h-[200px] space-y-1 overflow-y-auto pr-1 text-xs' : 'space-y-1 text-xs'}>
                 {viewingDetail.oldLines.map((l) => (
                   <div key={l.id} className="flex justify-between rounded-lg border border-line px-3 py-2">
                     <span>{l.goldType?.nameLo ?? 'ຄຳເກົ່າ'}{l.goldItem?.nameLo ? ` · ${l.goldItem.nameLo}` : ''}</span>
@@ -1236,7 +1745,7 @@ export default function ExchangePage() {
             {viewingDetail.newLines.length > 0 && (
               <div>
                 <h4 className="section-label mb-1.5">ລາຍການຄຳໃໝ່</h4>
-                <div className="space-y-1 text-xs">
+                <div className={viewingDetail.newLines.length > 1 ? 'nav-scroll max-h-[200px] space-y-1 overflow-y-auto pr-1 text-xs' : 'space-y-1 text-xs'}>
                   {viewingDetail.newLines.map((l) => (
                     <div key={l.id} className="flex justify-between rounded-lg border border-line px-3 py-2">
                       <span>{l.goldSku?.fullSkuName ?? 'SKU'}{l.cabinet?.nameLo ? ` · ${l.cabinet.nameLo}` : ''}</span>
@@ -1250,7 +1759,7 @@ export default function ExchangePage() {
             {(viewingDetail.remainingLines?.length ?? 0) > 0 && (
               <div>
                 <h4 className="section-label mb-1.5">ຄຳເກົ່າຄົງເຫຼືອ</h4>
-                <div className="space-y-1 text-xs">
+                <div className={(viewingDetail.remainingLines?.length ?? 0) > 1 ? 'nav-scroll max-h-[200px] space-y-1 overflow-y-auto pr-1 text-xs' : 'space-y-1 text-xs'}>
                   {viewingDetail.remainingLines!.map((l) => (
                     <div key={l.id} className="flex justify-between rounded-lg border border-line px-3 py-2">
                       <span>{formatWeight(l.weightG)} g × {l.quantity}</span>
@@ -1264,7 +1773,7 @@ export default function ExchangePage() {
             {(viewingDetail.payments?.length ?? 0) > 0 && (
               <div>
                 <h4 className="section-label mb-1.5">ການຈ່າຍເງິນ</h4>
-                <div className="space-y-1 text-xs">
+                <div className={(viewingDetail.payments?.length ?? 0) > 1 ? 'nav-scroll max-h-[200px] space-y-1 overflow-y-auto pr-1 text-xs' : 'space-y-1 text-xs'}>
                   {viewingDetail.payments!.map((p) => (
                     <div key={p.id} className="flex justify-between rounded-lg border border-line px-3 py-2">
                       <span>{p.method === 'BANK' ? `ໂອນ · ${p.bankAccount?.nameLo ?? ''}` : 'ເງິນສົດ'} ({p.currency})</span>
@@ -1390,15 +1899,23 @@ export default function ExchangePage() {
   );
 }
 
-function Field({ labelLo, value, strong }: { labelLo: string; value: string; strong?: boolean }) {
-  return (
-    <div>
-      <div className="section-label">{labelLo}</div>
-      <div className={`num mt-1 font-semibold text-fg-strong ${strong ? 'text-[24px]' : 'text-[18px]'}`}>
-        {value}
-      </div>
-    </div>
-  );
+function useScrollOnAdd(
+  length: number,
+  flagRef: MutableRefObject<boolean>,
+  listRef: RefObject<HTMLDivElement | null>,
+  focusIdPrefix: string,
+) {
+  useEffect(() => {
+    if (!flagRef.current) return;
+    flagRef.current = false;
+    const container = listRef.current;
+    if (!container) return;
+    requestAnimationFrame(() => {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      const lastIndex = length - 1;
+      document.getElementById(`${focusIdPrefix}-${lastIndex}`)?.focus({ preventScroll: true });
+    });
+  }, [length, flagRef, listRef, focusIdPrefix]);
 }
 
 function StatusPill({ ok, label }: { ok: boolean; label: string }) {

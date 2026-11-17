@@ -128,3 +128,12 @@ export function formatDateTime(value: string | Date | null | undefined): string 
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${formatDate(d)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+
+/** ແປງ ISO timestamp ເປັນ YYYY-MM-DD ຕາມເວລາທ້ອງຖິ່ນ ເພື່ອກວດວ່າເປັນລາຍການຂ້າມມື້ຫຼືບໍ່. */
+export function localDateString(value: string | Date | null | undefined): string {
+  if (!value) return '';
+  const d = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}

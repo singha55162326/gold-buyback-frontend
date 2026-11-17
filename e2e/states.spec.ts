@@ -177,6 +177,7 @@ for (const theme of THEMES) {
 
   test(`[state] buyback history table and filter dropdowns ${theme}`, async ({ page }) => {
     const D = '2026-11-17T09:30:00.000Z';
+    const PREV_DAY = '2026-11-15T09:30:00.000Z';
     const sampleRows = [
       {
         id: 'bb1',
@@ -229,7 +230,7 @@ for (const theme of THEMES) {
         weightG: '22.50',
         quantity: 2,
         payableAmount: '54300000',
-        createdAt: D,
+        createdAt: PREV_DAY,
         customer: { phone: '02055512345' },
       },
       {
@@ -263,11 +264,42 @@ for (const theme of THEMES) {
         createdAt: D,
         customer: { phone: '02099998888' },
       },
+      {
+        id: 'bb3',
+        code: 'BB-003',
+        source: 'KPV',
+        goldPercent: null,
+        paidAmount: '36200000',
+        outstandingAmount: '0',
+        createdBy: 'ຜູ້ປະເມີນ A',
+        updatedBy: 'ຜູ້ປະເມີນ A',
+        payments: [
+          {
+            id: 'pay3',
+            method: 'CASH',
+            currency: 'LAK',
+            amount: '36200000',
+            amountLak: '36200000',
+            changeLak: '0',
+          },
+        ],
+        goldItem: { nameLo: 'ກ້ອນທອງ' },
+        goldType: { nameLo: 'ຄຳແທ່ງ' },
+        lines: [],
+        status: 'COMPLETED',
+        weightG: '15.00',
+        quantity: 1,
+        payableAmount: '36200000',
+        createdAt: D,
+        customer: { phone: '02077776666' },
+      },
     ];
 
+    const listRequests: string[] = [];
     await open(page, theme, DESKTOP, '/valuer/buyback');
     await page.route(/^http:\/\/api\.mock\/api\/buyback(\?.*)?$/, async (route) => {
       if (route.request().method() !== 'GET') return route.fallback();
+      listRequests.push(route.request().url());
       return route.fulfill({
         status: 200,
         headers: { 'access-control-allow-origin': '*' },
@@ -318,7 +350,17 @@ for (const theme of THEMES) {
     await expect(page.locator('.filter-select-label', { hasText: 'ເວລາ' })).toHaveCount(0);
     await expect(page.getByText('BB-001')).toBeVisible();
     await expect(page.getByText('BB-002')).toBeVisible();
+    await expect(page.getByText('BB-003')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'ວຽກຄ້າງຂ້າມມື້ 1 ບິນ' })).toBeVisible();
+    await expect(page.getByText('ຄ້າງຂ້າມມື້', { exact: true })).toBeVisible();
     await check(page, 'buyback history table rendered');
+
+    // Quick pending filter works without sending synthetic PENDING_ACTION param to backend
+    await page.getByRole('button', { name: 'ວຽກຄ້າງຂ້າມມື້ 1 ບິນ' }).click();
+    await expect(page.getByText('BB-001')).toBeVisible();
+    await expect(page.getByText('BB-002')).toBeVisible();
+    await expect(page.getByText('BB-003')).toHaveCount(0);
+    expect(listRequests.some((u) => u.includes('PENDING_ACTION'))).toBe(false);
 
     // Status & Source custom dropdowns work and pass a11y + contrast
     const statusTrigger = page.locator('#buyback-status-filter');

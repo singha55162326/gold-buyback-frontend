@@ -5,7 +5,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useToast } from '@/components/toast';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, ApiError, getStoredUser } from '@/lib/api';
-import { formatLak, formatWeight, formatDateTime, formatByCurrency, gramsToBaht } from '@/lib/format';
+import { formatLak, formatWeight, formatDateTime, formatByCurrency, gramsToBaht, localDateString } from '@/lib/format';
 import { NumberInput } from '@/components/number-input';
 import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
@@ -145,14 +145,23 @@ interface FilterOption<T extends string = string> {
   dotColor: string;
 }
 
-const BUYBACK_STATUS_FILTER_OPTIONS: FilterOption<'' | BuybackStatus>[] = [
-  { value: '', labelLo: 'ທຸກສະຖານະ', dotColor: 'var(--gold)' },
+type BuybackStatusFilter = '' | 'PENDING_ACTION' | BuybackStatus;
+
+const BUYBACK_STATUS_FILTER_OPTIONS: FilterOption<BuybackStatusFilter>[] = [
+  { value: '', labelLo: 'ທຸກສະຖານະ (ລວມລາຍການຄ້າງ)', dotColor: 'var(--gold)' },
+  { value: 'PENDING_ACTION', labelLo: 'ສະເພາະວຽກຄ້າງ (ຍັງບໍ່ສຳເລັດ)', dotColor: 'var(--warning-dot)' },
   { value: 'PENDING', labelLo: 'ລໍຖ້າອະນຸມັດ', dotColor: 'var(--warning-dot)' },
   { value: 'APPROVED', labelLo: 'ອະນຸມັດແລ້ວ', dotColor: 'var(--gold)' },
   { value: 'COMPLETED', labelLo: 'ສຳເລັດ', dotColor: 'var(--success-dot)' },
   { value: 'REJECTED', labelLo: 'ປະຕິເສດ', dotColor: 'var(--danger-dot)' },
   { value: 'CANCELLED', labelLo: 'ຍົກເລີກ', dotColor: 'var(--muted)' },
 ];
+
+function isPendingBuyback(row: BuybackRow): boolean {
+  if (row.status === 'REJECTED' || row.status === 'CANCELLED') return false;
+  if (row.status !== 'COMPLETED') return true;
+  return Number(row.outstandingAmount) > 0.0001;
+}
 
 const BUYBACK_SOURCE_FILTER_OPTIONS: FilterOption<'' | 'KPV' | 'OTHER_SHOP'>[] = [
   { value: '', labelLo: 'ທຸກແຫຼ່ງຄຳ', dotColor: 'var(--gold)' },
@@ -224,7 +233,7 @@ export default function BuybackPage() {
   const [error, setError] = useState<string | null>(null);
 
   // History filters
-  const [statusFilter, setStatusFilter] = useState<string>('');
+  const [statusFilter, setStatusFilter] = useState<BuybackStatusFilter>('');
   const [sourceFilter, setSourceFilter] = useState<string>('');
   const searchFilter = useOrderSearchFilter();
 
@@ -256,21 +265,33 @@ export default function BuybackPage() {
     queryFn: () => api.get<BankAccount[]>('/catalog/bank-accounts'),
   });
 
+  const serverStatusParam =
+    statusFilter && statusFilter !== 'PENDING_ACTION' ? statusFilter : undefined;
+
   const historyParams = useMemo(
     () => ({
-      ...(statusFilter ? { status: statusFilter } : {}),
+      ...(serverStatusParam ? { status: serverStatusParam } : {}),
       ...(sourceFilter ? { source: sourceFilter } : {}),
       ...(searchFilter.debouncedSearch ? { search: searchFilter.debouncedSearch } : {}),
     }),
-    [statusFilter, sourceFilter, searchFilter.debouncedSearch],
+    [serverStatusParam, sourceFilter, searchFilter.debouncedSearch],
   );
 
-  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້; the range is widened from the filter strip.
+  // ຄ່າເລີ່ມຕົ້ນ = ມື້ນີ້ (ລວມລາຍການທີ່ຍັງຄ້າງຂ້າມມື້); the range is widened from the filter strip.
   const history = useHistoryRange<BuybackRow>(['buyback'], '/buyback', { params: historyParams });
   const rows = history.rows;
   const rowsFailed = history.isError;
   const rowsError = history.error;
   const refetchRows = history.refetch;
+
+  const carryOverCount = useMemo(
+    () =>
+      rows.filter((row) => {
+        const createdDay = localDateString(row.createdAt);
+        return Boolean(createdDay && history.from && createdDay < history.from && isPendingBuyback(row));
+      }).length,
+    [rows, history.from],
+  );
 
   const { data: viewedDetail, isFetching: detailLoading } = useQuery({
     queryKey: ['buyback', 'detail', viewingRow?.id],
@@ -282,7 +303,11 @@ export default function BuybackPage() {
   const filteredRows = useMemo(() => {
     const q = searchFilter.searchTerm.trim().toLowerCase();
     return rows.filter((row) => {
-      if (statusFilter && row.status !== statusFilter) return false;
+      if (statusFilter === 'PENDING_ACTION') {
+        if (!isPendingBuyback(row)) return false;
+      } else if (statusFilter && row.status !== statusFilter) {
+        return false;
+      }
       if (sourceFilter && row.source !== sourceFilter) return false;
       if (!q) return true;
       return (
@@ -1073,7 +1098,21 @@ export default function BuybackPage() {
 
       <div data-fade className="card">
         <div className="card-header">
-          <h2 className="card-title">ປະຫວັດ Buyback</h2>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="card-title">ປະຫວັດ Buyback</h2>
+            {carryOverCount > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setStatusFilter((prev) => (prev === 'PENDING_ACTION' ? '' : 'PENDING_ACTION'))
+                }
+                className="status-warning cursor-pointer transition-opacity hover:opacity-90"
+                title="ກົດເພື່ອກອງສະເພາະລາຍການຄ້າງຂ້າມມື້"
+              >
+                ວຽກຄ້າງຂ້າມມື້ {carryOverCount} ບິນ
+              </button>
+            )}
+          </div>
           <span className="num text-xs text-muted">
             {filteredRows.length === rows.length
               ? `${rows.length} ລາຍການ`
@@ -1092,7 +1131,7 @@ export default function BuybackPage() {
                 value={statusFilter}
                 options={BUYBACK_STATUS_FILTER_OPTIONS}
                 onChange={setStatusFilter}
-                minWidthClass="min-w-[175px]"
+                minWidthClass="min-w-[215px]"
               />
               <BuybackFilterDropdown
                 id="buyback-source-filter"
@@ -1153,6 +1192,10 @@ export default function BuybackPage() {
                 const bahtText = gramsToBaht(row.weightG);
                 const paymentSummary = summarizeBuybackPayments(row.payments);
                 const showUpdatedBy = Boolean(row.updatedBy && row.updatedBy !== row.createdBy);
+                const rowCreatedDay = localDateString(row.createdAt);
+                const isCarryOver = Boolean(
+                  rowCreatedDay && history.from && rowCreatedDay < history.from && isPendingBuyback(row),
+                );
 
                 return (
                 <tr key={row.id}>
@@ -1165,7 +1208,14 @@ export default function BuybackPage() {
                         </span>
                       )}
                     </div>
-                    <div className="num mt-0.5 text-[11px] text-muted">{formatDateTime(row.createdAt)}</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                      <span className="num text-[11px] text-muted">{formatDateTime(row.createdAt)}</span>
+                      {isCarryOver && (
+                        <span className="status-warning text-[10px] px-1.5 py-0" title="ລາຍການຄ້າງຈາກມື້ກ່ອນໜ້າ">
+                          ຄ້າງຂ້າມມື້
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="num font-medium text-fg">{row.customer.phone}</td>
                   <td>
@@ -1830,7 +1880,7 @@ function ReadinessPill({ ok, label }: { ok: boolean; label: string }) {
 }
 
 /** Dropdown ກອງຂໍ້ມູນແບບ Radix ສຳລັບແຖບກອງປະຫວັດ Buyback. */
-function BuybackFilterDropdown({
+function BuybackFilterDropdown<T extends string>({
   id,
   label,
   value,
@@ -1840,9 +1890,9 @@ function BuybackFilterDropdown({
 }: {
   id: string;
   label: string;
-  value: string;
-  options: FilterOption[];
-  onChange: (next: string) => void;
+  value: T;
+  options: FilterOption<T>[];
+  onChange: (next: T) => void;
   minWidthClass?: string;
 }) {
   const labelId = `${id}-label`;
@@ -1895,7 +1945,7 @@ function BuybackFilterDropdown({
             sideOffset={6}
             className="menu-panel z-50 min-w-[220px] p-1.5"
           >
-            <DropdownMenu.RadioGroup value={value} onValueChange={onChange}>
+            <DropdownMenu.RadioGroup value={value} onValueChange={(next) => onChange(next as T)}>
               {options.map((opt) => {
                 const active = value === opt.value;
                 return (

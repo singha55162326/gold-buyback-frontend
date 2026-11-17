@@ -138,6 +138,72 @@ export function calcTotalLak(
 }
 
 /**
+ * ກວດສອບກົດການຈ່າຍ/ຮັບຫຼາຍສະກຸນເງິນ (ຫ້າມ LAK ເກີນຍອດ ແລະ ຈຳກັດເງິນທອນສະກຸນຕ່າງປະເທດ).
+ *
+ * Returns a Lao error string if a rule is broken, or null when valid.
+ */
+export function validatePaymentRules(
+  lines: PaymentLine[],
+  owedLak: number,
+  rates: Rates | null | undefined,
+  direction: 'in' | 'out' = 'in',
+  options?: {
+    disallowLakOverpay?: boolean;
+    changeLimits?: Partial<Record<PayCurrency, number>>;
+  },
+): string | null {
+  const disallowLakOverpay = options?.disallowLakOverpay ?? direction === 'out';
+  const changeLimits = options?.changeLimits;
+
+  let lakLegsTotal = 0;
+  let foreignLakTotal = 0;
+  const resolved: Array<{ currency: PayCurrency; rate: number; amountLak: number }> = [];
+
+  for (const l of lines) {
+    const amt = Number(clean(l.amount));
+    if (!Number.isFinite(amt) || amt <= 0) continue;
+    if (l.currency === 'LAK') {
+      lakLegsTotal += amt;
+      resolved.push({ currency: 'LAK', rate: 1, amountLak: amt });
+    } else {
+      const key = `${l.currency.toLowerCase()}${direction === 'in' ? 'Sell' : 'Buyback'}Rate` as keyof Rates;
+      const rate = rates ? Number(rates[key] ?? 0) : 0;
+      const amountLak = amt * rate;
+      foreignLakTotal += amountLak;
+      resolved.push({ currency: l.currency, rate, amountLak });
+    }
+  }
+
+  const totalLak = lakLegsTotal + foreignLakTotal;
+  const change = totalLak > owedLak + 0.0001 ? totalLak - owedLak : 0;
+
+  if (disallowLakOverpay) {
+    if (lakLegsTotal > owedLak + 0.0001) {
+      return `ຈຳນວນເງິນ LAK (${formatLak(lakLegsTotal)}) ຕ້ອງບໍ່ເກີນຍອດທີ່ຕ້ອງ${direction === 'in' ? 'ຮັບ' : 'ຈ່າຍ'} (${formatLak(owedLak)} LAK)`;
+    }
+    if (lakLegsTotal > 0 && foreignLakTotal >= owedLak - 0.0001) {
+      return `ຍອດສະກຸນເງິນຕ່າງປະເທດຄົບຍອດແລ້ວ — ບໍ່ຄວນ${direction === 'in' ? 'ຮັບ' : 'ຈ່າຍ'} LAK ເພີ່ມ`;
+    }
+  }
+
+  if (change > 0.0001 && changeLimits) {
+    let remainingChange = change;
+    for (let i = resolved.length - 1; i >= 0 && remainingChange > 0.0001; i--) {
+      const leg = resolved[i]!;
+      if (leg.currency === 'LAK' || leg.rate <= 0) continue;
+      const legChange = Math.min(remainingChange, leg.amountLak);
+      const limit = changeLimits[leg.currency];
+      if (limit !== undefined && legChange > limit * leg.rate + 0.0001) {
+        return `ເງິນທອນຈາກ ${leg.currency} ປ້ອນໄດ້ບໍ່ເກີນ ${limit.toLocaleString('en-US')} ${leg.currency}`;
+      }
+      remainingChange -= legChange;
+    }
+  }
+
+  return null;
+}
+
+/**
  * ຈ່າຍ / ຮັບ ທັງເງິນສົດ ແລະ ໂອນ, ຫຼາຍສະກຸນເງິນ ໃນ 1 ທຸລະກຳ.
  *
  * Every leg carries its own method, currency and bank, and is converted at
@@ -161,6 +227,8 @@ export function MultiPayment({
   onlyCashBalanceGuide,
   compact,
   headerSlot,
+  changeLimits,
+  disallowLakOverpay,
 }: {
   lines: PaymentLine[];
   onChange: (lines: PaymentLine[]) => void;
@@ -187,6 +255,10 @@ export function MultiPayment({
   compact?: boolean;
   /** Optional custom left header node (used with compact split layout). */
   headerSlot?: React.ReactNode;
+  /** Optional per-currency change cap for `direction="in"` (e.g. `{ THB: 1000, USD: 100 }`). */
+  changeLimits?: Partial<Record<PayCurrency, number>>;
+  /** When true on `direction="in"`, prevents LAK legs from exceeding the owed amount. */
+  disallowLakOverpay?: boolean;
 }) {
   const { data: banks = [] } = useQuery({
     queryKey: ['catalog', 'bank-accounts'],
@@ -321,6 +393,14 @@ export function MultiPayment({
     !isInvalidLakOverpay &&
     hasForeignLeg &&
     roundedRemaining < -0.0001;
+  const directionInRuleError = useMemo(() => {
+    if (direction !== 'in' || !hasOwed || isForeign) return null;
+    if (!disallowLakOverpay && !changeLimits) return null;
+    return validatePaymentRules(lines, numOwed, rates, 'in', {
+      disallowLakOverpay,
+      changeLimits,
+    });
+  }, [direction, hasOwed, isForeign, disallowLakOverpay, changeLimits, lines, numOwed, rates]);
 
   const getOtherLinesTotalInTarget = (excludeIndex: number) => {
     return lines.reduce((sum, l, idx) => {
@@ -704,6 +784,12 @@ export function MultiPayment({
         </div>
       )}
 
+      {directionInRuleError && (
+        <div role="alert" className="notice status-danger text-xs">
+          {directionInRuleError}
+        </div>
+      )}
+
       {hasOwed ? (
         compact ? (
           <div className="recessed flex items-center justify-between rounded-xl px-3.5 py-2.5 text-xs">
@@ -730,6 +816,8 @@ export function MultiPayment({
                       ? isValidForeignChange
                         ? 'text-success'
                         : 'text-danger'
+                      : directionInRuleError
+                      ? 'text-danger'
                       : 'text-success'
                     : 'text-success'
                 }`}
@@ -741,6 +829,8 @@ export function MultiPayment({
                     ? isValidForeignChange
                       ? 'ເງິນທອນ'
                       : 'ເກີນຍອດ'
+                    : directionInRuleError
+                    ? 'ເງິນທອນເກີນກຳນົດ'
                     : 'ເງິນທອນ'
                   : 'ຄົບຖ້ວນ'}{' '}
                 {formatByCurrency(Math.abs(roundedRemaining), targetCurrency)} {targetCurrency}
@@ -773,6 +863,8 @@ export function MultiPayment({
                   ? isValidForeignChange
                     ? 'text-success'
                     : 'text-danger'
+                  : directionInRuleError
+                  ? 'text-danger'
                   : 'text-success'
                 : 'text-success'
             }
@@ -784,6 +876,8 @@ export function MultiPayment({
                 ? isValidForeignChange
                   ? 'ເງິນທອນ (LAK ONLY)'
                   : 'ເກີນຍອດຮັບ'
+                : directionInRuleError
+                ? 'ເງິນທອນເກີນກຳນົດ'
                 : 'ເງິນທອນ'
               : 'ຄົບຖ້ວນ'}{' '}
             <span className="num font-medium">

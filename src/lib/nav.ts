@@ -75,7 +75,7 @@ export const NAV: NavGroup[] = [
     items: [
       { href: '/valuer/buyback', labelLo: 'Buyback (ການຊື້ຄຳຄືນ)', section: '§5.1', roles: ['VALUER', 'ADMIN', 'MANAGER'], status: 'live' },
       { href: '/valuer/exchange', labelLo: 'ລາຍການປ່ຽນເປັນເງິນ', section: '§5.2', roles: ['VALUER', 'ADMIN', 'MANAGER'], status: 'live' },
-      { href: '/valuer/credit', labelLo: 'ລາຍການສິນເຊື່ອ', section: '§5.3', roles: ['VALUER', 'ADMIN', 'MANAGER'], status: 'live' },
+      { href: '/valuer/credit', labelLo: 'ລາຍການສິນເຊື່ອ', section: '§5.3', roles: ['VALUER', 'PAYMENT', 'ADMIN', 'MANAGER'], status: 'live' },
     ],
   },
   {
