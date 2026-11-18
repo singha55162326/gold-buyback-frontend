@@ -10,8 +10,14 @@ import { PageHead } from '@/components/page-head';
 import { QueryErrorNotice, TableStateRow } from '@/components/query-state';
 import { statusClass } from '@/lib/status';
 import { useHistoryRange } from '@/components/date-range';
-import { MultiPayment, newPaymentLines, paymentPayload, useInsufficientFundsError } from '@/components/multi-payment';
-import type { PaymentLine } from '@/components/multi-payment';
+import {
+  calcTotalLak,
+  MultiPayment,
+  newPaymentLines,
+  paymentPayload,
+  useInsufficientFundsError,
+} from '@/components/multi-payment';
+import type { PaymentLine, Rates } from '@/components/multi-payment';
 import { OrderFilterBar, useOrderSearchFilter } from '@/components/order-filter-bar';
 import { Pagination, usePagination } from '@/components/pagination';
 import { Dialog } from '@/components/dialog';
@@ -503,7 +509,7 @@ export default function ExchangePage() {
 
   const { data: rates } = useQuery({
     queryKey: ['rates', 'current'],
-    queryFn: () => api.get<{ thbBuybackRate: string; usdBuybackRate: string }>('/rates/current'),
+    queryFn: () => api.get<Rates>('/rates/current'),
     enabled: showForm,
     retry: false,
   });
@@ -573,6 +579,13 @@ export default function ExchangePage() {
     'ປ່ຽນເປັນເງິນ (Exchange)',
   );
 
+  const paymentDirection = isIncomingPayment ? 'in' : 'out';
+  const paymentTotalLak = calcTotalLak(payments, rates, paymentDirection);
+  const paymentRemaining =
+    preview !== null && !isZeroPayable ? Math.round(Math.abs(payableNum) - paymentTotalLak) : 0;
+  // ກົງກັບ MultiPayment: ຖ້າຍອດ "ຍັງຂາດ" > 0 ຫ້າມ submit ລາຍການ.
+  const hasPaymentShortfall = paymentRemaining > 0;
+
   const lakLegsTotal = paymentLines
     .filter((l) => l.currency === 'LAK')
     .reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
@@ -587,11 +600,13 @@ export default function ExchangePage() {
   const mixedLakInvalid =
     payableNum > 0 && lakLegsTotal > 0 && foreignLakTotal >= payableNum - 0.0001;
 
-  const paymentReady = isZeroPayable
-    ? true
-    : paymentLines.length > 0 &&
-      bankLegReady &&
-      (isIncomingPayment || (!insufficientFundsError && !lakExceedsPayable && !mixedLakInvalid));
+  const paymentReady =
+    preview !== null &&
+    (isZeroPayable ||
+      (paymentLines.length > 0 &&
+        bankLegReady &&
+        !hasPaymentShortfall &&
+        (isIncomingPayment || (!insufficientFundsError && !lakExceedsPayable && !mixedLakInvalid))));
 
   const phoneValid = /^\d{8}$/.test(phone);
   const canSave =
@@ -685,7 +700,10 @@ export default function ExchangePage() {
                   className="btn-primary min-w-[190px] cursor-pointer"
                   aria-describedby={error ? 'exchange-error-modal' : undefined}
                   disabled={!canSave || saveMutation.isPending}
-                  onClick={() => saveMutation.mutate()}
+                  onClick={() => {
+                    if (!canSave) return;
+                    saveMutation.mutate();
+                  }}
                 >
                   {saveMutation.isPending
                     ? 'ກຳລັງບັນທຶກ...'
@@ -1391,9 +1409,39 @@ export default function ExchangePage() {
               </section>
             )}
 
-            {/* ── Step 4: ສະຫຼຸບ & ການຈ່າຍເງິນ ── */}
+            {/* ── Step 4: ການຈ່າຍເງິນ & ສະຫຼຸບ ── */}
             {step === 4 && (
               <div className="space-y-5">
+                <section aria-label="ການຈ່າຍເງິນ">
+                  {isZeroPayable ? (
+                    <div className="notice status-success flex items-center gap-2 text-xs">
+                      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                      <span>ມູນຄ່າສຸດທິເທົ່າກັບ 0 LAK — ບໍ່ຕ້ອງຈ່າຍ ຫຼື ຮັບເງິນເພີ່ມ</span>
+                    </div>
+                  ) : (
+                    <>
+                      <MultiPayment
+                        lines={payments}
+                        onChange={setPayments}
+                        owedLak={absOwedLak}
+                        direction={paymentDirection}
+                        labelLo={
+                          isIncomingPayment
+                            ? 'ຮັບເງິນຈາກລູກຄ້າ — ສົດ / ໂອນ (ແຍກແຖວໄດ້)'
+                            : 'ຈ່າຍເງິນໃຫ້ລູກຄ້າ — ສົດ / ໂອນ (ແຍກແຖວໄດ້)'
+                        }
+                      />
+                      {preview !== null && hasPaymentShortfall && paymentLines.length > 0 && (
+                        <div role="alert" className="notice status-warning mt-3 text-xs">
+                          ຍອດຍັງຂາດ <strong className="num">{formatLak(String(paymentRemaining))} LAK</strong> — ກະລຸນາປ້ອນຈຳນວນເງິນໃຫ້ຄົບກ່ອນບັນທຶກ
+                        </div>
+                      )}
+                    </>
+                  )}
+                </section>
+
                 <section aria-label="ສະຫຼຸບການຄຳນວນ" className="summary-card rounded-2xl p-4 sm:p-5">
                   <div className="flex items-center justify-between border-b border-[var(--row-line)] pb-2.5">
                     <span className="text-xs font-semibold uppercase tracking-wider text-gold">
@@ -1485,29 +1533,6 @@ export default function ExchangePage() {
                     </button>
                   )}
                 </div>
-
-                <section aria-label="ການຈ່າຍເງິນ">
-                  {isZeroPayable ? (
-                    <div className="notice status-success flex items-center gap-2 text-xs">
-                      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        <path d="M20 6L9 17l-5-5" />
-                      </svg>
-                      <span>ມູນຄ່າສຸດທິເທົ່າກັບ 0 LAK — ບໍ່ຕ້ອງຈ່າຍ ຫຼື ຮັບເງິນເພີ່ມ</span>
-                    </div>
-                  ) : (
-                    <MultiPayment
-                      lines={payments}
-                      onChange={setPayments}
-                      owedLak={absOwedLak}
-                      direction={isIncomingPayment ? 'in' : 'out'}
-                      labelLo={
-                        isIncomingPayment
-                          ? 'ຮັບເງິນຈາກລູກຄ້າ — ສົດ / ໂອນ (ແຍກແຖວໄດ້)'
-                          : 'ຈ່າຍເງິນໃຫ້ລູກຄ້າ — ສົດ / ໂອນ (ແຍກແຖວໄດ້)'
-                      }
-                    />
-                  )}
-                </section>
               </div>
             )}
           </div>

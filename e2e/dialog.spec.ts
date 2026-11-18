@@ -214,3 +214,60 @@ test('[dialog] payment approvals: Approve opens confirmation modal before submit
   await expect(dialog).toBeHidden();
   expect(reviewCalls).toEqual([{ url: '/api/buyback/bb1/review', body: { decision: 'APPROVED' } }]);
 });
+
+test('[dialog] payment approvals: blocks Approve and shows reason when wallet balance is insufficient', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockApi(page);
+  await seedSession(page, 'dark', true);
+
+  await page.route(/^http:\/\/api\.mock\/api\/buyback/, async (route) => {
+    const req = route.request();
+    const url = new URL(req.url());
+    if (req.method() === 'GET' && url.pathname === '/api/buyback') {
+      return route.fulfill({
+        status: 200,
+        headers: { 'access-control-allow-origin': '*' },
+        contentType: 'application/json',
+        body: JSON.stringify({
+          rows: [
+            {
+              id: 'bb-short',
+              code: 'BB-999',
+              weightG: '15.00',
+              quantity: 1,
+              payableAmount: '10000000',
+              createdAt: '2026-10-18T09:30:00.000Z',
+              customer: { phone: '020 5551 2345' },
+              goldType: { nameLo: 'ຄຳ 96.5%' },
+              payments: [
+                {
+                  id: 'p1',
+                  method: 'CASH',
+                  bankAccountId: null,
+                  bankAccount: null,
+                  currency: 'LAK',
+                  amount: '10000000',
+                  amountLak: '10000000',
+                  changeLak: '0',
+                },
+              ],
+            },
+          ],
+          page: 1,
+          pageSize: 50,
+          total: 1,
+          pageCount: 1,
+        }),
+      });
+    }
+    return route.fallback();
+  });
+
+  await page.goto('/payment/approvals');
+  await page.waitForLoadState('networkidle');
+
+  const approveBtn = page.getByRole('button', { name: 'Approve', exact: true }).first();
+  await expect(approveBtn).toBeDisabled();
+  await expect(page.getByText('ຍອດເງິນບໍ່ພໍ Approve')).toBeVisible();
+  await expect(page.getByText(/ຍອດເງິນສົດ LAK ໃນກະເປົ໋າເງິນສົດ \(To Day\) ບໍ່ພໍ/)).toBeVisible();
+});

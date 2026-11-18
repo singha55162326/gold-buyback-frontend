@@ -109,6 +109,18 @@ const GET: Record<string, unknown> = {
   ],
   '/admin/deleted': [{ entity: 'Product', labelLo: 'ສິນຄ້າ', id: 'x1', code: 'P-001', detail: 'ສິນຄ້າທົດສອບ', deletedAt: D }],
   '/cash/balances': CUR.map((c, i) => ({ currency: c, inflow: String(5000000 / (i + 1)), outflow: String(1200000 / (i + 1)), balance: String(3800000 / (i + 1)) })),
+  '/cash/wallet': {
+    shiftId: 'sh1',
+    openedAt: D,
+    balances: CUR.map((c, i) => ({
+      currency: c,
+      inflow: String(5000000 / (i + 1)),
+      outflow: String(1200000 / (i + 1)),
+      balance: String(3800000 / (i + 1)),
+      reserved: '0',
+      available: String(3800000 / (i + 1)),
+    })),
+  },
   '/cash/history': cashRows,
   '/cash/requests': [
     { id: 'cq1', direction: 'WITHDRAW', status: 'APPROVED', note: null, createdAt: D, lines: [{ id: 'l1', currency: 'LAK', amount: '5000000' }], shift: { user: { fullName: 'ນາງ ແສງ' } } },

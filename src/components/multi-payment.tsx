@@ -157,6 +157,7 @@ export function validatePaymentRules(
 
   let lakLegsTotal = 0;
   let foreignLakTotal = 0;
+  let hasUnknownForeignRate = false;
   const resolved: Array<{ currency: PayCurrency; rate: number; amountLak: number }> = [];
 
   for (const l of lines) {
@@ -168,10 +169,17 @@ export function validatePaymentRules(
     } else {
       const key = `${l.currency.toLowerCase()}${direction === 'in' ? 'Sell' : 'Buyback'}Rate` as keyof Rates;
       const rate = rates ? Number(rates[key] ?? 0) : 0;
+      if (rate <= 0) {
+        hasUnknownForeignRate = true;
+      }
       const amountLak = amt * rate;
       foreignLakTotal += amountLak;
       resolved.push({ currency: l.currency, rate, amountLak });
     }
+  }
+
+  if (hasUnknownForeignRate && (disallowLakOverpay || changeLimits)) {
+    return 'ຍັງບໍ່ມີອັດຕາແລກປ່ຽນສຳລັບສະກຸນເງິນຕ່າງປະເທດ — ກະລຸນາລໍຖ້າ ຫຼື ກວດສອບອັດຕາ';
   }
 
   const totalLak = lakLegsTotal + foreignLakTotal;
@@ -197,6 +205,9 @@ export function validatePaymentRules(
         return `ເງິນທອນຈາກ ${leg.currency} ປ້ອນໄດ້ບໍ່ເກີນ ${limit.toLocaleString('en-US')} ${leg.currency}`;
       }
       remainingChange -= legChange;
+    }
+    if (remainingChange > 0.0001) {
+      return 'ເງິນທອນເກີນຂອບເຂດທີ່ກຳນົດ';
     }
   }
 
@@ -229,6 +240,7 @@ export function MultiPayment({
   headerSlot,
   changeLimits,
   disallowLakOverpay,
+  partialAllowed = false,
 }: {
   lines: PaymentLine[];
   onChange: (lines: PaymentLine[]) => void;
@@ -259,6 +271,8 @@ export function MultiPayment({
   changeLimits?: Partial<Record<PayCurrency, number>>;
   /** When true on `direction="in"`, prevents LAK legs from exceeding the owed amount. */
   disallowLakOverpay?: boolean;
+  /** When true (e.g. credit instalment), paying less than `owedLak` is valid and styled as remaining balance rather than shortage. */
+  partialAllowed?: boolean;
 }) {
   const { data: banks = [] } = useQuery({
     queryKey: ['catalog', 'bank-accounts'],
@@ -810,7 +824,9 @@ export function MultiPayment({
               <span
                 className={`num text-sm font-semibold ${
                   roundedRemaining > 0.0001
-                    ? 'text-danger'
+                    ? partialAllowed
+                      ? 'text-fg-strong'
+                      : 'text-danger'
                     : roundedRemaining < -0.0001
                     ? direction === 'out'
                       ? isValidForeignChange
@@ -823,7 +839,9 @@ export function MultiPayment({
                 }`}
               >
                 {roundedRemaining > 0.0001
-                  ? 'ຍັງຂາດ'
+                  ? partialAllowed
+                    ? 'ຄ້າງຫຼັງງວດນີ້'
+                    : 'ຍັງຂາດ'
                   : roundedRemaining < -0.0001
                   ? direction === 'out'
                     ? isValidForeignChange
@@ -857,7 +875,9 @@ export function MultiPayment({
           <span
             className={
               roundedRemaining > 0.0001
-                ? 'text-danger'
+                ? partialAllowed
+                  ? 'text-fg-strong'
+                  : 'text-danger'
                 : roundedRemaining < -0.0001
                 ? direction === 'out'
                   ? isValidForeignChange
@@ -870,7 +890,9 @@ export function MultiPayment({
             }
           >
             {roundedRemaining > 0.0001
-              ? 'ຍັງຂາດ'
+              ? partialAllowed
+                ? 'ຄ້າງຫຼັງງວດນີ້'
+                : 'ຍັງຂາດ'
               : roundedRemaining < -0.0001
               ? direction === 'out'
                 ? isValidForeignChange
